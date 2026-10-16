@@ -24,9 +24,10 @@ local U = utf8.char local E = { Bolt    = U(0x26A1), Save    = U(0x1F4BE), Check
 -- 1. ENVIRONMENT & DEEP CLEANUP ENGINE
 --==============================================================================
 local PlayerGui = player:WaitForChild("PlayerGui") local Connections = {}
-if type(genv.TRScripts_ActiveShutdown) == "function" then pcall(genv.TRScripts_ActiveShutdown, true)
-	genv.TRScripts_ActiveShutdown = nil end local function DeepCleanup()
-	pcall(function() RunService:UnbindFromRenderStep("Aimbot_v2") end)
+if genv.TRScripts_ScreenGui then pcall(function() genv.TRScripts_ScreenGui:Destroy() end)
+	genv.TRScripts_ScreenGui = nil end if type(genv.TRScripts_ActiveShutdown) == "function" then
+	pcall(genv.TRScripts_ActiveShutdown, true) genv.TRScripts_ActiveShutdown = nil end
+local function DeepCleanup() pcall(function() RunService:UnbindFromRenderStep("Aimbot_v2") end)
 	pcall(function() RunService:UnbindFromRenderStep("TR_ShiftLock_Pre") end)
 	pcall(function() if cleardrawcache then cleardrawcache() end end)
 	for _, name in ipairs({ "TRScriptsHub", "UtilityHubGui", "TRScriptsFlingGui", "AimbotUI_v2" }) do
@@ -157,7 +158,8 @@ local function MakeLabel(parent, size, pos, text, font, textSize, themeKey, xAli
 local ScreenGui = Instance.new("ScreenGui") ScreenGui.Name = "TRScriptsHub"
 ScreenGui.ResetOnSpawn = false ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true ScreenGui.Parent = GetSafeGuiParent()
-local MIN_WIDTH, MIN_HEIGHT = 560, 360 local MAX_WIDTH, MAX_HEIGHT = 1150, 820
+genv.TRScripts_ScreenGui = ScreenGui local MIN_WIDTH, MIN_HEIGHT = 560, 360
+local MAX_WIDTH, MAX_HEIGHT = 1150, 820
 local CurrentWidth = math.clamp(tonumber(Config.WindowWidth) or 760, MIN_WIDTH, MAX_WIDTH)
 local CurrentHeight = math.clamp(tonumber(Config.WindowHeight) or 480, MIN_HEIGHT, MAX_HEIGHT)
 local MainFrame = Instance.new("Frame") MainFrame.Name = "MainFrame"
@@ -889,19 +891,29 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	guiFovCircle.Parent = ScreenGui Instance.new("UICorner", guiFovCircle).CornerRadius = UDim.new(1, 0)
 	guiFovStroke = Instance.new("UIStroke", guiFovCircle) guiFovStroke.Thickness = 1.8
 	guiFovStroke.Transparency = 0.15 RegisterThemeObject(guiFovStroke, "Color", "Accent")
-	SyncAimbotFovCircleVisibility = function() if guiFovCircle then
-			guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2)
-			guiFovCircle.Visible = fovCircleEnabled and not isClosingPermanently end end
-	IsTeammate = function(plr) if not plr or plr == LocalPlayer then return false end
-		local ok, res = pcall(function() if LocalPlayer.Team ~= nil and plr.Team ~= nil then
-				if not LocalPlayer.Neutral and not plr.Neutral and LocalPlayer.Team == plr.Team then return true end
-			end
-			if not LocalPlayer.Neutral and not plr.Neutral and LocalPlayer.TeamColor == plr.TeamColor and (LocalPlayer.Team ~= nil or plr.Team ~= nil) then
-				return true end if LocalPlayer.GetAttribute and plr.GetAttribute then
-				local myTeamAttr = LocalPlayer:GetAttribute("Team") or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("Team"))
-				local theirTeamAttr = plr:GetAttribute("Team") or (plr.Character and plr.Character:GetAttribute("Team"))
-				if myTeamAttr ~= nil and theirTeamAttr ~= nil and myTeamAttr == theirTeamAttr then return true end
-			end return false end) return ok and res end getTargetPart = function(character)
+	SyncAimbotFovCircleVisibility = function()
+		local showCircle = aimbotEnabled and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
+			guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2) guiFovCircle.Visible = showCircle
+		end end IsTeammate = function(plr) if not plr or plr == LocalPlayer then return false end
+		local ok, res = pcall(function() if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+				return true end
+			if LocalPlayer.Team and plr.Team and tostring(LocalPlayer.Team.Name):lower() == tostring(plr.Team.Name):lower() then
+				return true end
+			if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then
+				local tcName = tostring(LocalPlayer.TeamColor.Name):lower()
+				if tcName ~= "white" and tcName ~= "medium stone grey" and tcName ~= "institutional white" then
+					return true end end
+			local myAttr = LocalPlayer:GetAttribute("Team") or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("Team"))
+			local theirAttr = plr:GetAttribute("Team") or (plr.Character and plr.Character:GetAttribute("Team"))
+			if myAttr ~= nil and theirAttr ~= nil and tostring(myAttr):lower() == tostring(theirAttr):lower() then
+				return true end local function getTeamVal(p)
+				local v = p:FindFirstChild("Team") or p:FindFirstChild("TeamColor") or (p:FindFirstChild("leaderstats") and p.leaderstats:FindFirstChild("Team"))
+				if not v and p.Character then
+					v = p.Character:FindFirstChild("Team") or p.Character:FindFirstChild("TeamColor") end
+				return v and tostring(v.Value or v):lower() end
+			local myVal, theirVal = getTeamVal(LocalPlayer), getTeamVal(plr)
+			if myVal and theirVal and myVal ~= "" and myVal == theirVal then return true end return false end)
+		return (ok and res == true) end getTargetPart = function(character)
 		if not character then return nil end local p = character:FindFirstChild(aimPartName)
 		if p and p:IsA("BasePart") then return p end local hrp = character:FindFirstChild("HumanoidRootPart")
 		if hrp and hrp:IsA("BasePart") then return hrp end
@@ -1232,9 +1244,9 @@ RunService:BindToRenderStep("TR_ShiftLock_Pre", Enum.RenderPriority.Camera.Value
 			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 			UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.CameraRelative end) end
 end) RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 1, function()
-	local cam = workspace.CurrentCamera if not cam then return end if guiFovCircle then
-		guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2)
-		guiFovCircle.Visible = fovCircleEnabled and not isClosingPermanently end
+	local cam = workspace.CurrentCamera if not cam then return end
+	local showFov = aimbotEnabled and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
+		guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2) guiFovCircle.Visible = showFov end
 	if CursorUnlockedOverride and not isClosingPermanently then pcall(function()
 			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 			UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.CameraRelative
