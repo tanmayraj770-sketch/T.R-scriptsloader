@@ -23,14 +23,19 @@ local U = utf8.char local E = { Bolt    = U(0x26A1), Save    = U(0x1F4BE), Check
 --==============================================================================
 -- 1. ENVIRONMENT & DEEP CLEANUP ENGINE
 --==============================================================================
-local PlayerGui = player:WaitForChild("PlayerGui") local Connections = {} local function DeepCleanup()
+local PlayerGui = player:WaitForChild("PlayerGui") local Connections = {}
+if type(genv.TRScripts_ActiveShutdown) == "function" then pcall(genv.TRScripts_ActiveShutdown, true)
+	genv.TRScripts_ActiveShutdown = nil end local function DeepCleanup()
 	pcall(function() RunService:UnbindFromRenderStep("Aimbot_v2") end)
 	pcall(function() RunService:UnbindFromRenderStep("TR_ShiftLock_Pre") end)
 	pcall(function() if cleardrawcache then cleardrawcache() end end)
 	for _, name in ipairs({ "TRScriptsHub", "UtilityHubGui", "TRScriptsFlingGui", "AimbotUI_v2" }) do
-		pcall(function() local c = CoreGui:FindFirstChild(name) if c then c:Destroy() end end) pcall(function()
-			local pg = player:FindFirstChildOfClass("PlayerGui") local g = pg and pg:FindFirstChild(name)
-			if g then g:Destroy() end end) end pcall(function() for _, obj in ipairs(workspace:GetChildren()) do
+		if gethui then pcall(function() local hui = gethui() if hui then
+					for _, ch in ipairs(hui:GetChildren()) do if ch.Name == name then ch:Destroy() end end end end) end
+		pcall(function() for _, ch in ipairs(CoreGui:GetChildren()) do if ch.Name == name then ch:Destroy() end
+			end end) pcall(function() local pg = player:FindFirstChildOfClass("PlayerGui") if pg then
+				for _, ch in ipairs(pg:GetChildren()) do if ch.Name == name then ch:Destroy() end end end end) end
+	pcall(function() for _, obj in ipairs(workspace:GetChildren()) do
 			if obj.Name == "TR_FakeFloor" then obj:Destroy() end end end) pcall(function()
 		local pg = player:FindFirstChildOfClass("PlayerGui") if pg then
 			for _, ch in ipairs(pg:GetChildren()) do
@@ -61,7 +66,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 		FlySpeed = 50, FlyKeybind = "E", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotFOVRadius = 200,
 		AimbotFOVCircleEnabled = true, AimbotEnabled = false, StrongLock = false, WallcheckEnabled = true,
 		AimbotTeamCheck = true, ESPShowTeammates = false, AimPartName = "Head", MasterUtilityEnabled = false,
-		MasterFlightEnabled = false, NoclipEnabled = false, AntiFlingEnabled = false, AutoSelectFling = false,
+		MasterFlightEnabled = false, NoclipEnabled = false, AntiFlingEnabled = true, AutoSelectFling = false,
 		AntiCheatBypass = true, ShiftDownEnabled = true, CountdownBypass = false, AntiAFK = true,
 		InstantPrompt = false, ESPEnabled = false, FullbrightEnabled = false,
 		CameraOverrideMode = "Free / Unlocked", LockedTime = nil }, Waypoints = {
@@ -411,26 +416,67 @@ mouseLockKeyDeleteBtn.MouseButton1Click:Connect(function() Config.MouseLockKeybi
 CreateSectionHeader(Tab1_Dashboard, "Protection & Physics Stabilizers", 6)
 CreateToggle(Tab1_Dashboard, "Anti-AFK Protection (VirtualUser Idle Bypass)", Config.AntiAFK, 7, function(state)
 	Config.AntiAFK = state SaveConfig(false) end)
-CreateToggle(Tab1_Dashboard, "Anti-Fling Physics Stabilizer (Zero Abnormal Velocity)", Config.AntiFlingEnabled, 8, function(state)
-	Config.AntiFlingEnabled = state SaveConfig(false) end)
-CreateToggle(Tab1_Dashboard, "Anti-Kick & Movement Spoofer (Hide Fly / Speed / Jump)", Config.AntiCheatBypass ~= false, 9, function(state)
-	Config.AntiCheatBypass = state SaveConfig(false) end) pcall(function()
-	if hookmetamethod and getnamecallmethod and checkcaller then local oldNamecall
+CreateToggle(Tab1_Dashboard, "Super Anti-Fling Shield (No-Collide Players + Velocity Lock)", Config.AntiFlingEnabled ~= false, 8, function(state)
+	Config.AntiFlingEnabled = state if not state then lastSafeAntiFlingCF = nil pcall(function()
+			for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
+					for _, part in ipairs(plr.Character:GetDescendants()) do
+						if part:IsA("BasePart") and (part.Name == "Head" or part.Name == "Torso" or part.Name == "UpperTorso" or part.Name == "LowerTorso" or part.Name == "HumanoidRootPart") then
+							part.CanCollide = true end end end end end) end SaveConfig(false) end)
+genv.TR_AntiCheatActive = (Config.AntiCheatBypass ~= false) local function DisableAntiCheatSignals(char)
+	if not Config.AntiCheatBypass or not getconnections then return end pcall(function()
+		local c = char or player.Character if not c then return end
+		local hum = c:FindFirstChildOfClass("Humanoid") local root = c:FindFirstChild("HumanoidRootPart")
+		local checkExecutor = isexecutorclosure or checkclosure or is_synapse_function
+		local function clearSig(sig) if not sig then return end for _, conn in ipairs(getconnections(sig)) do
+				if conn and conn.Function and (not checkExecutor or not checkExecutor(conn.Function)) then
+					pcall(function() conn:Disable() end) end end end if hum then
+			clearSig(hum:GetPropertyChangedSignal("WalkSpeed"))
+			clearSig(hum:GetPropertyChangedSignal("JumpPower"))
+			clearSig(hum:GetPropertyChangedSignal("JumpHeight"))
+			clearSig(hum:GetPropertyChangedSignal("PlatformStand"))
+			clearSig(hum:GetPropertyChangedSignal("AutoRotate")) clearSig(hum.StateChanged) end if root then
+			clearSig(root:GetPropertyChangedSignal("CFrame")) clearSig(root:GetPropertyChangedSignal("Position"))
+			clearSig(root:GetPropertyChangedSignal("Velocity"))
+			clearSig(root:GetPropertyChangedSignal("AssemblyLinearVelocity")) end end) end
+CreateToggle(Tab1_Dashboard, "Undetected Anti-Cheat Bypass (Fly, Speed, Jump & Teleport)", Config.AntiCheatBypass ~= false, 9, function(state)
+	Config.AntiCheatBypass = state genv.TR_AntiCheatActive = state
+	if state then DisableAntiCheatSignals(player.Character) end SaveConfig(false) end)
+if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(player.Character) end
+table.insert(Connections, player.CharacterAdded:Connect(function(newChar) task.wait(0.25)
+	if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(newChar) end end)) pcall(function()
+	local HIDDEN_NAMES = { TR_FakeFloor = true, TRScriptsHub = true, TR_ESP_Highlight = true,
+		ESP_HitboxInner = true, ESP_HitboxOutline = true, TR_FOVCircle = true }
+	local AC_KEYWORDS = { "walkspeed", "jumppower", "fly", "noclip", "teleport", "anticheat", "exploit", "velocity", "bodyvelocity", "bvelocity" }
+	if not genv.TR_HooksInstalled and hookmetamethod and getnamecallmethod and checkcaller then
+		genv.TR_HooksInstalled = true local oldNamecall
 		oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-			if not checkcaller() and Config.AntiCheatBypass ~= false then local method = getnamecallmethod()
-				if self == player and (method == "Kick" or method == "kick") then return nil end end
-			return oldNamecall(self, ...) end) local oldIndex
-		oldIndex = hookmetamethod(game, "__index", function(self, key)
-			if not checkcaller() and Config.AntiCheatBypass ~= false and typeof and typeof(self) == "Instance" and self:IsA("Humanoid") then
-				if key == "WalkSpeed" then return 16 elseif key == "JumpPower" then return 50
-				elseif key == "PlatformStand" then return false end end return oldIndex(self, key) end) end end)
-player.Idled:Connect(function() if Config.AntiAFK then pcall(function() VirtualUser:CaptureController()
-			VirtualUser:ClickButton2(Vector2.new()) end) end end) end
+			if not checkcaller() and genv.TR_AntiCheatActive then local method = getnamecallmethod()
+				if self == player and (method == "Kick" or method == "kick") then return nil end
+				if method == "FindFirstChild" then local arg1 = ...
+					if type(arg1) == "string" and HIDDEN_NAMES[arg1] then return nil end
+				elseif method == "GetState" and typeof and typeof(self) == "Instance" and self:IsA("Humanoid") then
+					return Enum.HumanoidStateType.Running
+				elseif (method == "FireServer" or method == "InvokeServer") and typeof and typeof(self) == "Instance" then
+					local remName = tostring(self.Name):lower()
+					if remName:find("ban", 1, true) or remName:find("kick", 1, true) or remName:find("anticheat", 1, true) or remName:find("ac_", 1, true) or remName:find("cheat", 1, true) or remName:find("flag", 1, true) then
+						return nil end local args = { ... } for i = 1, #args do if type(args[i]) == "string" then
+							local low = args[i]:lower() for _, kw in ipairs(AC_KEYWORDS) do
+								if low:find(kw, 1, true) then return nil end end end end end end return oldNamecall(self, ...)
+		end) local oldIndex oldIndex = hookmetamethod(game, "__index", function(self, key)
+			if not checkcaller() and genv.TR_AntiCheatActive and typeof and typeof(self) == "Instance" then
+				if self:IsA("Humanoid") then if key == "WalkSpeed" then return 16
+					elseif key == "JumpPower" then return 50 elseif key == "JumpHeight" then return 7.2
+					elseif key == "PlatformStand" then return false elseif key == "AutoRotate" then return true
+					elseif key == "FloorMaterial" then return Enum.Material.Plastic end
+				elseif type(key) == "string" and HIDDEN_NAMES[key] then return nil end end return oldIndex(self, key)
+		end) end end) table.insert(Connections, player.Idled:Connect(function() if Config.AntiAFK then
+		pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end) end end))
+end
 --==============================================================================
 -- 8. TAB 2: WAYPOINTS & TELEPORT
 --==============================================================================
-local GetRootPart, freezePosition, SafeTeleportToCoords, ActiveKeybindCaptureCallback do
-CreateSectionHeader(Tab2_Waypoints, "Coordinates & Direct Teleport", 1)
+local GetRootPart, freezePosition, lastSafeAntiFlingCF, SafeTeleportToCoords, ActiveKeybindCaptureCallback
+do CreateSectionHeader(Tab2_Waypoints, "Coordinates & Direct Teleport", 1)
 local CoordsTopCard = CreateCard(Tab2_Waypoints, 88, 2)
 local CopyCoordsBtn = MakeButton(CoordsTopCard, UDim2.new(0, 160, 0, 32), UDim2.new(0, 12, 0, 10), E.Clip .. " Copy Coords", "Accent", 12)
 local AddWaypointBtn = MakeButton(CoordsTopCard, UDim2.new(0, 180, 0, 32), UDim2.new(0, 182, 0, 10), E.Plus .. " Save Current Pos", "AccentDark", 12)
@@ -444,9 +490,22 @@ local DirectTpBtn = MakeButton(CoordsTopCard, UDim2.new(0, 125, 0, 32), UDim2.ne
 GetRootPart = function(character) local char = character or player.Character
 	if not char then return nil end
 	return char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart or char:FindFirstChildWhichIsA("BasePart")
-end freezePosition = nil SafeTeleportToCoords = function(x, y, z) pcall(function()
-		local root = GetRootPart() if root then local target = Vector3.new(x, y, z) freezePosition = target
-			root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.CFrame = CFrame.new(target) end end) end
+end freezePosition = nil local teleportBypassLockUntil = 0 local teleportBypassTargetCF = nil
+SafeTeleportToCoords = function(x, y, z) pcall(function() local char = player.Character
+		local root = GetRootPart(char) local hum = char and char:FindFirstChildOfClass("Humanoid") if root then
+			pcall(function() CoreGui.RobloxGui["CoreScripts/NetworkPause"]:Destroy() end)
+			local target = Vector3.new(x, y, z) local goalCF = CFrame.new(target) freezePosition = target
+			lastSafeAntiFlingCF = goalCF teleportBypassTargetCF = goalCF if Config.AntiCheatBypass ~= false then
+				teleportBypassLockUntil = os.clock() + 0.22 if hum then
+					hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+					hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+					hum:ChangeState(Enum.HumanoidStateType.Landed) hum:ChangeState(Enum.HumanoidStateType.Running) end
+				for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then
+						part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+						part.AssemblyAngularVelocity = Vector3.new(0, 0, 0) part.Velocity = Vector3.new(0, 0, 0)
+						part.RotVelocity = Vector3.new(0, 0, 0) end end root.CFrame = goalCF else
+				root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				root.AssemblyAngularVelocity = Vector3.new(0, 0, 0) root.CFrame = goalCF end end end) end
 local function ParseCoordinateString(str) if type(str) ~= "string" then return nil end local nums = {}
 	for numStr in str:gmatch("[-+]?%d+%.?%d*") do local n = tonumber(numStr)
 		if n then table.insert(nums, n) end end if #nums >= 3 then return nums[1], nums[2], nums[3] end
@@ -1056,19 +1115,27 @@ local ExecHeaderCard = CreateCard(Tab8_Executor, 42, 2)
 local ScrollLeftBtn = MakeButton(ExecHeaderCard, UDim2.new(0, 28, 0, 28), UDim2.new(0, 8, 0.5, -14), "<", "PanelBg", 13)
 local ScrollRightBtn = MakeButton(ExecHeaderCard, UDim2.new(0, 28, 0, 28), UDim2.new(1, -70, 0.5, -14), ">", "PanelBg", 13)
 local AddTabBtn = MakeButton(ExecHeaderCard, UDim2.new(0, 28, 0, 28), UDim2.new(1, -36, 0.5, -14), "+", "Accent", 15)
-local TabsScroll = Instance.new("ScrollingFrame") TabsScroll.Size = UDim2.new(1, -118, 0, 30)
-TabsScroll.Position = UDim2.new(0, 42, 0.5, -15) TabsScroll.BackgroundTransparency = 1
-TabsScroll.BorderSizePixel = 0 TabsScroll.ScrollBarThickness = 0
+local TabsScroll = Instance.new("ScrollingFrame") TabsScroll.Size = UDim2.new(1, -118, 0, 32)
+TabsScroll.Position = UDim2.new(0, 42, 0.5, -16) TabsScroll.BackgroundTransparency = 1
+TabsScroll.BorderSizePixel = 0 TabsScroll.ScrollBarThickness = 3 TabsScroll.ScrollingEnabled = true
 TabsScroll.CanvasSize = UDim2.new(0, 0, 0, 0) TabsScroll.AutomaticCanvasSize = Enum.AutomaticSize.X
 TabsScroll.ScrollingDirection = Enum.ScrollingDirection.X TabsScroll.Parent = ExecHeaderCard
+RegisterThemeObject(TabsScroll, "ScrollBarImageColor3", "Accent")
 local TabsScrollLayout = Instance.new("UIListLayout")
 TabsScrollLayout.FillDirection = Enum.FillDirection.Horizontal
 TabsScrollLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 TabsScrollLayout.Padding = UDim.new(0, 6) TabsScrollLayout.Parent = TabsScroll
-ScrollLeftBtn.MouseButton1Click:Connect(function()
-	TabsScroll.CanvasPosition = Vector2.new(math.max(0, TabsScroll.CanvasPosition.X - 120), 0) end)
-ScrollRightBtn.MouseButton1Click:Connect(function()
-	TabsScroll.CanvasPosition = Vector2.new(TabsScroll.CanvasPosition.X + 120, 0) end)
+local function ScrollExecutorTabsBy(deltaX) local totalW = (#savedConfig.ExecutorTabs * 134) + 8
+	local maxScroll = math.max(0, totalW - TabsScroll.AbsoluteSize.X)
+	local targetX = math.clamp(TabsScroll.CanvasPosition.X + deltaX, 0, maxScroll)
+	TweenService:Create(TabsScroll, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		CanvasPosition = Vector2.new(targetX, 0) }):Play() end
+ScrollLeftBtn.MouseButton1Click:Connect(function() ScrollExecutorTabsBy(-134) end)
+ScrollRightBtn.MouseButton1Click:Connect(function() ScrollExecutorTabsBy(134) end)
+local function HandleTabWheelScroll(input) if input.UserInputType == Enum.UserInputType.MouseWheel then
+		ScrollExecutorTabsBy(-input.Position.Z * 110) end end
+ExecHeaderCard.InputChanged:Connect(HandleTabWheelScroll)
+TabsScroll.InputChanged:Connect(HandleTabWheelScroll)
 local EditorCard = CreateCard(Tab8_Executor, 240, 3) local CodeBox = Instance.new("TextBox")
 CodeBox.Size = UDim2.new(1, -16, 1, -16) CodeBox.Position = UDim2.new(0, 8, 0, 8)
 CodeBox.MultiLine = true CodeBox.ClearTextOnFocus = false CodeBox.TextWrapped = true
@@ -1096,7 +1163,7 @@ local function RebuildExecutorTabs() if #savedConfig.ExecutorTabs == 0 then
 	for _, child in ipairs(TabsScroll:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
 	local theme = GetTheme() for idx, tabData in ipairs(savedConfig.ExecutorTabs) do
 		local isSelected = (idx == savedConfig.ActiveExecutorTab) local TabChip = Instance.new("Frame")
-		TabChip.Size = UDim2.new(0, 128, 0, 26)
+		TabChip.LayoutOrder = idx TabChip.Size = UDim2.new(0, 128, 0, 26)
 		TabChip.BackgroundColor3 = isSelected and theme.Accent or theme.PanelBg TabChip.BorderSizePixel = 0
 		TabChip.Parent = TabsScroll AddCorner(TabChip, 6) local SelectBtn = Instance.new("TextButton")
 		SelectBtn.Size = UDim2.new(0, 22, 1, 0) SelectBtn.BackgroundTransparency = 1
@@ -1110,22 +1177,29 @@ local function RebuildExecutorTabs() if #savedConfig.ExecutorTabs == 0 then
 		NameInput.TextColor3 = theme.TextPrimary NameInput.Text = tabData.Name or ("Script " .. idx)
 		NameInput.Parent = TabChip NameInput.Focused:Connect(function()
 			if savedConfig.ActiveExecutorTab ~= idx then savedConfig.ActiveExecutorTab = idx
-				UpdatingCodeBox = true CodeBox.Text = tabData.Code or "" UpdatingCodeBox = false end end)
-		NameInput.FocusLost:Connect(function() tabData.Name = NameInput.Text SaveConfig(false) end)
+				UpdatingCodeBox = true CodeBox.Text = tabData.Code or "" UpdatingCodeBox = false
+				local curTheme = GetTheme() for _, ch in ipairs(TabsScroll:GetChildren()) do if ch:IsA("Frame") then
+						ch.BackgroundColor3 = (ch.LayoutOrder == idx) and curTheme.Accent or curTheme.PanelBg end end end
+		end) NameInput.FocusLost:Connect(function() tabData.Name = NameInput.Text SaveConfig(false) end)
 		local DelTabBtn = Instance.new("TextButton") DelTabBtn.Size = UDim2.new(0, 22, 1, 0)
 		DelTabBtn.Position = UDim2.new(1, -22, 0, 0) DelTabBtn.BackgroundTransparency = 1
 		DelTabBtn.Font = Enum.Font.GothamBold DelTabBtn.TextSize = 13 DelTabBtn.TextColor3 = theme.TextPrimary
 		DelTabBtn.Text = E.Close DelTabBtn.Parent = TabChip DelTabBtn.MouseButton1Click:Connect(function()
 			if #savedConfig.ExecutorTabs > 1 then table.remove(savedConfig.ExecutorTabs, idx)
 				savedConfig.ActiveExecutorTab = math.clamp(savedConfig.ActiveExecutorTab, 1, #savedConfig.ExecutorTabs)
-				SaveConfig(false) RebuildExecutorTabs() end end) end UpdatingCodeBox = true
+				SaveConfig(false) RebuildExecutorTabs() end end) end
+	TabsScroll.CanvasSize = UDim2.new(0, (#savedConfig.ExecutorTabs * 134) + 8, 0, 0) UpdatingCodeBox = true
 	CodeBox.Text = savedConfig.ExecutorTabs[savedConfig.ActiveExecutorTab].Code or ""
-	UpdatingCodeBox = false end CodeBox:GetPropertyChangedSignal("Text"):Connect(function()
-	if UpdatingCodeBox then return end
+	UpdatingCodeBox = false end table.insert(ThemeObjects.CustomCallbacks, RebuildExecutorTabs)
+CodeBox:GetPropertyChangedSignal("Text"):Connect(function() if UpdatingCodeBox then return end
 	local activeTab = savedConfig.ExecutorTabs[savedConfig.ActiveExecutorTab] if activeTab then
 		activeTab.Code = CodeBox.Text SaveConfig(false) end end) AddTabBtn.MouseButton1Click:Connect(function()
 	table.insert(savedConfig.ExecutorTabs, { Name = "Script " .. (#savedConfig.ExecutorTabs + 1), Code = "" })
-	savedConfig.ActiveExecutorTab = #savedConfig.ExecutorTabs SaveConfig(false) RebuildExecutorTabs() end)
+	savedConfig.ActiveExecutorTab = #savedConfig.ExecutorTabs SaveConfig(false) RebuildExecutorTabs()
+	task.defer(function() local totalW = (#savedConfig.ExecutorTabs * 134) + 8
+		local maxScroll = math.max(0, totalW - TabsScroll.AbsoluteSize.X)
+		TweenService:Create(TabsScroll, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CanvasPosition = Vector2.new(maxScroll, 0) }):Play() end) end)
 ExecuteBtn.MouseButton1Click:Connect(function() local source = CodeBox.Text
 	if source and #source > 0 then local fn, err = SafeLoadstring(source) if fn then
 			table.insert(RunningExecutorThreads, task.spawn(function() pcall(fn) end)) else
@@ -1190,9 +1264,30 @@ end) RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value +
 			local goalCF = CFrame.new(cam.CFrame.Position, targetPart.Position) local beforeCF = cam.CFrame
 			cam.CFrame = strongLock and goalCF or beforeCF:Lerp(goalCF, LERP_ALPHA)
 			aimbotStatusLabel.Text = (cam.CFrame == beforeCF) and "Aimed: Camera writes blocked" or ("Target: " .. tostring(currentTarget.DisplayName))
-		end else aimbotStatusLabel.Text = "Status: Searching..." end end)
+		end else aimbotStatusLabel.Text = "Status: Searching..." end end) local lastAirTimeReset = 0
 table.insert(Connections, RunService.Stepped:Connect(function() local char = player.Character
-	if not char then return end if Config.NoclipEnabled then for _, part in ipairs(char:GetDescendants()) do
+	if not char then return end if Config.AntiCheatBypass ~= false and isFlightActive() then
+		local nowT = os.clock() if nowT - lastAirTimeReset >= 0.85 then lastAirTimeReset = nowT
+			local h = char:FindFirstChildOfClass("Humanoid") if h then pcall(function()
+					h:ChangeState(Enum.HumanoidStateType.Landed) h:ChangeState(Enum.HumanoidStateType.Running) end) end
+		end end if Config.AntiFlingEnabled ~= false and not FlingActive then
+		for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
+				for _, part in ipairs(plr.Character:GetDescendants()) do if part:IsA("BasePart") then
+						if part.CanCollide then part.CanCollide = false end
+						part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+						part.AssemblyLinearVelocity = Vector3.new(0, 0, 0) part.RotVelocity = Vector3.new(0, 0, 0)
+						part.Velocity = Vector3.new(0, 0, 0) end end end end local myRoot = GetRootPart(char)
+		local myHum = char:FindFirstChildOfClass("Humanoid") if myHum then
+			myHum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+			myHum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end if myRoot then
+			local maxSafeLinear = math.max(135, (Config.MasterUtilityEnabled and (Config.WalkSpeed + Config.JumpPower) or 85) * 1.8)
+			if isFlightActive() then maxSafeLinear = math.max(maxSafeLinear, (Config.FlySpeed or 50) * 1.5) end
+			if myRoot.AssemblyAngularVelocity.Magnitude > 35 or myRoot.AssemblyLinearVelocity.Magnitude > maxSafeLinear then
+				myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+				myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0) myRoot.RotVelocity = Vector3.new(0, 0, 0)
+				myRoot.Velocity = Vector3.new(0, 0, 0) if lastSafeAntiFlingCF then
+					myRoot.CFrame = lastSafeAntiFlingCF end else lastSafeAntiFlingCF = myRoot.CFrame end end end
+	if Config.NoclipEnabled then for _, part in ipairs(char:GetDescendants()) do
 			if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end end end
 	if Config.CountdownBypass then for _, child in ipairs(char:GetDescendants()) do
 			if child:IsA("BasePart") and child.Anchored then child.Anchored = false
@@ -1223,7 +1318,9 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 			freezePosition = root.Position end
 		root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
 		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-	end if fakeGroundPart then fakeGroundPart.CFrame = root.CFrame * CFrame.new(0, -3.1, 0) end end))
+	end if fakeGroundPart then
+		local footOffset = math.max((hum.HipHeight or 0) + (root.Size.Y * 0.5) + 0.1, 3.05)
+		fakeGroundPart.CFrame = root.CFrame * CFrame.new(0, -footOffset, 0) end end))
 -- General Systems Heartbeat Loop
 table.insert(Connections, RunService.Heartbeat:Connect(function() frameCount = frameCount + 1
 	local now = os.clock() if now - lastFpsTime >= 0.5 then
@@ -1240,11 +1337,31 @@ table.insert(Connections, RunService.Heartbeat:Connect(function() frameCount = f
 		if workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView ~= Config.FOV then
 			workspace.CurrentCamera.FieldOfView = Config.FOV end end) local char = player.Character
 	local root = GetRootPart(char) local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if not root or not hum then return end if Config.AntiFlingEnabled and not FlingActive then
-		if root.AssemblyLinearVelocity.Magnitude > 250 or root.AssemblyAngularVelocity.Magnitude > 150 then
-			root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-		end end if Config.MasterUtilityEnabled and not FlingActive then hum.WalkSpeed = Config.WalkSpeed
-		hum.UseJumpPower = true hum.JumpPower = Config.JumpPower end end))
+	if not root or not hum then return end if Config.AntiFlingEnabled ~= false and not FlingActive then
+		local maxSafeLinear = math.max(135, (Config.MasterUtilityEnabled and (Config.WalkSpeed + Config.JumpPower) or 85) * 1.8)
+		if isFlightActive() then maxSafeLinear = math.max(maxSafeLinear, (Config.FlySpeed or 50) * 1.5) end
+		if root.AssemblyAngularVelocity.Magnitude > 35 or root.AssemblyLinearVelocity.Magnitude > maxSafeLinear then
+			for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then
+					part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+					part.AssemblyAngularVelocity = Vector3.new(0, 0, 0) part.Velocity = Vector3.new(0, 0, 0)
+					part.RotVelocity = Vector3.new(0, 0, 0) end end if lastSafeAntiFlingCF then
+				root.CFrame = lastSafeAntiFlingCF end else lastSafeAntiFlingCF = root.CFrame end end
+	if Config.AntiCheatBypass ~= false and teleportBypassTargetCF and os.clock() < teleportBypassLockUntil and not FlingActive then
+		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+		if (root.Position - teleportBypassTargetCF.Position).Magnitude > 8 then
+			root.CFrame = teleportBypassTargetCF lastSafeAntiFlingCF = teleportBypassTargetCF end end
+	if Config.MasterUtilityEnabled and not FlingActive then
+		if Config.AntiCheatBypass ~= false and not hookmetamethod then hum.WalkSpeed = 16 hum.JumpPower = 50
+			local extraSpeed = math.max(0, (Config.WalkSpeed or 16) - 16)
+			if extraSpeed > 0 and hum.MoveDirection.Magnitude > 0 then
+				local nextPos = root.Position + (hum.MoveDirection.Unit * (extraSpeed * 0.016))
+				root.CFrame = CFrame.new(nextPos) * (root.CFrame - root.CFrame.Position)
+				lastSafeAntiFlingCF = root.CFrame end
+			if (Config.JumpPower or 50) > 50 and UserInputService:IsKeyDown(Enum.KeyCode.Space) and hum.FloorMaterial ~= Enum.Material.Air then
+				local v = root.AssemblyLinearVelocity
+				root.AssemblyLinearVelocity = Vector3.new(v.X, Config.JumpPower, v.Z) end else
+			hum.WalkSpeed = Config.WalkSpeed hum.UseJumpPower = true hum.JumpPower = Config.JumpPower end end
+end))
 -- Global InputBegan Shortcut Engine
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp)
 	if UserInputService:GetFocusedTextBox() ~= nil then return end
@@ -1269,21 +1386,22 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 				local targetPlr = Players:FindFirstChild(plrName) if targetPlr and targetPlr.Character then
 					local tRoot = GetRootPart(targetPlr.Character) if tRoot then local pos = tRoot.Position
 						SafeTeleportToCoords(pos.X, pos.Y + 3, pos.Z) end end end end end end))
--- Close & Full Shutdown Handler
-CloseBtn.MouseButton1Click:Connect(function() if isClosingPermanently then return end
-	FlingActive, aimbotEnabled, currentTarget, masterFlightEnabled = false, false, nil, false StopFling()
-	stopFlight()
+-- Close, Re-Execution Cleanup & Full Shutdown Handler
+local function ShutdownInstance(immediate) if isClosingPermanently then return end
+	FlingActive, aimbotEnabled, currentTarget, masterFlightEnabled = false, false, nil, false
+	genv.TR_AntiCheatActive = false pcall(StopFling) pcall(stopFlight)
 	for _, thread in ipairs(RunningExecutorThreads) do pcall(function() task.cancel(thread) end) end
-	RunningExecutorThreads = {} SetMouseLockState(false)
+	RunningExecutorThreads = {} pcall(function() SetMouseLockState(false) end)
 	SpectatingTarget, ActiveKeybindCaptureCallback = nil, nil
 	pcall(function() RunService:UnbindFromRenderStep("Aimbot_v2") end)
 	pcall(function() RunService:UnbindFromRenderStep("TR_ShiftLock_Pre") end)
 	if guiFovCircle then pcall(function() guiFovCircle.Visible = false guiFovCircle:Destroy() end) guiFovCircle = nil end
-	clearAllAdornments() for _, conn in ipairs(Connections) do pcall(function() conn:Disconnect() end) end
-	Connections = {} pcall(function() local char = player.Character if char then
+	pcall(clearAllAdornments)
+	for _, conn in ipairs(Connections) do pcall(function() conn:Disconnect() end) end Connections = {}
+	pcall(function() local char = player.Character if char then
 			local hum = char:FindFirstChildOfClass("Humanoid") local root = GetRootPart(char) if hum then
-				hum.PlatformStand = false hum.WalkSpeed = 16 hum.JumpPower = 50
-				hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+				hum.PlatformStand = false hum.AutoRotate = true hum.CameraOffset = Vector3.new(0, 0, 0)
+				hum.WalkSpeed = 16 hum.JumpPower = 50 hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
 				hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
 				hum:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
 				hum:ChangeState(Enum.HumanoidStateType.GettingUp)
@@ -1297,8 +1415,15 @@ CloseBtn.MouseButton1Click:Connect(function() if isClosingPermanently then retur
 		player.CameraMaxZoomDistance = DefaultCamera.MaxZoom workspace.FallenPartsDestroyHeight = genv.FPDH
 		Lighting.ClockTime = DefaultLighting.ClockTime Lighting.Brightness = DefaultLighting.Brightness
 		Lighting.GlobalShadows = DefaultLighting.GlobalShadows
-		Lighting.OutdoorAmbient = DefaultLighting.OutdoorAmbient end) SetMenuVisible(false, DeepCleanup)
-	isClosingPermanently = true task.delay(0.24, DeepCleanup) end)
+		Lighting.OutdoorAmbient = DefaultLighting.OutdoorAmbient end) if immediate then
+		isClosingPermanently = true pcall(function() if ScreenGui then ScreenGui:Destroy() end end)
+		DeepCleanup() else SetMenuVisible(false, function()
+			pcall(function() if ScreenGui then ScreenGui:Destroy() end end) DeepCleanup() end)
+		isClosingPermanently = true task.delay(0.24, function()
+			pcall(function() if ScreenGui then ScreenGui:Destroy() end end) DeepCleanup() end) end end
+genv.TRScripts_ActiveShutdown = ShutdownInstance CloseBtn.MouseButton1Click:Connect(function()
+	if genv.TRScripts_ActiveShutdown == ShutdownInstance then genv.TRScripts_ActiveShutdown = nil end
+	ShutdownInstance(false) end)
 -- Initial Startup Sync
 ApplyTheme(Config.Theme) ApplyCameraMode(Config.CameraOverrideMode) RefreshRadarCards()
 RefreshFlingPlayerList() RefreshESPHighlights() updateAllAdornments()
