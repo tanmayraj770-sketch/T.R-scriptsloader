@@ -894,9 +894,11 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	SyncAimbotFovCircleVisibility = function()
 		local showCircle = aimbotEnabled and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
 			guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2) guiFovCircle.Visible = showCircle
-		end end IsTeammate = function(plr) if not plr or plr == LocalPlayer then return false end
-		local ok, res = pcall(function() if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
-				return true end
+		end end local teamCache = {} local lastTeamCacheClear = 0 IsTeammate = function(plr)
+		if not plr or plr == LocalPlayer then return false end local now = os.clock()
+		if now - lastTeamCacheClear >= 1.2 then teamCache = {} lastTeamCacheClear = now end
+		if teamCache[plr] ~= nil then return teamCache[plr] end local ok, res = pcall(function()
+			if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then return true end
 			if LocalPlayer.Team and plr.Team and tostring(LocalPlayer.Team.Name):lower() == tostring(plr.Team.Name):lower() then
 				return true end
 			if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then
@@ -913,9 +915,10 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 				return v and tostring(v.Value or v):lower() end
 			local myVal, theirVal = getTeamVal(LocalPlayer), getTeamVal(plr)
 			if myVal and theirVal and myVal ~= "" and myVal == theirVal then return true end return false end)
-		return (ok and res == true) end getTargetPart = function(character)
-		if not character then return nil end local p = character:FindFirstChild(aimPartName)
-		if p and p:IsA("BasePart") then return p end local hrp = character:FindFirstChild("HumanoidRootPart")
+		local isTeam = (ok and res == true) teamCache[plr] = isTeam return isTeam end
+	getTargetPart = function(character) if not character then return nil end
+		local p = character:FindFirstChild(aimPartName) if p and p:IsA("BasePart") then return p end
+		local hrp = character:FindFirstChild("HumanoidRootPart")
 		if hrp and hrp:IsA("BasePart") then return hrp end
 		local t = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
 		return (t and t:IsA("BasePart") and t) or character.PrimaryPart end
@@ -960,12 +963,11 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 						outline.AlwaysOnTop = true outline.ZIndex = 9 outline.Transparency = 0.75
 						outline.Color3 = Color3.fromRGB(0, 0, 0) outline.Name = "ESP_HitboxOutline"
 						outline.Parent = PlayerGui pair = { inner = inner, outline = outline } adornmentsCache[plr] = pair
-					end pair.inner.Color3 = accentCol
-					local ok, bboxCF, bboxSize = pcall(function() return char:GetBoundingBox() end)
-					if ok and bboxCF and bboxSize then local relCF = root.CFrame:ToObjectSpace(bboxCF)
-						pair.inner.Adornee = root pair.inner.Size = bboxSize pair.inner.CFrame = relCF
-						pair.outline.Adornee = root pair.outline.Size = bboxSize * 1.05 pair.outline.CFrame = relCF end
-				else removePlayerAdornments(plr) end else removePlayerAdornments(plr) end end end
+					end pair.inner.Color3 = accentCol local boxSize = Vector3.new(4, 5.2, 1.2)
+					local relCF = CFrame.new(0, -0.2, 0) pair.inner.Adornee = root pair.inner.Size = boxSize
+					pair.inner.CFrame = relCF pair.outline.Adornee = root
+					pair.outline.Size = Vector3.new(4.2, 5.4, 1.25) pair.outline.CFrame = relCF else
+					removePlayerAdornments(plr) end else removePlayerAdornments(plr) end end end
 	findBestTarget = function() local cam = workspace.CurrentCamera if not cam then return nil end
 		local bestPlr, bestDist = nil, fovCircleEnabled and FOV_RADIUS or math.huge
 		for _, plr in ipairs(Players:GetPlayers()) do
@@ -1282,28 +1284,31 @@ table.insert(Connections, RunService.Stepped:Connect(function() local char = pla
 		local nowT = os.clock() if nowT - lastAirTimeReset >= 0.85 then lastAirTimeReset = nowT
 			local h = char:FindFirstChildOfClass("Humanoid") if h then pcall(function()
 					h:ChangeState(Enum.HumanoidStateType.Landed) h:ChangeState(Enum.HumanoidStateType.Running) end) end
-		end end if Config.AntiFlingEnabled ~= false and not FlingActive then
+		end end local myRoot = GetRootPart(char) local myHum = char:FindFirstChildOfClass("Humanoid")
+	if Config.AntiFlingEnabled ~= false and not FlingActive and myRoot then local myPos = myRoot.Position
 		for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
-				for _, part in ipairs(plr.Character:GetDescendants()) do if part:IsA("BasePart") then
-						if part.CanCollide then part.CanCollide = false end
-						part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-						part.AssemblyLinearVelocity = Vector3.new(0, 0, 0) part.RotVelocity = Vector3.new(0, 0, 0)
-						part.Velocity = Vector3.new(0, 0, 0) end end end end local myRoot = GetRootPart(char)
-		local myHum = char:FindFirstChildOfClass("Humanoid") if myHum then
+				local theirRoot = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character.PrimaryPart
+				if theirRoot and (theirRoot.Position - myPos).Magnitude <= 45 then
+					for _, ch in ipairs(plr.Character:GetChildren()) do if ch:IsA("BasePart") then ch.CanCollide = false
+							ch.AssemblyAngularVelocity = Vector3.new(0, 0, 0) ch.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+						elseif ch:IsA("Accessory") or ch:IsA("Tool") then local h = ch:FindFirstChild("Handle")
+							if h and h:IsA("BasePart") then h.CanCollide = false
+								h.AssemblyAngularVelocity = Vector3.new(0, 0, 0) h.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+							end end end end end end if myHum then
 			myHum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-			myHum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end if myRoot then
-			local maxSafeLinear = math.max(135, (Config.MasterUtilityEnabled and (Config.WalkSpeed + Config.JumpPower) or 85) * 1.8)
-			if isFlightActive() then maxSafeLinear = math.max(maxSafeLinear, (Config.FlySpeed or 50) * 1.5) end
-			if myRoot.AssemblyAngularVelocity.Magnitude > 35 or myRoot.AssemblyLinearVelocity.Magnitude > maxSafeLinear then
-				myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-				myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0) myRoot.RotVelocity = Vector3.new(0, 0, 0)
-				myRoot.Velocity = Vector3.new(0, 0, 0) if lastSafeAntiFlingCF then
-					myRoot.CFrame = lastSafeAntiFlingCF end else lastSafeAntiFlingCF = myRoot.CFrame end end end
-	if Config.NoclipEnabled then for _, part in ipairs(char:GetDescendants()) do
-			if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end end end
-	if Config.CountdownBypass then for _, child in ipairs(char:GetDescendants()) do
-			if child:IsA("BasePart") and child.Anchored then child.Anchored = false
-			elseif FREEZE_TAG_NAMES[child.Name] then pcall(function() child:Destroy() end) end end end end))
+			myHum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end
+		local maxSafeLinear = math.max(135, (Config.MasterUtilityEnabled and (Config.WalkSpeed + Config.JumpPower) or 85) * 1.8)
+		if isFlightActive() then maxSafeLinear = math.max(maxSafeLinear, (Config.FlySpeed or 50) * 1.5) end
+		if myRoot.AssemblyAngularVelocity.Magnitude > 35 or myRoot.AssemblyLinearVelocity.Magnitude > maxSafeLinear then
+			myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+			myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0) myRoot.RotVelocity = Vector3.new(0, 0, 0)
+			myRoot.Velocity = Vector3.new(0, 0, 0) if lastSafeAntiFlingCF then myRoot.CFrame = lastSafeAntiFlingCF
+			end else lastSafeAntiFlingCF = myRoot.CFrame end end if Config.NoclipEnabled then
+		for _, part in ipairs(char:GetChildren()) do if part:IsA("BasePart") and part.CanCollide then
+				part.CanCollide = false end end end if Config.CountdownBypass then
+		for _, child in ipairs(char:GetChildren()) do if child:IsA("BasePart") and child.Anchored then
+				child.Anchored = false elseif FREEZE_TAG_NAMES[child.Name] then pcall(function() child:Destroy() end)
+			end end end end))
 -- User-Provided Flight Heartbeat Loop
 table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 	camera = workspace.CurrentCamera if not isFlightActive() then return end local char = player.Character
@@ -1353,11 +1358,10 @@ table.insert(Connections, RunService.Heartbeat:Connect(function() frameCount = f
 		local maxSafeLinear = math.max(135, (Config.MasterUtilityEnabled and (Config.WalkSpeed + Config.JumpPower) or 85) * 1.8)
 		if isFlightActive() then maxSafeLinear = math.max(maxSafeLinear, (Config.FlySpeed or 50) * 1.5) end
 		if root.AssemblyAngularVelocity.Magnitude > 35 or root.AssemblyLinearVelocity.Magnitude > maxSafeLinear then
-			for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then
-					part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-					part.AssemblyAngularVelocity = Vector3.new(0, 0, 0) part.Velocity = Vector3.new(0, 0, 0)
-					part.RotVelocity = Vector3.new(0, 0, 0) end end if lastSafeAntiFlingCF then
-				root.CFrame = lastSafeAntiFlingCF end else lastSafeAntiFlingCF = root.CFrame end end
+			root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+			root.Velocity = Vector3.new(0, 0, 0) root.RotVelocity = Vector3.new(0, 0, 0)
+			if lastSafeAntiFlingCF then root.CFrame = lastSafeAntiFlingCF end else
+			lastSafeAntiFlingCF = root.CFrame end end
 	if Config.AntiCheatBypass ~= false and teleportBypassTargetCF and os.clock() < teleportBypassLockUntil and not FlingActive then
 		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
 		if (root.Position - teleportBypassTargetCF.Position).Magnitude > 8 then
