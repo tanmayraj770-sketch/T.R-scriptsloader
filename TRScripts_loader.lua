@@ -11,6 +11,12 @@ local VirtualUser = game:GetService("VirtualUser") local StarterGui = game:GetSe
 local CoreGui = game:GetService("CoreGui")
 local player = Players.LocalPlayer or Players.PlayerAdded:Wait() local LocalPlayer = player
 local camera = workspace.CurrentCamera local genv = (getgenv and getgenv()) or _G
+-- Zero-Allocation Performance Constants for Low-End PCs
+local V3_ZERO = Vector3.new(0, 0, 0) local CF_ZERO = CFrame.new(0, 0, 0)
+local V3_ESP_BOX = Vector3.new(4, 5.2, 1.2) local V3_ESP_OUTLINE = Vector3.new(4.2, 5.4, 1.25)
+local CF_ESP_OFFSET = CFrame.new(0, -0.2, 0) local FULLBRIGHT_AMBIENT = Color3.fromRGB(255, 255, 255)
+local userGameSettings = nil
+pcall(function() userGameSettings = UserSettings():GetService("UserGameSettings") end)
 -- Runtime Emoji Dictionary (renders real emojis in UI without breaking JJSploit's UTF-8 buffer)
 local U = utf8.char local E = { Bolt    = U(0x26A1), Save    = U(0x1F4BE), Check   = U(0x2714),
 	Dash    = U(0x2014), Close   = U(0x00D7), Chart   = U(0x1F4CA), Pin     = U(0x1F4CD),
@@ -894,63 +900,68 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	SyncAimbotFovCircleVisibility = function()
 		local showCircle = aimbotEnabled and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
 			guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2) guiFovCircle.Visible = showCircle
-		end end local teamCache = {} local lastTeamCacheClear = 0 IsTeammate = function(plr)
-		if not plr or plr == LocalPlayer then return false end local now = os.clock()
-		if now - lastTeamCacheClear >= 1.2 then teamCache = {} lastTeamCacheClear = now end
-		if teamCache[plr] ~= nil then return teamCache[plr] end local ok, res = pcall(function()
-			if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then return true end
-			if LocalPlayer.Team and plr.Team and tostring(LocalPlayer.Team.Name):lower() == tostring(plr.Team.Name):lower() then
-				return true end
-			if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then
-				local tcName = tostring(LocalPlayer.TeamColor.Name):lower()
-				if tcName ~= "white" and tcName ~= "medium stone grey" and tcName ~= "institutional white" then
-					return true end end
-			local myAttr = LocalPlayer:GetAttribute("Team") or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("Team"))
-			local theirAttr = plr:GetAttribute("Team") or (plr.Character and plr.Character:GetAttribute("Team"))
-			if myAttr ~= nil and theirAttr ~= nil and tostring(myAttr):lower() == tostring(theirAttr):lower() then
-				return true end local function getTeamVal(p)
-				local v = p:FindFirstChild("Team") or p:FindFirstChild("TeamColor") or (p:FindFirstChild("leaderstats") and p.leaderstats:FindFirstChild("Team"))
-				if not v and p.Character then
-					v = p.Character:FindFirstChild("Team") or p.Character:FindFirstChild("TeamColor") end
-				return v and tostring(v.Value or v):lower() end
-			local myVal, theirVal = getTeamVal(LocalPlayer), getTeamVal(plr)
-			if myVal and theirVal and myVal ~= "" and myVal == theirVal then return true end return false end)
-		local isTeam = (ok and res == true) teamCache[plr] = isTeam return isTeam end
-	getTargetPart = function(character) if not character then return nil end
-		local p = character:FindFirstChild(aimPartName) if p and p:IsA("BasePart") then return p end
-		local hrp = character:FindFirstChild("HumanoidRootPart")
+		end end local teamCache = {} local lastTeamCacheClear = 0 local function getTeamValFast(p)
+		if not p then return nil end
+		local v = p:FindFirstChild("Team") or p:FindFirstChild("TeamColor") or (p:FindFirstChild("leaderstats") and p.leaderstats:FindFirstChild("Team"))
+		if not v and p.Character then
+			v = p.Character:FindFirstChild("Team") or p.Character:FindFirstChild("TeamColor") end
+		return v and tostring(v.Value or v):lower() end local function checkIsTeammateRaw(plr)
+		if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then return true end
+		if LocalPlayer.Team and plr.Team and tostring(LocalPlayer.Team.Name):lower() == tostring(plr.Team.Name):lower() then
+			return true end
+		if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then
+			local tcName = tostring(LocalPlayer.TeamColor.Name):lower()
+			if tcName ~= "white" and tcName ~= "medium stone grey" and tcName ~= "institutional white" then
+				return true end end
+		local myAttr = LocalPlayer:GetAttribute("Team") or (LocalPlayer.Character and LocalPlayer.Character:GetAttribute("Team"))
+		local theirAttr = plr:GetAttribute("Team") or (plr.Character and plr.Character:GetAttribute("Team"))
+		if myAttr ~= nil and theirAttr ~= nil and tostring(myAttr):lower() == tostring(theirAttr):lower() then
+			return true end local myVal, theirVal = getTeamValFast(LocalPlayer), getTeamValFast(plr)
+		if myVal and theirVal and myVal ~= "" and myVal == theirVal then return true end return false end
+	IsTeammate = function(plr) if not plr or plr == LocalPlayer then return false end local now = os.clock()
+		if now - lastTeamCacheClear >= 1.5 then table.clear(teamCache) lastTeamCacheClear = now end
+		local cached = teamCache[plr] if cached ~= nil then return cached end
+		local ok, res = pcall(checkIsTeammateRaw, plr) local isTeam = (ok and res == true)
+		teamCache[plr] = isTeam return isTeam end getTargetPart = function(character)
+		if not character then return nil end local p = character:FindFirstChild(aimPartName)
+		if p and p:IsA("BasePart") then return p end local hrp = character:FindFirstChild("HumanoidRootPart")
 		if hrp and hrp:IsA("BasePart") then return hrp end
 		local t = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
 		return (t and t:IsA("BasePart") and t) or character.PrimaryPart end
+	local reusableWallcheckParams = RaycastParams.new()
+	reusableWallcheckParams.FilterType = Enum.RaycastFilterType.Blacklist local reusableWallFilter = {}
+	updateWallcheckFilter = function(char) char = char or LocalPlayer.Character reusableWallFilter[1] = char
+		reusableWallcheckParams.FilterDescendantsInstances = reusableWallFilter end updateWallcheckFilter()
 	isTargetVisible = function(targetPart, targetCharacter) if not wallcheckEnabled then return true end
 		local cam = workspace.CurrentCamera if not cam or not targetPart then return false end
-		local params = RaycastParams.new() params.FilterType = Enum.RaycastFilterType.Blacklist
-		params.FilterDescendantsInstances = LocalPlayer.Character and { LocalPlayer.Character } or {}
-		local res = workspace:Raycast(cam.CFrame.Position, targetPart.Position - cam.CFrame.Position, params)
-		return (not res) or (targetCharacter and res.Instance:IsDescendantOf(targetCharacter)) end
-	local function worldToScreenDistance(worldPos) local cam = workspace.CurrentCamera
+		local camPos = cam.CFrame.Position local tPos = targetPart.Position
+		local dir = Vector3.new(tPos.X - camPos.X, tPos.Y - camPos.Y, tPos.Z - camPos.Z)
+		local res = workspace:Raycast(camPos, dir, reusableWallcheckParams)
+		return (not res) or (targetCharacter and res.Instance and res.Instance:IsDescendantOf(targetCharacter))
+	end local function worldToScreenDistance(worldPos) local cam = workspace.CurrentCamera
 		if not cam then return nil, false, math.huge end
 		local vp, onScreen = cam:WorldToViewportPoint(worldPos)
-		if not onScreen or vp.Z <= 0 then return nil, false, math.huge end
-		local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-		local pos = Vector2.new(vp.X, vp.Y) return pos, true, (pos - center).Magnitude end
-	removePlayerAdornments = function(plr) local pair = adornmentsCache[plr] if pair then
+		if not onScreen or vp.Z <= 0 then return nil, false, math.huge end local vs = cam.ViewportSize
+		local dx = vp.X - (vs.X * 0.5) local dy = vp.Y - (vs.Y * 0.5)
+		return vp, true, math.sqrt(dx * dx + dy * dy) end removePlayerAdornments = function(plr)
+		local pair = adornmentsCache[plr] if pair then
 			if pair.inner then pcall(function() pair.inner:Destroy() end) end
 			if pair.outline then pcall(function() pair.outline:Destroy() end) end adornmentsCache[plr] = nil end
 		characterCache[plr] = nil end clearAllAdornments = function()
 		for plr in pairs(adornmentsCache) do removePlayerAdornments(plr) end end
-	RefreshESPHighlights = function() for _, plr in ipairs(Players:GetPlayers()) do
-			if plr ~= player and plr.Character then
+	RefreshESPHighlights = function() local themeAccent = GetTheme().Accent
+		for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
 				local existing = plr.Character:FindFirstChild("TR_ESP_Highlight")
 				local allowTeam = espShowTeammates or not IsTeammate(plr)
 				if Config.ESPEnabled and not excludedPlayers[plr] and allowTeam then if not existing then
 						pcall(function() local hl = Instance.new("Highlight") hl.Name = "TR_ESP_Highlight"
-							hl.FillColor = GetTheme().Accent hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+							hl.FillColor = themeAccent hl.OutlineColor = Color3.fromRGB(255, 255, 255)
 							hl.FillTransparency = 0.45 hl.OutlineTransparency = 0.1 hl.Adornee = plr.Character
-							hl.Parent = plr.Character end) else existing.FillColor = GetTheme().Accent end
-				elseif existing then existing:Destroy() end end end end updateAllAdornments = function()
-		if not Config.ESPEnabled then clearAllAdornments() return end local accentCol = GetTheme().Accent
-		for plr in pairs(adornmentsCache) do
+							hl.Parent = plr.Character end) else if existing.FillColor ~= themeAccent then
+							existing.FillColor = themeAccent end end elseif existing then existing:Destroy() end end end end
+	updateAllAdornments = function() if not Config.ESPEnabled then
+			if next(adornmentsCache) ~= nil then clearAllAdornments() end return end
+		local accentCol = GetTheme().Accent for plr in pairs(adornmentsCache) do
 			if not plr or not plr.Parent or excludedPlayers[plr] then removePlayerAdornments(plr) end end
 		for _, plr in ipairs(Players:GetPlayers()) do local allowTeam = espShowTeammates or not IsTeammate(plr)
 			if plr ~= LocalPlayer and not excludedPlayers[plr] and allowTeam then local char = plr.Character
@@ -959,24 +970,26 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 				if char and root and hum and hum.Health > 0 then local pair = adornmentsCache[plr] if not pair then
 						local inner = Instance.new("BoxHandleAdornment") inner.AlwaysOnTop = true inner.ZIndex = 10
 						inner.Transparency = 0.35 inner.Color3 = accentCol inner.Name = "ESP_HitboxInner"
-						inner.Parent = PlayerGui local outline = Instance.new("BoxHandleAdornment")
-						outline.AlwaysOnTop = true outline.ZIndex = 9 outline.Transparency = 0.75
-						outline.Color3 = Color3.fromRGB(0, 0, 0) outline.Name = "ESP_HitboxOutline"
+						inner.Size = V3_ESP_BOX inner.CFrame = CF_ESP_OFFSET inner.Parent = PlayerGui
+						local outline = Instance.new("BoxHandleAdornment") outline.AlwaysOnTop = true outline.ZIndex = 9
+						outline.Transparency = 0.75 outline.Color3 = Color3.fromRGB(0, 0, 0)
+						outline.Name = "ESP_HitboxOutline" outline.Size = V3_ESP_OUTLINE outline.CFrame = CF_ESP_OFFSET
 						outline.Parent = PlayerGui pair = { inner = inner, outline = outline } adornmentsCache[plr] = pair
-					end pair.inner.Color3 = accentCol local boxSize = Vector3.new(4, 5.2, 1.2)
-					local relCF = CFrame.new(0, -0.2, 0) pair.inner.Adornee = root pair.inner.Size = boxSize
-					pair.inner.CFrame = relCF pair.outline.Adornee = root
-					pair.outline.Size = Vector3.new(4.2, 5.4, 1.25) pair.outline.CFrame = relCF else
-					removePlayerAdornments(plr) end else removePlayerAdornments(plr) end end end
-	findBestTarget = function() local cam = workspace.CurrentCamera if not cam then return nil end
+					end if pair.inner.Adornee ~= root then pair.inner.Adornee = root pair.outline.Adornee = root end
+					if pair.inner.Color3 ~= accentCol then pair.inner.Color3 = accentCol end else
+					if adornmentsCache[plr] then removePlayerAdornments(plr) end end else
+				if adornmentsCache[plr] then removePlayerAdornments(plr) end end end end findBestTarget = function()
+		local cam = workspace.CurrentCamera if not cam then return nil end
 		local bestPlr, bestDist = nil, fovCircleEnabled and FOV_RADIUS or math.huge
+		local camPos = cam.CFrame.Position local maxDistSq = MAX_DISTANCE * MAX_DISTANCE
 		for _, plr in ipairs(Players:GetPlayers()) do
 			local validEnemy = (not aimbotTeamCheck) or (not IsTeammate(plr))
 			if plr ~= LocalPlayer and not excludedPlayers[plr] and validEnemy then local char = plr.Character
 				local hum = char and char:FindFirstChildOfClass("Humanoid") local part = getTargetPart(char)
-				if char and hum and hum.Health > 0 and part then
-					if (part.Position - cam.CFrame.Position).Magnitude <= MAX_DISTANCE then
-						local _, onScreen, sDist = worldToScreenDistance(part.Position)
+				if char and hum and hum.Health > 0 and part then local pp = part.Position local dx = pp.X - camPos.X
+					local dy = pp.Y - camPos.Y local dz = pp.Z - camPos.Z
+					if (dx * dx + dy * dy + dz * dz) <= maxDistSq then
+						local _, onScreen, sDist = worldToScreenDistance(pp)
 						if onScreen and sDist <= bestDist and isTargetVisible(part, char) then
 							bestDist, bestPlr = sDist, plr end end end end end return bestPlr end
 	-- Section 1: Aimbot Engine & Keybind Controls (matching Tab 5 FlightEngineCard layout!)
@@ -1236,38 +1249,41 @@ table.insert(Connections, Players.PlayerRemoving:Connect(function(leftPlayer)
 	removePlayerAdornments(leftPlayer) if currentTarget == leftPlayer then currentTarget = nil end
 	RefreshFlingPlayerList()
 	if excludeFrame and excludeFrame.Visible then rebuildExcludeList() else updateExcludeCount() end end))
-table.insert(Connections, LocalPlayer.CharacterAdded:Connect(function() currentTarget = nil
+table.insert(Connections, LocalPlayer.CharacterAdded:Connect(function(c) currentTarget = nil
+	if updateWallcheckFilter then pcall(updateWallcheckFilter, c) end
 	for k in pairs(characterCache) do characterCache[k] = nil end end))
 table.insert(Connections, RunService.RenderStepped:Connect(function(dt)
+	if not Config.ESPEnabled and next(adornmentsCache) == nil then return end
 	lastEspUpdate = lastEspUpdate + dt if lastEspUpdate >= ESP_UPDATE_INTERVAL then lastEspUpdate = 0
-		updateAllAdornments() end end)) local lastShiftLook = nil
-RunService:BindToRenderStep("TR_ShiftLock_Pre", Enum.RenderPriority.Camera.Value - 1, function()
-	if CursorUnlockedOverride and not isClosingPermanently then pcall(function()
-			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-			UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.CameraRelative end) end
-end) RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 1, function()
+		updateAllAdornments() end end)) local lastShiftLook = nil local function updateShiftLockPre()
+	if CursorUnlockedOverride and not isClosingPermanently then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter if userGameSettings then
+			userGameSettings.RotationType = Enum.RotationType.CameraRelative end end end
+RunService:BindToRenderStep("TR_ShiftLock_Pre", Enum.RenderPriority.Camera.Value - 1, updateShiftLockPre)
+local function stepShiftLockCore(cam) UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+	if userGameSettings then userGameSettings.RotationType = Enum.RotationType.CameraRelative end
+	local delta = UserInputService:GetMouseDelta()
+	if delta.Magnitude > 0 and lastShiftLook and (cam.CFrame.LookVector - lastShiftLook).Magnitude < 0.0001 then
+		local focusPos = cam.Focus.Position local offset = cam.CFrame.Position - focusPos
+		local dist = offset.Magnitude local rx, ry, _ = cam.CFrame:ToOrientation()
+		local newYaw = ry - math.rad(delta.X * 0.28)
+		local newPitch = math.clamp(rx - math.rad(delta.Y * 0.28), -math.rad(80), math.rad(80))
+		local rotCF = CFrame.fromOrientation(newPitch, newYaw, 0)
+		cam.CFrame = CFrame.new(focusPos) * rotCF * CFrame.new(0, 0, dist) end
+	lastShiftLook = cam.CFrame.LookVector local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid") local root = GetRootPart(char)
+	if hum and root and hum.Health > 0 and not hum.Sit then
+		local camDist = (cam.Focus.Position - cam.CFrame.Position).Magnitude
+		hum.CameraOffset = (camDist > 1) and Vector3.new(1.75, 0, 0) or V3_ZERO
+		local lv = cam.CFrame.LookVector local flat = Vector3.new(lv.X, 0, lv.Z) if flat.Magnitude > 0.001 then
+			hum.AutoRotate = false root.CFrame = CFrame.new(root.Position, root.Position + flat.Unit) end end end
+local function setAimbotStatusText(txt) if aimbotStatusLabel and aimbotStatusLabel.Text ~= txt then
+		aimbotStatusLabel.Text = txt end end
+RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 1, function()
 	local cam = workspace.CurrentCamera if not cam then return end
-	local showFov = aimbotEnabled and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
-		guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2) guiFovCircle.Visible = showFov end
-	if CursorUnlockedOverride and not isClosingPermanently then pcall(function()
-			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-			UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.CameraRelative
-			local delta = UserInputService:GetMouseDelta()
-			if delta.Magnitude > 0 and lastShiftLook and (cam.CFrame.LookVector - lastShiftLook).Magnitude < 0.0001 then
-				local focusPos = cam.Focus.Position local offset = cam.CFrame.Position - focusPos
-				local dist = offset.Magnitude local rx, ry, _ = cam.CFrame:ToOrientation()
-				local newYaw = ry - math.rad(delta.X * 0.28)
-				local newPitch = math.clamp(rx - math.rad(delta.Y * 0.28), -math.rad(80), math.rad(80))
-				local rotCF = CFrame.fromOrientation(newPitch, newYaw, 0)
-				cam.CFrame = CFrame.new(focusPos) * rotCF * CFrame.new(0, 0, dist) end
-			lastShiftLook = cam.CFrame.LookVector local char = player.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid") local root = GetRootPart(char)
-			if hum and root and hum.Health > 0 and not hum.Sit then
-				local camDist = (cam.Focus.Position - cam.CFrame.Position).Magnitude
-				hum.CameraOffset = (camDist > 1) and Vector3.new(1.75, 0, 0) or Vector3.new(0, 0, 0)
-				local lv = cam.CFrame.LookVector local flat = Vector3.new(lv.X, 0, lv.Z)
-				if flat.Magnitude > 0.001 then hum.AutoRotate = false
-					root.CFrame = CFrame.new(root.Position, root.Position + flat.Unit) end end end) else
+	local showFov = aimbotEnabled and fovCircleEnabled and not isClosingPermanently
+	if guiFovCircle and guiFovCircle.Visible ~= showFov then guiFovCircle.Visible = showFov end
+	if CursorUnlockedOverride and not isClosingPermanently then pcall(stepShiftLockCore, cam) else
 		lastShiftLook = nil end if not aimbotEnabled then return end if strongLock and currentTarget then
 		local ch = currentTarget.Character local h = ch and ch:FindFirstChildOfClass("Humanoid")
 		local p = getTargetPart(ch)
@@ -1277,95 +1293,113 @@ end) RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value +
 		local targetPart = getTargetPart(currentTarget.Character) if targetPart then
 			local goalCF = CFrame.new(cam.CFrame.Position, targetPart.Position) local beforeCF = cam.CFrame
 			cam.CFrame = strongLock and goalCF or beforeCF:Lerp(goalCF, LERP_ALPHA)
-			aimbotStatusLabel.Text = (cam.CFrame == beforeCF) and "Aimed: Camera writes blocked" or ("Target: " .. tostring(currentTarget.DisplayName))
-		end else aimbotStatusLabel.Text = "Status: Searching..." end end) local lastAirTimeReset = 0
+			setAimbotStatusText((cam.CFrame == beforeCF) and "Aimed: Camera writes blocked" or ("Target: " .. tostring(currentTarget.DisplayName)))
+		end else setAimbotStatusText("Status: Searching...") end end) local lastAirTimeReset = 0
+local function landHum(h) h:ChangeState(Enum.HumanoidStateType.Landed)
+	h:ChangeState(Enum.HumanoidStateType.Running) end
 table.insert(Connections, RunService.Stepped:Connect(function() local char = player.Character
 	if not char then return end if Config.AntiCheatBypass ~= false and isFlightActive() then
 		local nowT = os.clock() if nowT - lastAirTimeReset >= 0.85 then lastAirTimeReset = nowT
-			local h = char:FindFirstChildOfClass("Humanoid") if h then pcall(function()
-					h:ChangeState(Enum.HumanoidStateType.Landed) h:ChangeState(Enum.HumanoidStateType.Running) end) end
-		end end local myRoot = GetRootPart(char) local myHum = char:FindFirstChildOfClass("Humanoid")
+			local h = char:FindFirstChildOfClass("Humanoid") if h then pcall(landHum, h) end end end
+	local myRoot = GetRootPart(char) local myHum = char:FindFirstChildOfClass("Humanoid")
 	if Config.AntiFlingEnabled ~= false and not FlingActive and myRoot then local myPos = myRoot.Position
 		for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
 				local theirRoot = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character.PrimaryPart
-				if theirRoot and (theirRoot.Position - myPos).Magnitude <= 45 then
-					for _, ch in ipairs(plr.Character:GetChildren()) do if ch:IsA("BasePart") then ch.CanCollide = false
-							ch.AssemblyAngularVelocity = Vector3.new(0, 0, 0) ch.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-						elseif ch:IsA("Accessory") or ch:IsA("Tool") then local h = ch:FindFirstChild("Handle")
-							if h and h:IsA("BasePart") then h.CanCollide = false
-								h.AssemblyAngularVelocity = Vector3.new(0, 0, 0) h.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-							end end end end end end if myHum then
+				if theirRoot then local tp = theirRoot.Position local dx = tp.X - myPos.X local dy = tp.Y - myPos.Y
+					local dz = tp.Z - myPos.Z if (dx * dx + dy * dy + dz * dz) <= 2025 then
+						for _, ch in ipairs(plr.Character:GetChildren()) do if ch:IsA("BasePart") then
+								ch.CanCollide = false ch.AssemblyAngularVelocity = V3_ZERO ch.AssemblyLinearVelocity = V3_ZERO
+							elseif ch:IsA("Accessory") or ch:IsA("Tool") then local h = ch:FindFirstChild("Handle")
+								if h and h:IsA("BasePart") then h.CanCollide = false h.AssemblyAngularVelocity = V3_ZERO
+									h.AssemblyLinearVelocity = V3_ZERO end end end end end end end if myHum then
 			myHum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 			myHum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end
 		local maxSafeLinear = math.max(135, (Config.MasterUtilityEnabled and (Config.WalkSpeed + Config.JumpPower) or 85) * 1.8)
 		if isFlightActive() then maxSafeLinear = math.max(maxSafeLinear, (Config.FlySpeed or 50) * 1.5) end
 		if myRoot.AssemblyAngularVelocity.Magnitude > 35 or myRoot.AssemblyLinearVelocity.Magnitude > maxSafeLinear then
-			myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-			myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0) myRoot.RotVelocity = Vector3.new(0, 0, 0)
-			myRoot.Velocity = Vector3.new(0, 0, 0) if lastSafeAntiFlingCF then myRoot.CFrame = lastSafeAntiFlingCF
-			end else lastSafeAntiFlingCF = myRoot.CFrame end end if Config.NoclipEnabled then
-		for _, part in ipairs(char:GetChildren()) do if part:IsA("BasePart") and part.CanCollide then
-				part.CanCollide = false end end end if Config.CountdownBypass then
-		for _, child in ipairs(char:GetChildren()) do if child:IsA("BasePart") and child.Anchored then
-				child.Anchored = false elseif FREEZE_TAG_NAMES[child.Name] then pcall(function() child:Destroy() end)
-			end end end end))
--- User-Provided Flight Heartbeat Loop
+			myRoot.AssemblyAngularVelocity = V3_ZERO myRoot.AssemblyLinearVelocity = V3_ZERO
+			myRoot.RotVelocity = V3_ZERO myRoot.Velocity = V3_ZERO if lastSafeAntiFlingCF then
+				myRoot.CFrame = lastSafeAntiFlingCF end else lastSafeAntiFlingCF = myRoot.CFrame end end
+	if Config.NoclipEnabled or Config.CountdownBypass then for _, child in ipairs(char:GetChildren()) do
+			if Config.NoclipEnabled and child:IsA("BasePart") and child.CanCollide then child.CanCollide = false
+			end if Config.CountdownBypass then if child:IsA("BasePart") and child.Anchored then
+					child.Anchored = false elseif FREEZE_TAG_NAMES[child.Name] then pcall(child.Destroy, child) end end
+		end end end))
+-- Consolidated Master Heartbeat Loop (Flight + Anti-Fling Recovery + Systems Monitor)
 table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
-	camera = workspace.CurrentCamera if not isFlightActive() then return end local char = player.Character
-	if not char then return end local root = char:FindFirstChild("HumanoidRootPart")
-	local hum = char:FindFirstChildOfClass("Humanoid") if not root or not hum then return end
-	hum:ChangeState(Enum.HumanoidStateType.Running) if UserInputService:GetFocusedTextBox() then
-		if freezePosition then
-			root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camera.CFrame:ToEulerAnglesXYZ())
-			root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-		end return end local moveVector = Vector3.new(0, 0, 0) local camCF = camera.CFrame
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVector = moveVector + camCF.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVector = moveVector - camCF.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVector = moveVector - camCF.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVector = moveVector + camCF.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveVector = moveVector + Vector3.new(0, 1, 0) end
-	if savedConfig.Settings.ShiftDownEnabled ~= false then
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
-			moveVector = moveVector - Vector3.new(0, 1, 0) end end
-	local currentFlySpeed = savedConfig.Settings.FlySpeed or 50 if moveVector.Magnitude > 0 then
-		local step = moveVector.Unit * (currentFlySpeed * deltaTime) local newPos = root.Position + step
-		freezePosition = newPos root.CFrame = CFrame.new(newPos) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
-		root.AssemblyLinearVelocity = moveVector.Unit * math.min(currentFlySpeed, 45)
-		root.AssemblyAngularVelocity = Vector3.new(0, 0, 0) else if not freezePosition then
-			freezePosition = root.Position end
-		root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
-		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-	end if fakeGroundPart then
-		local footOffset = math.max((hum.HipHeight or 0) + (root.Size.Y * 0.5) + 0.1, 3.05)
-		fakeGroundPart.CFrame = root.CFrame * CFrame.new(0, -footOffset, 0) end end))
--- General Systems Heartbeat Loop
-table.insert(Connections, RunService.Heartbeat:Connect(function() frameCount = frameCount + 1
-	local now = os.clock() if now - lastFpsTime >= 0.5 then
+	camera = workspace.CurrentCamera local char = player.Character
+	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	-- 1. Flight Subsystem
+	if isFlightActive() and char and root and hum and camera then
+		hum:ChangeState(Enum.HumanoidStateType.Running) if UserInputService:GetFocusedTextBox() then
+			if freezePosition then
+				root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camera.CFrame:ToEulerAnglesXYZ())
+				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO end else
+			local camCF = camera.CFrame local mvX, mvY, mvZ = 0, 0, 0
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) then local lv = camCF.LookVector
+				mvX, mvY, mvZ = mvX + lv.X, mvY + lv.Y, mvZ + lv.Z end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then local lv = camCF.LookVector
+				mvX, mvY, mvZ = mvX - lv.X, mvY - lv.Y, mvZ - lv.Z end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then local rv = camCF.RightVector
+				mvX, mvY, mvZ = mvX - rv.X, mvY - rv.Y, mvZ - rv.Z end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then local rv = camCF.RightVector
+				mvX, mvY, mvZ = mvX + rv.X, mvY + rv.Y, mvZ + rv.Z end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then mvY = mvY + 1 end
+			if savedConfig.Settings.ShiftDownEnabled ~= false then
+				if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
+					mvY = mvY - 1 end end local currentFlySpeed = savedConfig.Settings.FlySpeed or 50
+			local magSq = mvX * mvX + mvY * mvY + mvZ * mvZ if magSq > 0.0001 then
+				local invMag = 1 / math.sqrt(magSq) local uX, uY, uZ = mvX * invMag, mvY * invMag, mvZ * invMag
+				local stepX = uX * (currentFlySpeed * deltaTime) local stepY = uY * (currentFlySpeed * deltaTime)
+				local stepZ = uZ * (currentFlySpeed * deltaTime) local curPos = root.Position
+				local newPos = Vector3.new(curPos.X + stepX, curPos.Y + stepY, curPos.Z + stepZ)
+				freezePosition = newPos root.CFrame = CFrame.new(newPos) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
+				local linSpeed = math.min(currentFlySpeed, 45)
+				root.AssemblyLinearVelocity = Vector3.new(uX * linSpeed, uY * linSpeed, uZ * linSpeed)
+				root.AssemblyAngularVelocity = V3_ZERO else if not freezePosition then freezePosition = root.Position
+				end root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
+				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO end
+			if fakeGroundPart then
+				local footOffset = math.max((hum.HipHeight or 0) + (root.Size.Y * 0.5) + 0.1, 3.05)
+				fakeGroundPart.CFrame = root.CFrame * CFrame.new(0, -footOffset, 0) end end end
+	-- 2. Performance HUD (FPS / Ping / Mouse Lock status)
+	frameCount = frameCount + 1 local now = os.clock() if now - lastFpsTime >= 0.5 then
 		currentFps = math.floor(frameCount / (now - lastFpsTime) + 0.5) frameCount = 0 lastFpsTime = now
-		local pingMs = 0 pcall(function() pingMs = math.floor(player:GetNetworkPing() * 1000 + 0.5) end)
+		local pingMs = 0 local okPing, pingVal = pcall(player.GetNetworkPing, player)
+		if okPing and type(pingVal) == "number" then pingMs = math.floor(pingVal * 1000 + 0.5) end
 		local mlKey = Config.MouseLockKeybind or "None"
 		PerfLabel.Text = string.format("FPS: %d  |  Ping: %d ms  |  Mouse Lock [%s]: %s", currentFps, pingMs, mlKey, CursorUnlockedOverride and "ON" or "OFF")
-	end if now - lastRadarRefresh >= 2.0 then lastRadarRefresh = now
+	end
+	-- 3. Radar & ESP Periodic Refresh (every 2.0s)
+	if now - lastRadarRefresh >= 2.0 then lastRadarRefresh = now
 		if ActiveTabName == "Player Radar" and not ActiveKeybindCaptureCallback then RefreshRadarCards() end
 		if Config.ESPEnabled then RefreshESPHighlights() end end
-	if Config.LockedTime ~= nil then pcall(function() Lighting.ClockTime = Config.LockedTime end) end
-	if Config.FullbrightEnabled then pcall(function() Lighting.GlobalShadows = false Lighting.Brightness = 2
-			Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255) end) end pcall(function()
-		if workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView ~= Config.FOV then
-			workspace.CurrentCamera.FieldOfView = Config.FOV end end) local char = player.Character
-	local root = GetRootPart(char) local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if not root or not hum then return end if Config.AntiFlingEnabled ~= false and not FlingActive then
+	-- 4. Environment Lighting (Lock Time & Fullbright)
+	if Config.LockedTime ~= nil and Lighting.ClockTime ~= Config.LockedTime then
+		Lighting.ClockTime = Config.LockedTime end if Config.FullbrightEnabled then
+		if Lighting.GlobalShadows ~= false then Lighting.GlobalShadows = false end
+		if Lighting.Brightness ~= 2 then Lighting.Brightness = 2 end
+		if Lighting.OutdoorAmbient ~= FULLBRIGHT_AMBIENT then Lighting.OutdoorAmbient = FULLBRIGHT_AMBIENT end
+	end
+	-- 5. Camera FOV
+	if camera and camera.FieldOfView ~= Config.FOV then camera.FieldOfView = Config.FOV end
+	if not root or not hum then return end
+	-- 6. Super Anti-Fling Safety Net
+	if Config.AntiFlingEnabled ~= false and not FlingActive then
 		local maxSafeLinear = math.max(135, (Config.MasterUtilityEnabled and (Config.WalkSpeed + Config.JumpPower) or 85) * 1.8)
 		if isFlightActive() then maxSafeLinear = math.max(maxSafeLinear, (Config.FlySpeed or 50) * 1.5) end
 		if root.AssemblyAngularVelocity.Magnitude > 35 or root.AssemblyLinearVelocity.Magnitude > maxSafeLinear then
-			root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-			root.Velocity = Vector3.new(0, 0, 0) root.RotVelocity = Vector3.new(0, 0, 0)
-			if lastSafeAntiFlingCF then root.CFrame = lastSafeAntiFlingCF end else
+			root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO root.Velocity = V3_ZERO
+			root.RotVelocity = V3_ZERO if lastSafeAntiFlingCF then root.CFrame = lastSafeAntiFlingCF end else
 			lastSafeAntiFlingCF = root.CFrame end end
+	-- 7. Undetected Teleport Bypass
 	if Config.AntiCheatBypass ~= false and teleportBypassTargetCF and os.clock() < teleportBypassLockUntil and not FlingActive then
-		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-		if (root.Position - teleportBypassTargetCF.Position).Magnitude > 8 then
+		root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO
+		local tpDiff = root.Position - teleportBypassTargetCF.Position
+		if (tpDiff.X * tpDiff.X + tpDiff.Y * tpDiff.Y + tpDiff.Z * tpDiff.Z) > 64 then
 			root.CFrame = teleportBypassTargetCF lastSafeAntiFlingCF = teleportBypassTargetCF end end
+	-- 8. Master Utility WalkSpeed & JumpPower
 	if Config.MasterUtilityEnabled and not FlingActive then
 		if Config.AntiCheatBypass ~= false and not hookmetamethod then hum.WalkSpeed = 16 hum.JumpPower = 50
 			local extraSpeed = math.max(0, (Config.WalkSpeed or 16) - 16)
