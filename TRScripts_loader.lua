@@ -10,9 +10,11 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local VirtualUser = game:GetService("VirtualUser") local StarterGui = game:GetService("StarterGui")
 local CoreGui = game:GetService("CoreGui")
 local player = Players.LocalPlayer or Players.PlayerAdded:Wait() local LocalPlayer = player
-local camera = workspace.CurrentCamera local genv = (getgenv and getgenv()) or _G
+local PlayerGui = player:WaitForChild("PlayerGui") local camera = workspace.CurrentCamera
+local genv = (getgenv and getgenv()) or _G local ContentProvider = nil
+pcall(function() ContentProvider = game:GetService("ContentProvider") end)
 --==============================================================================
--- MASTER ANTI-CHEAT & BAC (BLADE BALL / BEDWARS) NEUTRALIZER ENGINE
+-- MASTER ANTI-CHEAT NEUTRALIZER (RIVALS + BLADE BALL BAC + UNIVERSAL CLOAK)
 -- Runs at Line 1 before any GUI, thread, or game event is initialized
 --==============================================================================
 local STEALTH_GUI_NAME = "RobloxGui_" .. ((HttpService and HttpService.GenerateGUID and pcall(function() return HttpService:GenerateGUID(false) end) and HttpService:GenerateGUID(false):gsub("-", ""):sub(1, 10)) or tostring(math.random(100000, 999999)))
@@ -20,7 +22,36 @@ local HIDDEN_NAMES = {
 	TR_FakeFloor = true, TR_Floor = true, TRScriptsHub = true, TR_ESP_Highlight = true,
 	AssetHighlight = true, ESP_HitboxInner = true, ESP_HitboxOutline = true,
 	AssetAdornment = true, AssetOutline = true, TR_FOVCircle = true, [STEALTH_GUI_NAME] = true }
--- Proactively neutralize known Blade Ball BAC security remotes & device checkers
+-- Decoy ClientAlert RemoteEvent for RIVALS LoadingScreen / LocalScript3
+local fakeClientAlert = Instance.new("RemoteEvent") fakeClientAlert.Name = "ClientAlert"
+-- 1. RIVALS Weak-Table GC & Instance Scanner Bypass (setmetatable __mode hook)
+if hookfunction and getrenv and getrenv().setmetatable then pcall(function()
+		local cclosure = newcclosure or function(f) return f end local oldSetMetatable
+		oldSetMetatable = hookfunction(getrenv().setmetatable, cclosure(function(tbl, mt)
+			if not checkcaller or not checkcaller() then
+				if mt and type(mt) == "table" and rawget(mt, "__mode") then local mode = rawget(mt, "__mode")
+					if mode == "kv" or mode == "v" or mode == "k" then
+						local trace = (debug and debug.traceback and debug.traceback()) or ""
+						if trace:find("LocalScript3") or trace:find("LoadingScreen") or trace:find("MiscellaneousController") or trace:find("CameraSecurity") or trace:find("AnalyticsPipelineController") then
+							return oldSetMetatable({ 1, 2, 3 }, {}) end end end end return oldSetMetatable(tbl, mt) end)) end)
+end
+-- 2. RIVALS getgc(false) Anti-Cheat Function Neuterer (LocalScript3, CameraSecurity, TakeTheL)
+local function NeuterRivalsAntiCheatGC() if not getgc or not hookfunction then return end
+	pcall(function() local cclosure = newcclosure or function(f) return f end
+		local noop = cclosure(function() return nil end)
+		local checkExec = isexecutorclosure or checkclosure or is_synapse_function
+		for _, fn in ipairs(getgc(false)) do
+			if type(fn) == "function" and (not checkExec or not checkExec(fn)) then
+				local okEnv, env = pcall(getfenv, fn)
+				local scr = okEnv and type(env) == "table" and rawget(env, "script")
+				local scrName = scr and tostring(scr) or ""
+				if scrName:find("LocalScript3") or scrName:find("LoadingScreen") or scrName:find("CameraSecurity") or scrName:find("MiscellaneousController") or scrName:find("AnalyticsPipelineController") then
+					if debug and debug.getconstants then local okConst, consts = pcall(debug.getconstants, fn)
+						if okConst and type(consts) == "table" then for _, k in pairs(consts) do
+								if type(k) == "string" and (k:find("TakeTheL") or k:find("ClientAlert") or k:find("CameraSecurity") or k:find("kick") or k:find("ban")) then
+									pcall(hookfunction, fn, noop) break end end end end end end end end) end
+NeuterRivalsAntiCheatGC() task.delay(2.5, NeuterRivalsAntiCheatGC)
+-- 3. Proactively neutralize Blade Ball BAC security remotes & device checkers
 pcall(function() local rep = game:GetService("ReplicatedStorage")
 	local sec = rep:FindFirstChild("Security") if sec then for _, rem in ipairs(sec:GetChildren()) do
 			if rem:IsA("RemoteEvent") or rem:IsA("RemoteFunction") then pcall(function()
@@ -28,61 +59,89 @@ pcall(function() local rep = game:GetService("ReplicatedStorage")
 	local clientFolder = player:FindFirstChild("PlayerScripts") and player.PlayerScripts:FindFirstChild("Client")
 	if clientFolder then local devCheck = clientFolder:FindFirstChild("DeviceChecker") if devCheck then
 			pcall(function() devCheck.Disabled = true end) end end end)
--- Universal Client Kick Neutralizer (Blocks :Kick() and .Kick)
-if hookfunction then pcall(function() local origKick = player.Kick
-		hookfunction(origKick, function(...) return nil end) end) pcall(function()
-		local origKick = game.Players.LocalPlayer.Kick hookfunction(origKick, function(...) return nil end)
-	end) end
--- Comprehensive Metamethod Interceptor (Anti-GUI Scan, Remote Filter, Property Spoof)
+-- 4. Universal Client Kick Neutralizer (Blocks :Kick() and .Kick)
+if hookfunction then pcall(function() local cclosure = newcclosure or function(f) return f end
+		local origKick = player.Kick hookfunction(origKick, cclosure(function(...) return nil end)) end) end
+-- 5. Comprehensive Metamethod Interceptor (RIVALS + BAC + Universal Anti-GUI Cloak)
 if not genv._TR_HooksActive and hookmetamethod and getnamecallmethod and checkcaller then
-	genv._TR_HooksActive = true local oldNamecall
-	oldNamecall = hookmetamethod(game, "__namecall", function(self, ...) if not checkcaller() then
+	genv._TR_HooksActive = true local cclosure = newcclosure or function(f) return f end local oldNamecall
+	oldNamecall = hookmetamethod(game, "__namecall", cclosure(function(self, ...) if not checkcaller() then
 			local method = getnamecallmethod()
-			-- 1. Client Kick Blocker
-			if (method == "Kick" or method == "kick") and (self == player or (typeof and typeof(self) == "Instance" and self:IsA("Player"))) then
+			-- A. Client Kick & Shutdown Blocker
+			if (method == "Kick" or method == "kick" or method == "Shutdown") and (self == player or (typeof and typeof(self) == "Instance" and self:IsA("Player"))) then
 				return nil end
-			-- 2. Anti-GUI Detection (Filter GUI from GetChildren / GetDescendants)
-			local selfName = typeof(self) == "Instance" and self.Name or ""
-			if (method == "GetChildren" or method == "get_children") and (self == PlayerGui or self == CoreGui) then
+			-- B. RIVALS WaitForChild("ClientAlert") Spoof
+			if (method == "WaitForChild" or method == "FindFirstChild") then local arg1 = ...
+				if arg1 == "ClientAlert" then return fakeClientAlert end end
+			-- C. RIVALS ContentProvider:GetAssetFetchStatus Spoof
+			if ContentProvider and self == ContentProvider and (method == "GetAssetFetchStatus" or method == "GetAssetFetchStatusChangedSignal") then
+				local asset = ...
+				if type(asset) == "string" and (asset:find("CoreGui") or asset:find("RobloxGui") or asset:find("TRScripts")) then
+					if method == "GetAssetFetchStatus" then return Enum.AssetFetchStatus.None end end end
+			-- D. Anti-GUI Detection (Filter GUI from GetChildren / GetDescendants)
+			local isGuiContainer = (self == PlayerGui or self == CoreGui or (typeof and typeof(self) == "Instance" and self:IsA("PlayerGui")))
+			if (method == "GetChildren" or method == "get_children") and isGuiContainer then
 				local list = oldNamecall(self, ...) local filtered = {} for _, child in ipairs(list) do
-					if child.Name ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[child.Name] then
+					if child ~= genv._TR_GUI_INSTANCE and child.Name ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[child.Name] then
 						table.insert(filtered, child) end end return filtered
-			elseif (method == "GetDescendants" or method == "get_descendants") and (self == PlayerGui or self == CoreGui or self == game) then
+			elseif (method == "GetDescendants" or method == "get_descendants") and (isGuiContainer or self == game) then
 				local list = oldNamecall(self, ...) local filtered = {} for _, child in ipairs(list) do
 					local cName = child.Name
-					if cName ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[cName] and not (genv._TR_GUI_INSTANCE and child:IsDescendantOf(genv._TR_GUI_INSTANCE)) then
+					if child ~= genv._TR_GUI_INSTANCE and cName ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[cName] and not (genv._TR_GUI_INSTANCE and child:IsDescendantOf(genv._TR_GUI_INSTANCE)) then
 						table.insert(filtered, child) end end return filtered end
-			-- 3. Filter FindFirstChild inquiries targeting our GUI or stealth objects
+			-- E. Filter FindFirstChild / FindFirstChildOfClass inquiries targeting our GUI
 			if method == "FindFirstChild" or method == "findFirstChild" then local arg1 = ...
-				if (type(arg1) == "string" and (arg1 == STEALTH_GUI_NAME or HIDDEN_NAMES[arg1])) or (genv._TR_GUI_INSTANCE and arg1 == genv._TR_GUI_INSTANCE) then
+				if (type(arg1) == "string" and (arg1 == STEALTH_GUI_NAME or HIDDEN_NAMES[arg1] or arg1:sub(1, 3) == "HL_")) or (genv._TR_GUI_INSTANCE and arg1 == genv._TR_GUI_INSTANCE) then
 					return nil end
-			elseif (method == "FindFirstChildOfClass" or method == "FindFirstChildWhichIsA") and (self == PlayerGui or self == CoreGui) then
-				local arg1 = ... if arg1 == "ScreenGui" then local list = oldNamecall(self, "GetChildren")
-					for _, child in ipairs(list) do
-						if child:IsA("ScreenGui") and child.Name ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[child.Name] then
-							return child end end return nil end end
-			-- 4. Block BAC (Blade Ball Anti-Cheat) & Security Report Remotes
+			elseif (method == "FindFirstChildOfClass" or method == "FindFirstChildWhichIsA") and isGuiContainer then
+				local res = oldNamecall(self, ...)
+				if res and (res == genv._TR_GUI_INSTANCE or res.Name == STEALTH_GUI_NAME or HIDDEN_NAMES[res.Name]) then
+					return nil end return res end
+			-- F. Block RIVALS (ClientAlert / TakeTheL / CameraSecurity) & BAC Report Remotes
 			if (method == "FireServer" or method == "InvokeServer") and typeof and typeof(self) == "Instance" then
-				local remName = tostring(self.Name):lower()
+				if self == fakeClientAlert then return nil end local remName = tostring(self.Name):lower()
 				local parentName = self.Parent and tostring(self.Parent.Name):lower() or ""
-				if remName:find("security", 1, true) or parentName:find("security", 1, true)
+				if remName:find("clientalert", 1, true) or remName:find("takethel", 1, true)
+				   or remName:find("camerasecurity", 1, true) or remName:find("analyticspipeline", 1, true)
+				   or remName:find("security", 1, true) or parentName:find("security", 1, true)
 				   or remName:find("bac", 1, true) or parentName:find("bac", 1, true)
 				   or remName:find("anticheat", 1, true) or parentName:find("anticheat", 1, true)
 				   or remName:find("ac_detect", 1, true) or remName:find("report_exploit", 1, true)
 				   or remName:find("ban", 1, true) or remName:find("kick", 1, true) then return nil end
 				local args = { ... } for i = 1, #args do if type(args[i]) == "string" then
 						local low = args[i]:lower()
-						if low:find("bac-", 1, true) or low:find("cheat", 1, true) or low:find("exploit", 1, true)
-						   or low:find("anticheat", 1, true) or low:find("kick", 1, true) then return nil end end end end
-		end return oldNamecall(self, ...) end) local oldIndex
-	oldIndex = hookmetamethod(game, "__index", function(self, key)
+						if low:find("bac-", 1, true) or low:find("takethel", 1, true) or low:find("clientalert", 1, true)
+						   or low:find("camerasecurity", 1, true) or low:find("cheat", 1, true)
+						   or low:find("exploit", 1, true) or low:find("anticheat", 1, true) or low:find("kick", 1, true) then
+							return nil end end end end
+			-- G. RIVALS & Universal Silent Aim Raycast Redirection (No Camera Movement)
+			if genv._TR_SilentAimActive and genv._TR_GetSilentTargetPart and self == workspace then
+				if method == "Raycast" then local origin, direction, rParams = ...
+					if typeof and typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+						local callerName = "" if getcallingscript then local okCs, cs = pcall(getcallingscript)
+							if okCs and cs then callerName = tostring(cs) end end
+						local isRivalsWeapon = (callerName == "Equipment" or callerName == "FighterController" or callerName == "PlayerDataController" or callerName == "ControlsController" or callerName:find("Weapon") or callerName:find("Gun") or callerName:find("Bullet"))
+						if isRivalsWeapon or direction.Magnitude >= 30 then local tPart = genv._TR_GetSilentTargetPart()
+							if tPart and tPart.Parent then local cam = workspace.CurrentCamera
+								local startPos = (isRivalsWeapon and cam and cam.CFrame.Position) or origin
+								local diff = tPart.Position - startPos local mag = math.max(direction.Magnitude, 1000)
+								if diff.Magnitude > 0.001 then local newDir = diff.Unit * mag
+									return oldNamecall(self, startPos, newDir, rParams) end end end end
+				elseif method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" then
+					local rayObj, arg2, arg3, arg4 = ...
+					if typeof and typeof(rayObj) == "Ray" and rayObj.Direction.Magnitude >= 30 then
+						local tPart = genv._TR_GetSilentTargetPart() if tPart and tPart.Parent then
+							local orig = rayObj.Origin local diff = tPart.Position - orig if diff.Magnitude > 0.001 then
+								local newRay = Ray.new(orig, diff.Unit * math.max(rayObj.Direction.Magnitude, 1000))
+								return oldNamecall(self, newRay, arg2, arg3, arg4) end end end end end end
+		return oldNamecall(self, ...) end)) local oldIndex
+	oldIndex = hookmetamethod(game, "__index", cclosure(function(self, key)
 		if not checkcaller() and typeof and typeof(self) == "Instance" then
-			-- Intercept .Kick property/method access on Player
 			if (key == "Kick" or key == "kick") and (self == player or self:IsA("Player")) then
-				return function() return nil end
+				return function() return nil end elseif key == "ClientAlert" then return fakeClientAlert
 			elseif (self == PlayerGui or self == CoreGui) and (key == STEALTH_GUI_NAME or (type(key) == "string" and HIDDEN_NAMES[key])) then
 				return nil elseif type(key) == "string" and (key == STEALTH_GUI_NAME or HIDDEN_NAMES[key]) then
-				return nil end end return oldIndex(self, key) end) end
+				return nil end end return oldIndex(self, key) end)) end
 -- Zero-Allocation Performance Constants for Low-End PCs
 local V3_ZERO = Vector3.new(0, 0, 0) local CF_ZERO = CFrame.new(0, 0, 0)
 local V3_ESP_BOX = Vector3.new(4, 5.2, 1.2) local V3_ESP_OUTLINE = Vector3.new(4.2, 5.4, 1.25)
@@ -101,11 +160,11 @@ local U = utf8.char local E = { Bolt    = U(0x26A1), Save    = U(0x1F4BE), Check
 --==============================================================================
 -- 1. ENVIRONMENT & DEEP CLEANUP ENGINE
 --==============================================================================
-local PlayerGui = player:WaitForChild("PlayerGui") local Connections = {}
-if genv.TRScripts_ScreenGui then pcall(function() genv.TRScripts_ScreenGui:Destroy() end)
-	genv.TRScripts_ScreenGui = nil end if type(genv.TRScripts_ActiveShutdown) == "function" then
-	pcall(genv.TRScripts_ActiveShutdown, true) genv.TRScripts_ActiveShutdown = nil end
-local function DeepCleanup() pcall(function() RunService:UnbindFromRenderStep("Aimbot_v2") end)
+local Connections = {} if genv.TRScripts_ScreenGui then
+	pcall(function() genv.TRScripts_ScreenGui:Destroy() end) genv.TRScripts_ScreenGui = nil end
+if type(genv.TRScripts_ActiveShutdown) == "function" then pcall(genv.TRScripts_ActiveShutdown, true)
+	genv.TRScripts_ActiveShutdown = nil end local function DeepCleanup()
+	pcall(function() RunService:UnbindFromRenderStep("Aimbot_v2") end)
 	pcall(function() RunService:UnbindFromRenderStep("TR_ShiftLock_Pre") end)
 	pcall(function() if cleardrawcache then cleardrawcache() end end)
 	local oldGui = genv._TR_GUI_INSTANCE or genv.TRScripts_ScreenGui if oldGui then
@@ -146,10 +205,10 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 16, JumpPower = 50, FOV = 70,
 		FlySpeed = 50, FlyKeybind = "E", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotFOVRadius = 200,
-		AimbotFOVCircleEnabled = true, AimbotEnabled = false, StrongLock = false, WallcheckEnabled = true,
-		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
-		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
-		MasterUtilityEnabled = false, MasterFlightEnabled = false, NoclipEnabled = false,
+		AimbotFOVCircleEnabled = true, AimbotEnabled = false, SilentAimEnabled = false, StrongLock = false,
+		WallcheckEnabled = true, AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false,
+		SpiderClimb = false, ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false,
+		AimPartName = "Head", MasterUtilityEnabled = false, MasterFlightEnabled = false, NoclipEnabled = false,
 		AntiFlingEnabled = true, AutoSelectFling = false, AntiCheatBypass = true, ShiftDownEnabled = true,
 		CountdownBypass = false, AntiAFK = true, InstantPrompt = false, ESPEnabled = false,
 		FullbrightEnabled = false, CameraOverrideMode = "Free / Unlocked", LockedTime = nil }, Waypoints = {
@@ -697,7 +756,7 @@ pullNearbyItems = function() local char = player.Character local root = GetRootP
 					for _, sub in ipairs(child:GetChildren()) do processCandidate(sub) end end end end end) end
 CreateToggle(Tab4_Items, "Item Vacuum / Magnet (Pulls Nearby Items & Drops to Character)", Config.ItemMagnetEnabled == true, 4, function(state)
 	Config.ItemMagnetEnabled = state if state then pullNearbyItems() end SaveConfig(false) end)
-CreateSlider(Tab4_Items, "Item Vacuum Radius (studs)", 15, 300, Config.ItemMagnetRadius or 60, 5, function(val)
+CreateSlider(Tab4_Items, "Item Vacuum Radius (studs)", 15, 1000, Config.ItemMagnetRadius or 60, 5, function(val)
 	Config.ItemMagnetRadius = val SaveConfig(false) end) local MagnetCard = CreateCard(Tab4_Items, 46, 6)
 local PulseBtn = MakeButton(MagnetCard, UDim2.new(1, -20, 0, 30), UDim2.new(0, 10, 0.5, -15), E.Magnet .. " Instant Vacuum Pulse (Pull All Items Now [E])", "Accent", 11)
 PulseBtn.MouseButton1Click:Connect(pullNearbyItems) end
@@ -763,8 +822,20 @@ flyKeyAssignBtn.MouseButton1Click:Connect(function() flyKeyAssignBtn.Text = "[Ke
 	savedConfig.Settings.FlyKeybind = "None" ActiveKeybindCaptureCallback = nil RefreshFlyKeyTexts()
 	SaveConfig(false) end) RefreshFlyKeyTexts()
 CreateSectionHeader(Tab5_Flight, "Master Utility & Physics Controls", 3)
+local naturalWalkSpeed, naturalJumpPower, naturalJumpHeight, naturalUseJumpPower = 16, 50, 7.2, true
+local lastRecordedHum = nil local function RecordNaturalHumanoidDefaults(hum)
+	if hum and hum ~= lastRecordedHum then lastRecordedHum = hum naturalWalkSpeed = hum.WalkSpeed
+		naturalJumpPower = hum.JumpPower naturalJumpHeight = hum.JumpHeight
+		naturalUseJumpPower = hum.UseJumpPower end end local function RestoreNaturalHumanoidDefaults()
+	local char = player.Character local hum = char and char:FindFirstChildOfClass("Humanoid") if hum then
+		RecordNaturalHumanoidDefaults(hum) pcall(function() hum.WalkSpeed = naturalWalkSpeed
+			hum.UseJumpPower = naturalUseJumpPower hum.JumpPower = naturalJumpPower
+			hum.JumpHeight = naturalJumpHeight end) end end if player.Character then
+	local h = player.Character:FindFirstChildOfClass("Humanoid")
+	if h then RecordNaturalHumanoidDefaults(h) end end
 CreateToggle(Tab5_Flight, "Master Utility Switch (Enable WalkSpeed & JumpPower)", Config.MasterUtilityEnabled, 4, function(state)
-	Config.MasterUtilityEnabled = state SaveConfig(false) end)
+	Config.MasterUtilityEnabled = state if not state then RestoreNaturalHumanoidDefaults() end
+	SaveConfig(false) end)
 CreateToggle(Tab5_Flight, "Noclip Mode (Disable Character CanCollide)", Config.NoclipEnabled, 5, function(state)
 	Config.NoclipEnabled = state SaveConfig(false) end)
 CreateToggle(Tab5_Flight, "Infinite Jump (Jump Continuously Mid-Air Without Ground Touch)", Config.InfiniteJump == true, 6, function(state)
@@ -776,10 +847,12 @@ CreateToggle(Tab5_Flight, "Shift-Down Flight Descent (Hold LeftShift to Descend)
 CreateToggle(Tab5_Flight, "Countdown / Spawn Freeze Bypass (Unanchor & Clear Freeze Tags)", Config.CountdownBypass, 9, function(state)
 	Config.CountdownBypass = state SaveConfig(false) end)
 CreateSectionHeader(Tab5_Flight, "Speed & Movement Sliders", 10)
-CreateSlider(Tab5_Flight, "Fly Speed", 1, 1000, Config.FlySpeed, 11, function(val) Config.FlySpeed = val; SaveConfig(false) end)
-CreateSlider(Tab5_Flight, "WalkSpeed", 16, 500, Config.WalkSpeed, 12, function(val) Config.WalkSpeed = val; SaveConfig(false) end)
-CreateSlider(Tab5_Flight, "JumpPower", 50, 500, Config.JumpPower, 13, function(val) Config.JumpPower = val; SaveConfig(false) end)
-end
+CreateSlider(Tab5_Flight, "Fly Speed", 1, 1000, math.clamp(tonumber(Config.FlySpeed) or 50, 1, 1000), 11, function(val)
+	Config.FlySpeed = val savedConfig.Settings.FlySpeed = val SaveConfig(false) end)
+CreateSlider(Tab5_Flight, "WalkSpeed", 1, 500, math.clamp(tonumber(Config.WalkSpeed) or 16, 1, 500), 12, function(val)
+	Config.WalkSpeed = val savedConfig.Settings.WalkSpeed = val SaveConfig(false) end)
+CreateSlider(Tab5_Flight, "JumpPower (Low = Normal in Rivals / Steal an Egg)", 1, 500, math.clamp(tonumber(Config.JumpPower) or 50, 1, 500), 13, function(val)
+	Config.JumpPower = val savedConfig.Settings.JumpPower = val SaveConfig(false) end) end
 --==============================================================================
 -- 12. TAB 6: MULTI-TARGET FLING HUB (WITH NETWORK PAUSE BYPASS)
 --==============================================================================
@@ -907,7 +980,9 @@ deselectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(false) e
 local ESP_UPDATE_INTERVAL, MAX_DISTANCE, LERP_ALPHA = 0.033333333333333, 500, 0.16
 local FOV_RADIUS = tonumber(Config.AimbotFOVRadius) or 200
 local fovCircleEnabled = (Config.AimbotFOVCircleEnabled ~= false)
-local aimbotEnabled = (Config.AimbotEnabled == true) local strongLock = (Config.StrongLock == true)
+local aimbotEnabled = (Config.AimbotEnabled == true)
+local silentAimEnabled = (Config.SilentAimEnabled == true) genv._TR_SilentAimActive = silentAimEnabled
+local strongLock = (Config.StrongLock == true)
 local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
 local aimbotTeamCheck = (Config.AimbotTeamCheck ~= false)
 local autoShootEnabled = (Config.AutoShootEnabled == true) local lastAutoShoot = 0
@@ -926,9 +1001,10 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	guiFovStroke = Instance.new("UIStroke", guiFovCircle) guiFovStroke.Thickness = 1.8
 	guiFovStroke.Transparency = 0.15 RegisterThemeObject(guiFovStroke, "Color", "Accent")
 	SyncAimbotFovCircleVisibility = function()
-		local showCircle = aimbotEnabled and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
-			guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2) guiFovCircle.Visible = showCircle
-		end end triggerAutoShoot = function() if not aimbotEnabled or not autoShootEnabled then return end
+		local showCircle = (aimbotEnabled or silentAimEnabled) and fovCircleEnabled and not isClosingPermanently
+		if guiFovCircle then guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2)
+			guiFovCircle.Visible = showCircle end end triggerAutoShoot = function()
+		if (not aimbotEnabled and not silentAimEnabled) or not autoShootEnabled then return end
 		local char = player.Character if not char then return end
 		local hum = char:FindFirstChildOfClass("Humanoid") if not hum or hum.Health <= 0 then return end
 		local tool = char:FindFirstChildOfClass("Tool") if tool then pcall(function() tool:Activate() end) end
@@ -986,16 +1062,16 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		for plr in pairs(adornmentsCache) do removePlayerAdornments(plr) end end
 	RefreshESPHighlights = function() local themeAccent = GetTheme().Accent
 		for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
-				local existing = ScreenGui:FindFirstChild("HL_" .. plr.Name) or plr.Character:FindFirstChild("TR_ESP_Highlight")
+				local hlName = "HL_" .. plr.Name local existing = ScreenGui:FindFirstChild(hlName)
 				local allowTeam = espShowTeammates or not IsTeammate(plr)
 				if Config.ESPEnabled and not excludedPlayers[plr] and allowTeam then if not existing then
-						pcall(function() local hl = Instance.new("Highlight") hl.Name = "AssetHighlight"
-							hl.FillColor = themeAccent hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-							hl.FillTransparency = 0.45 hl.OutlineTransparency = 0.1 hl.Adornee = plr.Character
-							hl.Parent = ScreenGui end) else if existing.FillColor ~= themeAccent then
-							existing.FillColor = themeAccent end end elseif existing then existing:Destroy() end end end end
-	updateAllAdornments = function() if not Config.ESPEnabled then
-			if next(adornmentsCache) ~= nil then clearAllAdornments() end return end
+						pcall(function() local hl = Instance.new("Highlight") hl.Name = hlName hl.FillColor = themeAccent
+							hl.OutlineColor = Color3.fromRGB(255, 255, 255) hl.FillTransparency = 0.45
+							hl.OutlineTransparency = 0.1 hl.Adornee = plr.Character hl.Parent = ScreenGui end) else
+						if existing.Adornee ~= plr.Character then existing.Adornee = plr.Character end
+						if existing.FillColor ~= themeAccent then existing.FillColor = themeAccent end end
+				elseif existing then existing:Destroy() end end end end updateAllAdornments = function()
+		if not Config.ESPEnabled then if next(adornmentsCache) ~= nil then clearAllAdornments() end return end
 		local accentCol = GetTheme().Accent for plr in pairs(adornmentsCache) do
 			if not plr or not plr.Parent or excludedPlayers[plr] then removePlayerAdornments(plr) end end
 		for _, plr in ipairs(Players:GetPlayers()) do local allowTeam = espShowTeammates or not IsTeammate(plr)
@@ -1027,6 +1103,40 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 						local _, onScreen, sDist = worldToScreenDistance(pp)
 						if onScreen and sDist <= bestDist and isTargetVisible(part, char) then
 							bestDist, bestPlr = sDist, plr end end end end end return bestPlr end
+	-- RIVALS & Universal Silent Aim Target Part Resolver (Supports Players + Rivals HurtEffect models)
+	local function getSilentTargetPart() if not silentAimEnabled then return nil, nil end
+		local plr = currentTarget or findBestTarget() if plr and plr.Character then
+			local p = getTargetPart(plr.Character) if p then return p, plr.DisplayName or plr.Name end end
+		-- Fallback scan for RIVALS HurtEffect / workspace enemy fighter models
+		local cam = workspace.CurrentCamera local myChar = LocalPlayer.Character
+		if not cam then return nil, nil end
+		local bestPart, bestName, bestDist = nil, nil, fovCircleEnabled and FOV_RADIUS or math.huge
+		local camPos = cam.CFrame.Position local maxDistSq = MAX_DISTANCE * MAX_DISTANCE
+		local function checkModel(mdl) if not mdl or mdl == myChar or not mdl:IsA("Model") then return end
+			local hum = mdl:FindFirstChildOfClass("Humanoid") local part = getTargetPart(mdl)
+			if part and (not hum or hum.Health > 0) then local pp = part.Position
+				local dx, dy, dz = pp.X - camPos.X, pp.Y - camPos.Y, pp.Z - camPos.Z
+				if (dx * dx + dy * dy + dz * dz) <= maxDistSq then
+					local _, onScreen, sDist = worldToScreenDistance(pp)
+					if onScreen and sDist <= bestDist and isTargetVisible(part, mdl) then
+						bestDist, bestPart, bestName = sDist, part, mdl.Name end end end end
+		local hurtFolder = workspace:FindFirstChild("HurtEffect") if hurtFolder then
+			for _, m in ipairs(hurtFolder:GetChildren()) do checkModel(m) end end return bestPart, bestName end
+	genv._TR_GetSilentTargetPart = getSilentTargetPart
+	-- Hook RIVALS ReplicatedStorage.Modules.Utility.Raycast directly if present
+	local function HookRivalsUtilityRaycast() pcall(function()
+			local rep = game:GetService("ReplicatedStorage") local modules = rep and rep:FindFirstChild("Modules")
+			local utilMod = modules and modules:FindFirstChild("Utility")
+			if utilMod and utilMod:IsA("ModuleScript") then local okReq, utilTbl = pcall(require, utilMod)
+				if okReq and type(utilTbl) == "table" and type(utilTbl.Raycast) == "function" and not utilTbl._TR_SilentHooked then
+					utilTbl._TR_SilentHooked = true local oldUtilRaycast = utilTbl.Raycast
+					utilTbl.Raycast = function(...) local args = { ... }
+						if genv._TR_SilentAimActive and genv._TR_GetSilentTargetPart then
+							local tPart = genv._TR_GetSilentTargetPart() if tPart and tPart.Parent then
+								if typeof and typeof(args[3]) == "Vector3" then args[3] = tPart.Position
+								elseif typeof and typeof(args[2]) == "Vector3" and typeof(args[3]) == "Vector3" then
+									args[3] = tPart.Position end end end return oldUtilRaycast(unpack(args)) end end end end) end
+	HookRivalsUtilityRaycast() task.delay(3, HookRivalsUtilityRaycast)
 	-- Section 1: Aimbot Engine & Keybind Controls (matching Tab 5 FlightEngineCard layout!)
 	CreateSectionHeader(Tab7_Visuals, "Aimbot Engine & Keybind Controls", 1)
 	local AimbotEngineCard = CreateCard(Tab7_Visuals, 92, 2)
@@ -1050,7 +1160,12 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	aimbotKeyDeleteBtn.Font = Enum.Font.GothamBold aimbotKeyDeleteBtn.TextSize = 11
 	aimbotKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	aimbotKeyDeleteBtn.Text = E.Trash .. " Delete Key" AddCorner(aimbotKeyDeleteBtn, 6)
-	-- Neat V94 CreateToggle rows for Aimbot Settings
+	-- Neat V94 CreateToggle rows for Aimbot & RIVALS Silent Aim Settings
+	CreateToggle(Tab7_Visuals, "Silent Aim [RIVALS & Universal] (Bullet Redirect - No Camera Move)", silentAimEnabled, 3, function(state)
+		silentAimEnabled = state Config.SilentAimEnabled = state genv._TR_SilentAimActive = state
+		if state then HookRivalsUtilityRaycast() end if not state and not aimbotEnabled then
+			currentTarget = nil if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end end
+		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
 	CreateToggle(Tab7_Visuals, "Strong Lock Mode (Instant Camera Snap vs Smooth Lerp)", strongLock, 3, function(state)
 		strongLock = state Config.StrongLock = state if not strongLock then currentTarget = nil end
 		SaveConfig(false) end)
@@ -1292,10 +1407,11 @@ table.insert(Connections, LocalPlayer.CharacterAdded:Connect(function(c) current
 table.insert(Connections, UserInputService.JumpRequest:Connect(function() if Config.InfiniteJump then
 		local char = player.Character local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local root = GetRootPart(char) if hum and hum.Health > 0 and root then
-			hum:ChangeState(Enum.HumanoidStateType.Jumping)
-			local jp = Config.MasterUtilityEnabled and (Config.JumpPower or 50) or (hum.UseJumpPower and hum.JumpPower or 50)
-			local v = root.AssemblyLinearVelocity
-			root.AssemblyLinearVelocity = Vector3.new(v.X, math.max(jp, 50), v.Z) end end end)) end
+			hum:ChangeState(Enum.HumanoidStateType.Jumping) local jp if Config.MasterUtilityEnabled then
+				jp = math.clamp(tonumber(Config.JumpPower) or 50, 1, 500) elseif hum.UseJumpPower then
+				jp = hum.JumpPower else local g = workspace.Gravity or 196.2
+				jp = math.sqrt(2 * g * math.max(hum.JumpHeight or 7.2, 1)) end local v = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(v.X, jp, v.Z) end end end)) end
 table.insert(Connections, RunService.RenderStepped:Connect(function(dt)
 	if not Config.ESPEnabled and next(adornmentsCache) == nil then return end
 	lastEspUpdate = lastEspUpdate + dt if lastEspUpdate >= ESP_UPDATE_INTERVAL then lastEspUpdate = 0
@@ -1325,14 +1441,20 @@ local function setAimbotStatusText(txt) if aimbotStatusLabel and aimbotStatusLab
 		aimbotStatusLabel.Text = txt end end
 RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 1, function()
 	local cam = workspace.CurrentCamera if not cam then return end
-	local showFov = aimbotEnabled and fovCircleEnabled and not isClosingPermanently
+	local showFov = (aimbotEnabled or silentAimEnabled) and fovCircleEnabled and not isClosingPermanently
 	if guiFovCircle and guiFovCircle.Visible ~= showFov then guiFovCircle.Visible = showFov end
 	if CursorUnlockedOverride and not isClosingPermanently then pcall(stepShiftLockCore, cam) else
-		lastShiftLook = nil end if not aimbotEnabled then return end if strongLock and currentTarget then
-		local ch = currentTarget.Character local h = ch and ch:FindFirstChildOfClass("Humanoid")
-		local p = getTargetPart(ch)
+		lastShiftLook = nil end if not aimbotEnabled and not silentAimEnabled then return end
+	if strongLock and currentTarget then local ch = currentTarget.Character
+		local h = ch and ch:FindFirstChildOfClass("Humanoid") local p = getTargetPart(ch)
 		if not ch or not h or h.Health <= 0 or not p or not isTargetVisible(p, ch) or (aimbotTeamCheck and IsTeammate(currentTarget)) then currentTarget = nil end
 	else currentTarget = findBestTarget() end if not currentTarget then currentTarget = findBestTarget() end
+	-- Silent Aim Only Mode (No Camera Rotation - RIVALS Safe)
+	if silentAimEnabled and not aimbotEnabled then local sPart, sName = getSilentTargetPart() if sPart then
+			setAimbotStatusText("Silent Target: " .. tostring(sName))
+			if autoShootEnabled and triggerAutoShoot then local nowT = os.clock()
+				if nowT - lastAutoShoot >= 0.05 then lastAutoShoot = nowT triggerAutoShoot() end end else
+			setAimbotStatusText("Silent Aim: Searching...") end return end
 	if currentTarget and currentTarget.Character then
 		local targetPart = getTargetPart(currentTarget.Character) if targetPart then
 			local goalCF = CFrame.new(cam.CFrame.Position, targetPart.Position) local beforeCF = cam.CFrame
@@ -1371,12 +1493,13 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 	camera = workspace.CurrentCamera local char = player.Character
 	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	-- 1. Flight Subsystem
+	-- 1. Flight Subsystem (Isolated from WalkSpeed/JumpPower to prevent speed compounding)
 	if isFlightActive() and char and root and hum and camera then
-		hum:ChangeState(Enum.HumanoidStateType.Running) if UserInputService:GetFocusedTextBox() then
-			if freezePosition then
-				root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camera.CFrame:ToEulerAnglesXYZ())
-				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO end else
+		hum:ChangeState(Enum.HumanoidStateType.Running) if hum.WalkSpeed ~= 16 then hum.WalkSpeed = 16 end
+		if not freezePosition then freezePosition = root.Position end
+		if UserInputService:GetFocusedTextBox() then
+			root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camera.CFrame:ToEulerAnglesXYZ())
+			root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO else
 			local camCF = camera.CFrame local mvX, mvY, mvZ = 0, 0, 0
 			if UserInputService:IsKeyDown(Enum.KeyCode.W) then local lv = camCF.LookVector
 				mvX, mvY, mvZ = mvX + lv.X, mvY + lv.Y, mvZ + lv.Z end
@@ -1387,19 +1510,17 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 			if UserInputService:IsKeyDown(Enum.KeyCode.D) then local rv = camCF.RightVector
 				mvX, mvY, mvZ = mvX + rv.X, mvY + rv.Y, mvZ + rv.Z end
 			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then mvY = mvY + 1 end
-			if savedConfig.Settings.ShiftDownEnabled ~= false then
+			if Config.ShiftDownEnabled ~= false then
 				if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
-					mvY = mvY - 1 end end local currentFlySpeed = savedConfig.Settings.FlySpeed or 50
+					mvY = mvY - 1 end end local currentFlySpeed = math.clamp(tonumber(Config.FlySpeed) or 50, 1, 1000)
 			local magSq = mvX * mvX + mvY * mvY + mvZ * mvZ if magSq > 0.0001 then
 				local invMag = 1 / math.sqrt(magSq) local uX, uY, uZ = mvX * invMag, mvY * invMag, mvZ * invMag
-				local stepX = uX * (currentFlySpeed * deltaTime) local stepY = uY * (currentFlySpeed * deltaTime)
-				local stepZ = uZ * (currentFlySpeed * deltaTime) local curPos = root.Position
-				local newPos = Vector3.new(curPos.X + stepX, curPos.Y + stepY, curPos.Z + stepZ)
+				local dtClamped = math.min(deltaTime, 0.1) local stepX = uX * (currentFlySpeed * dtClamped)
+				local stepY = uY * (currentFlySpeed * dtClamped) local stepZ = uZ * (currentFlySpeed * dtClamped)
+				local newPos = Vector3.new(freezePosition.X + stepX, freezePosition.Y + stepY, freezePosition.Z + stepZ)
 				freezePosition = newPos root.CFrame = CFrame.new(newPos) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
-				local linSpeed = math.min(currentFlySpeed, 45)
-				root.AssemblyLinearVelocity = Vector3.new(uX * linSpeed, uY * linSpeed, uZ * linSpeed)
-				root.AssemblyAngularVelocity = V3_ZERO else if not freezePosition then freezePosition = root.Position
-				end root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
+				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO else
+				root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
 				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO end
 			if fakeGroundPart then
 				local footOffset = math.max((hum.HipHeight or 0) + (root.Size.Y * 0.5) + 0.1, 3.05)
@@ -1440,18 +1561,26 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 		local tpDiff = root.Position - teleportBypassTargetCF.Position
 		if (tpDiff.X * tpDiff.X + tpDiff.Y * tpDiff.Y + tpDiff.Z * tpDiff.Z) > 64 then
 			root.CFrame = teleportBypassTargetCF lastSafeAntiFlingCF = teleportBypassTargetCF end end
-	-- 8. Master Utility WalkSpeed & JumpPower
-	if Config.MasterUtilityEnabled and not FlingActive then
-		if Config.AntiCheatBypass ~= false and not hookmetamethod then hum.WalkSpeed = 16 hum.JumpPower = 50
-			local extraSpeed = math.max(0, (Config.WalkSpeed or 16) - 16)
-			if extraSpeed > 0 and hum.MoveDirection.Magnitude > 0 then
-				local nextPos = root.Position + (hum.MoveDirection.Unit * (extraSpeed * 0.016))
+	-- 8. Master Utility WalkSpeed & JumpPower (Paused during Flight so it never accelerates FlySpeed)
+	RecordNaturalHumanoidDefaults(hum)
+	if Config.MasterUtilityEnabled and not FlingActive and not isFlightActive() then
+		local targetWS = math.clamp(tonumber(Config.WalkSpeed) or 16, 1, 500)
+		local targetJP = math.clamp(tonumber(Config.JumpPower) or 50, 1, 500)
+		local g = workspace.Gravity or 196.2 local targetJH = (targetJP * targetJP) / (2 * g)
+		if Config.AntiCheatBypass ~= false and not hookmetamethod then
+			hum.WalkSpeed = math.min(targetWS, naturalWalkSpeed) if naturalUseJumpPower then
+				hum.JumpPower = math.min(targetJP, naturalJumpPower) else
+				hum.JumpHeight = math.min(targetJH, naturalJumpHeight) end
+			local extraSpeed = math.max(0, targetWS - naturalWalkSpeed)
+			if extraSpeed > 0 and hum.MoveDirection.Magnitude > 0 then local dtStep = math.min(deltaTime, 0.05)
+				local nextPos = root.Position + (hum.MoveDirection.Unit * (extraSpeed * dtStep))
 				root.CFrame = CFrame.new(nextPos) * (root.CFrame - root.CFrame.Position)
 				lastSafeAntiFlingCF = root.CFrame end
-			if (Config.JumpPower or 50) > 50 and UserInputService:IsKeyDown(Enum.KeyCode.Space) and hum.FloorMaterial ~= Enum.Material.Air then
-				local v = root.AssemblyLinearVelocity
-				root.AssemblyLinearVelocity = Vector3.new(v.X, Config.JumpPower, v.Z) end else
-			hum.WalkSpeed = Config.WalkSpeed hum.UseJumpPower = true hum.JumpPower = Config.JumpPower end end
+			if targetJP > naturalJumpPower and UserInputService:IsKeyDown(Enum.KeyCode.Space) and hum.FloorMaterial ~= Enum.Material.Air then
+				local v = root.AssemblyLinearVelocity root.AssemblyLinearVelocity = Vector3.new(v.X, targetJP, v.Z)
+			end else hum.WalkSpeed = targetWS if naturalUseJumpPower then hum.UseJumpPower = true
+				hum.JumpPower = targetJP else hum.UseJumpPower = false hum.JumpHeight = targetJH
+				hum.JumpPower = targetJP end end end
 	-- 9. Speed-Synced Spider Climb
 	if Config.SpiderClimb and not isFlightActive() and not FlingActive and hum.MoveDirection.Magnitude > 0.05 then
 		local rayDir = hum.MoveDirection.Unit * 2.5 local rayPos = root.Position
