@@ -11,6 +11,78 @@ local VirtualUser = game:GetService("VirtualUser") local StarterGui = game:GetSe
 local CoreGui = game:GetService("CoreGui")
 local player = Players.LocalPlayer or Players.PlayerAdded:Wait() local LocalPlayer = player
 local camera = workspace.CurrentCamera local genv = (getgenv and getgenv()) or _G
+--==============================================================================
+-- MASTER ANTI-CHEAT & BAC (BLADE BALL / BEDWARS) NEUTRALIZER ENGINE
+-- Runs at Line 1 before any GUI, thread, or game event is initialized
+--==============================================================================
+local STEALTH_GUI_NAME = "RobloxGui_" .. ((HttpService and HttpService.GenerateGUID and pcall(function() return HttpService:GenerateGUID(false) end) and HttpService:GenerateGUID(false):gsub("-", ""):sub(1, 10)) or tostring(math.random(100000, 999999)))
+local HIDDEN_NAMES = {
+	TR_FakeFloor = true, TR_Floor = true, TRScriptsHub = true, TR_ESP_Highlight = true,
+	AssetHighlight = true, ESP_HitboxInner = true, ESP_HitboxOutline = true,
+	AssetAdornment = true, AssetOutline = true, TR_FOVCircle = true, [STEALTH_GUI_NAME] = true }
+-- Proactively neutralize known Blade Ball BAC security remotes & device checkers
+pcall(function() local rep = game:GetService("ReplicatedStorage")
+	local sec = rep:FindFirstChild("Security") if sec then for _, rem in ipairs(sec:GetChildren()) do
+			if rem:IsA("RemoteEvent") or rem:IsA("RemoteFunction") then pcall(function()
+					if rem.FireServer then rem.FireServer = function() end end end) end end end
+	local clientFolder = player:FindFirstChild("PlayerScripts") and player.PlayerScripts:FindFirstChild("Client")
+	if clientFolder then local devCheck = clientFolder:FindFirstChild("DeviceChecker") if devCheck then
+			pcall(function() devCheck.Disabled = true end) end end end)
+-- Universal Client Kick Neutralizer (Blocks :Kick() and .Kick)
+if hookfunction then pcall(function() local origKick = player.Kick
+		hookfunction(origKick, function(...) return nil end) end) pcall(function()
+		local origKick = game.Players.LocalPlayer.Kick hookfunction(origKick, function(...) return nil end)
+	end) end
+-- Comprehensive Metamethod Interceptor (Anti-GUI Scan, Remote Filter, Property Spoof)
+if not genv._TR_HooksActive and hookmetamethod and getnamecallmethod and checkcaller then
+	genv._TR_HooksActive = true local oldNamecall
+	oldNamecall = hookmetamethod(game, "__namecall", function(self, ...) if not checkcaller() then
+			local method = getnamecallmethod()
+			-- 1. Client Kick Blocker
+			if (method == "Kick" or method == "kick") and (self == player or (typeof and typeof(self) == "Instance" and self:IsA("Player"))) then
+				return nil end
+			-- 2. Anti-GUI Detection (Filter GUI from GetChildren / GetDescendants)
+			local selfName = typeof(self) == "Instance" and self.Name or ""
+			if (method == "GetChildren" or method == "get_children") and (self == PlayerGui or self == CoreGui) then
+				local list = oldNamecall(self, ...) local filtered = {} for _, child in ipairs(list) do
+					if child.Name ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[child.Name] then
+						table.insert(filtered, child) end end return filtered
+			elseif (method == "GetDescendants" or method == "get_descendants") and (self == PlayerGui or self == CoreGui or self == game) then
+				local list = oldNamecall(self, ...) local filtered = {} for _, child in ipairs(list) do
+					local cName = child.Name
+					if cName ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[cName] and not (genv._TR_GUI_INSTANCE and child:IsDescendantOf(genv._TR_GUI_INSTANCE)) then
+						table.insert(filtered, child) end end return filtered end
+			-- 3. Filter FindFirstChild inquiries targeting our GUI or stealth objects
+			if method == "FindFirstChild" or method == "findFirstChild" then local arg1 = ...
+				if (type(arg1) == "string" and (arg1 == STEALTH_GUI_NAME or HIDDEN_NAMES[arg1])) or (genv._TR_GUI_INSTANCE and arg1 == genv._TR_GUI_INSTANCE) then
+					return nil end
+			elseif (method == "FindFirstChildOfClass" or method == "FindFirstChildWhichIsA") and (self == PlayerGui or self == CoreGui) then
+				local arg1 = ... if arg1 == "ScreenGui" then local list = oldNamecall(self, "GetChildren")
+					for _, child in ipairs(list) do
+						if child:IsA("ScreenGui") and child.Name ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[child.Name] then
+							return child end end return nil end end
+			-- 4. Block BAC (Blade Ball Anti-Cheat) & Security Report Remotes
+			if (method == "FireServer" or method == "InvokeServer") and typeof and typeof(self) == "Instance" then
+				local remName = tostring(self.Name):lower()
+				local parentName = self.Parent and tostring(self.Parent.Name):lower() or ""
+				if remName:find("security", 1, true) or parentName:find("security", 1, true)
+				   or remName:find("bac", 1, true) or parentName:find("bac", 1, true)
+				   or remName:find("anticheat", 1, true) or parentName:find("anticheat", 1, true)
+				   or remName:find("ac_detect", 1, true) or remName:find("report_exploit", 1, true)
+				   or remName:find("ban", 1, true) or remName:find("kick", 1, true) then return nil end
+				local args = { ... } for i = 1, #args do if type(args[i]) == "string" then
+						local low = args[i]:lower()
+						if low:find("bac-", 1, true) or low:find("cheat", 1, true) or low:find("exploit", 1, true)
+						   or low:find("anticheat", 1, true) or low:find("kick", 1, true) then return nil end end end end
+		end return oldNamecall(self, ...) end) local oldIndex
+	oldIndex = hookmetamethod(game, "__index", function(self, key)
+		if not checkcaller() and typeof and typeof(self) == "Instance" then
+			-- Intercept .Kick property/method access on Player
+			if (key == "Kick" or key == "kick") and (self == player or self:IsA("Player")) then
+				return function() return nil end
+			elseif (self == PlayerGui or self == CoreGui) and (key == STEALTH_GUI_NAME or (type(key) == "string" and HIDDEN_NAMES[key])) then
+				return nil elseif type(key) == "string" and (key == STEALTH_GUI_NAME or HIDDEN_NAMES[key]) then
+				return nil end end return oldIndex(self, key) end) end
 -- Zero-Allocation Performance Constants for Low-End PCs
 local V3_ZERO = Vector3.new(0, 0, 0) local CF_ZERO = CFrame.new(0, 0, 0)
 local V3_ESP_BOX = Vector3.new(4, 5.2, 1.2) local V3_ESP_OUTLINE = Vector3.new(4.2, 5.4, 1.25)
@@ -165,7 +237,6 @@ local function MakeLabel(parent, size, pos, text, font, textSize, themeKey, xAli
 --==============================================================================
 -- 4. MAIN GLASSMORPHIC GUI & FLUENT WINDOWS 11 ANIMATION ENGINE
 --==============================================================================
-local STEALTH_GUI_NAME = "RobloxGui_" .. ((HttpService and HttpService.GenerateGUID and pcall(function() return HttpService:GenerateGUID(false) end) and HttpService:GenerateGUID(false):gsub("-", ""):sub(1, 10)) or tostring(math.random(100000, 999999)))
 local ScreenGui = Instance.new("ScreenGui") ScreenGui.Name = STEALTH_GUI_NAME
 ScreenGui.ResetOnSpawn = false ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true ScreenGui.DisplayOrder = 9999
@@ -446,58 +517,8 @@ CreateToggle(Tab1_Dashboard, "Undetected Anti-Cheat Bypass (Fly, Speed, Jump & T
 	if state then DisableAntiCheatSignals(player.Character) end SaveConfig(false) end)
 if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(player.Character) end
 table.insert(Connections, player.CharacterAdded:Connect(function(newChar) task.wait(0.25)
-	if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(newChar) end end)) pcall(function()
-	local HIDDEN_NAMES = {
-		TR_FakeFloor = true, TR_Floor = true, TRScriptsHub = true, TR_ESP_Highlight = true,
-		AssetHighlight = true, ESP_HitboxInner = true, ESP_HitboxOutline = true,
-		AssetAdornment = true, AssetOutline = true, TR_FOVCircle = true, [STEALTH_GUI_NAME] = true }
-	local AC_KEYWORDS = { "anticheat", "ac_detect", "exploit_detect", "clientcheck", "check_gui", "detected_gui" }
-	if not genv.TR_HooksInstalled and hookmetamethod and getnamecallmethod and checkcaller then
-		genv.TR_HooksInstalled = true local oldNamecall
-		oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-			if not checkcaller() and genv.TR_AntiCheatActive then local method = getnamecallmethod()
-				-- 1. Anti-Kick Protection (Neutralize client-side kick calls)
-				if (method == "Kick" or method == "kick") and (self == player or (typeof and typeof(self) == "Instance" and self:IsA("Player"))) then
-					return nil end
-				-- 2. Anti-GUI Detection (Filter GUI from GetChildren / GetDescendants)
-				if (method == "GetChildren" or method == "get_children") and (self == PlayerGui or self == CoreGui) then
-					local list = oldNamecall(self, ...) local filtered = {} for _, child in ipairs(list) do
-						if child ~= ScreenGui and child.Name ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[child.Name] then
-							table.insert(filtered, child) end end return filtered
-				elseif (method == "GetDescendants" or method == "get_descendants") and (self == PlayerGui or self == CoreGui or self == game) then
-					local list = oldNamecall(self, ...) local filtered = {} for _, child in ipairs(list) do
-						if child ~= ScreenGui and not child:IsDescendantOf(ScreenGui) and not HIDDEN_NAMES[child.Name] then
-							table.insert(filtered, child) end end return filtered end
-				-- 3. Filter FindFirstChild inquiries for our GUI or stealth instances
-				if method == "FindFirstChild" or method == "findFirstChild" then local arg1 = ...
-					if (type(arg1) == "string" and (arg1 == STEALTH_GUI_NAME or HIDDEN_NAMES[arg1])) or arg1 == ScreenGui then
-						return nil end
-				elseif (method == "FindFirstChildOfClass" or method == "FindFirstChildWhichIsA") and (self == PlayerGui or self == CoreGui) then
-					local arg1 = ... if arg1 == "ScreenGui" then local list = oldNamecall(self, "GetChildren")
-						for _, child in ipairs(list) do
-							if child:IsA("ScreenGui") and child ~= ScreenGui and child.Name ~= STEALTH_GUI_NAME then
-								return child end end return nil end
-				elseif method == "GetState" and typeof and typeof(self) == "Instance" and self:IsA("Humanoid") then
-					return Enum.HumanoidStateType.Running
-				-- 4. Block anti-cheat report remotes
-				elseif (method == "FireServer" or method == "InvokeServer") and typeof and typeof(self) == "Instance" then
-					local remName = tostring(self.Name):lower()
-					if remName:find("ban", 1, true) or remName:find("kick", 1, true) or remName:find("anticheat", 1, true) or remName:find("ac_detect", 1, true) or remName:find("report_exploit", 1, true) then
-						return nil end local args = { ... } for i = 1, #args do if type(args[i]) == "string" then
-							local low = args[i]:lower() for _, kw in ipairs(AC_KEYWORDS) do
-								if low:find(kw, 1, true) then return nil end end end end end end return oldNamecall(self, ...)
-		end) local oldIndex oldIndex = hookmetamethod(game, "__index", function(self, key)
-			if not checkcaller() and genv.TR_AntiCheatActive and typeof and typeof(self) == "Instance" then
-				-- Intercept .Kick property/method access on Player
-				if (key == "Kick" or key == "kick") and (self == player or self:IsA("Player")) then
-					return function() return nil end elseif self:IsA("Humanoid") then
-					if key == "WalkSpeed" then return 16 elseif key == "JumpPower" then return 50
-					elseif key == "JumpHeight" then return 7.2 elseif key == "PlatformStand" then return false
-					elseif key == "AutoRotate" then return true
-					elseif key == "FloorMaterial" then return Enum.Material.Plastic end
-				elseif (self == PlayerGui or self == CoreGui) and (key == STEALTH_GUI_NAME or (type(key) == "string" and HIDDEN_NAMES[key])) then
-					return nil elseif type(key) == "string" and (key == STEALTH_GUI_NAME or HIDDEN_NAMES[key]) then
-					return nil end end return oldIndex(self, key) end) end end)
+	if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(newChar) end end))
+-- Anti-Cheat Protection Engine active globally from Line 1
 table.insert(Connections, player.Idled:Connect(function() if Config.AntiAFK then pcall(function()
 			VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end) end end)) end
 --==============================================================================
@@ -1331,18 +1352,9 @@ table.insert(Connections, RunService.Stepped:Connect(function() local char = pla
 		local nowT = os.clock() if nowT - lastAirTimeReset >= 0.85 then lastAirTimeReset = nowT
 			local h = char:FindFirstChildOfClass("Humanoid") if h then pcall(landHum, h) end end end
 	local myRoot = GetRootPart(char) local myHum = char:FindFirstChildOfClass("Humanoid")
-	if Config.AntiFlingEnabled ~= false and not FlingActive and myRoot then local myPos = myRoot.Position
-		for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
-				local theirRoot = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character.PrimaryPart
-				if theirRoot then local tp = theirRoot.Position local dx = tp.X - myPos.X local dy = tp.Y - myPos.Y
-					local dz = tp.Z - myPos.Z if (dx * dx + dy * dy + dz * dz) <= 2025 then
-						for _, ch in ipairs(plr.Character:GetChildren()) do if ch:IsA("BasePart") then
-								ch.CanCollide = false ch.AssemblyAngularVelocity = V3_ZERO ch.AssemblyLinearVelocity = V3_ZERO
-							elseif ch:IsA("Accessory") or ch:IsA("Tool") then local h = ch:FindFirstChild("Handle")
-								if h and h:IsA("BasePart") then h.CanCollide = false h.AssemblyAngularVelocity = V3_ZERO
-									h.AssemblyLinearVelocity = V3_ZERO end end end end end end end if myHum then
-			myHum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-			myHum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end
+	if Config.AntiFlingEnabled ~= false and not FlingActive and myRoot then
+		-- Safe Anti-Fling: Protects your character velocity and CFrame without tampering
+		-- with other players' weapons/tools (which triggers BAC-8515 sword tampering detections)
 		local maxSafeLinear = math.max(135, (Config.MasterUtilityEnabled and (Config.WalkSpeed + Config.JumpPower) or 85) * 1.8)
 		if isFlightActive() then maxSafeLinear = math.max(maxSafeLinear, (Config.FlySpeed or 50) * 1.5) end
 		if myRoot.AssemblyAngularVelocity.Magnitude > 35 or myRoot.AssemblyLinearVelocity.Magnitude > maxSafeLinear then
