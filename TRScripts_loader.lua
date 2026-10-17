@@ -118,6 +118,11 @@ if not genv._TR_HooksActive and hookmetamethod and getnamecallmethod and checkca
 			-- Intercept .Kick property/method access on Player
 			if (key == "Kick" or key == "kick") and (self == player or self:IsA("Player")) then
 				return function() return nil end
+			elseif genv._TR_SilentAimActive and genv._TR_GetSilentTargetPart and (key == "Hit" or key == "Target") and self:IsA("Mouse") then
+				local tPart = genv._TR_GetSilentTargetPart()
+				if tPart and tPart.Parent then
+					return (key == "Hit") and tPart.CFrame or tPart
+				end
 			elseif (self == PlayerGui or self == CoreGui) and (key == STEALTH_GUI_NAME or (type(key) == "string" and HIDDEN_NAMES[key])) then
 				return nil elseif type(key) == "string" and (key == STEALTH_GUI_NAME or HIDDEN_NAMES[key]) then
 				return nil end end return oldIndex(self, key) end) end
@@ -183,7 +188,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V96.json", "TRScripts_Config_V95.json", "TRScripts_Config_V94.json",
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 16, JumpPower = 50, FOV = 70,
-		FlySpeed = 50, FlyKeybind = "E", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotFOVRadius = 200,
+		FlySpeed = 50, FlyKeybind = "E", MouseLockKeybind = "M", AimbotKeybind = "Q", SilentAimKeybind = "T", AimbotFOVRadius = 200,
 		AimbotFOVCircleEnabled = true, AimbotEnabled = false, SilentAimEnabled = false, StrongLock = false, WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
@@ -213,7 +218,12 @@ local function syncAllSystems() SaveConfig(false) end local function LoadConfig(
 					if type(decoded.RadarKeybinds) == "table" then savedConfig.RadarKeybinds = decoded.RadarKeybinds end
 					if type(decoded.ExecutorTabs) == "table" then savedConfig.ExecutorTabs = decoded.ExecutorTabs end
 					if type(decoded.ActiveExecutorTab) == "number" then savedConfig.ActiveExecutorTab = decoded.ActiveExecutorTab end
-				end end end end) end LoadConfig() local DefaultLighting = { ClockTime = Lighting.ClockTime,
+				end end end end)
+	if not savedConfig.Settings.SilentAimKeybind then savedConfig.Settings.SilentAimKeybind = "T" end
+	if savedConfig.Settings.AimbotEnabled and savedConfig.Settings.SilentAimEnabled then
+		savedConfig.Settings.AimbotEnabled = false
+	end
+end LoadConfig() local DefaultLighting = { ClockTime = Lighting.ClockTime,
 	Brightness = Lighting.Brightness, GlobalShadows = Lighting.GlobalShadows,
 	OutdoorAmbient = Lighting.OutdoorAmbient } local DefaultCamera = {
 	FOV = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or 70,
@@ -485,7 +495,73 @@ local Tab8_Executor  = CreateTab("Script Executor", E.Laptop, 8)
 --==============================================================================
 -- 7. TAB 1: THEMES, PERFORMANCE & PROTECTION
 --==============================================================================
-local PerfLabel, CursorUnlockedOverride do
+local PerfLabel, CursorUnlockedOverride, SetMouseLockState, ActiveKeybindCaptureCallback, TryAssignUniqueKeybind
+do
+local RefreshMouseLockUI
+local function FindKeybindConflict(keyName, ignoreSlot)
+	if not keyName or keyName == "" or keyName == "None" then return nil end
+	if keyName == "X" and ignoreSlot ~= "MenuToggle" then
+		return "Toggle UI Menu [X]"
+	end
+	if ignoreSlot ~= "MouseLock" and (Config.MouseLockKeybind or "M") == keyName then
+		return "Mouse Lock"
+	end
+	if ignoreSlot ~= "Flight" and (savedConfig.Settings.FlyKeybind or "E") == keyName then
+		return "Flight Toggle"
+	end
+	if ignoreSlot ~= "Aimbot" and (Config.AimbotKeybind or "Q") == keyName then
+		return "Aimbot Lock"
+	end
+	if ignoreSlot ~= "SilentAim" and (Config.SilentAimKeybind or "T") == keyName then
+		return "Silent Aim"
+	end
+	if type(savedConfig.Waypoints) == "table" then
+		for idx, wp in ipairs(savedConfig.Waypoints) do
+			if ignoreSlot ~= ("Waypoint:" .. tostring(idx)) and wp.Keybind and wp.Keybind ~= "None" and wp.Keybind == keyName then
+				return "Waypoint (" .. tostring(wp.Name or ("#" .. idx)) .. ")"
+			end
+		end
+	end
+	if type(savedConfig.RadarKeybinds) == "table" then
+		for plrName, boundKey in pairs(savedConfig.RadarKeybinds) do
+			if ignoreSlot ~= ("Radar:" .. tostring(plrName)) and boundKey and boundKey ~= "None" and boundKey == keyName then
+				return "Radar Teleport (@" .. tostring(plrName) .. ")"
+			end
+		end
+	end
+	return nil
+end
+TryAssignUniqueKeybind = function(keyName, slotId, applyFn, refreshFn, btnObj)
+	if not keyName or keyName == "None" then
+		if applyFn then applyFn("None") end
+		if refreshFn then refreshFn() end
+		SaveConfig(false)
+		return true
+	end
+	local conflictOwner = FindKeybindConflict(keyName, slotId)
+	if conflictOwner then
+		if btnObj then
+			btnObj.Text = "[Used: " .. tostring(keyName) .. "]"
+			task.delay(1.1, function()
+				if refreshFn then pcall(refreshFn) end
+			end)
+		elseif refreshFn then
+			pcall(refreshFn)
+		end
+		pcall(function()
+			StarterGui:SetCore("SendNotification", {
+				Title = "Keybind Already Assigned",
+				Text = "Key [" .. tostring(keyName) .. "] is already assigned to " .. tostring(conflictOwner) .. "!",
+				Duration = 3
+			})
+		end)
+		return false
+	end
+	if applyFn then applyFn(keyName) end
+	if refreshFn then refreshFn() end
+	SaveConfig(false)
+	return true
+end
 CreateSectionHeader(Tab1_Dashboard, "UI Theme Customizer (6 Dark Themes)", 1)
 local ThemeCard = CreateCard(Tab1_Dashboard, 88, 2) local ThemeGrid = Instance.new("UIGridLayout")
 ThemeGrid.CellSize = UDim2.new(0, 160, 0, 32) ThemeGrid.CellPadding = UDim2.new(0, 10, 0, 8)
@@ -541,7 +617,7 @@ SetMouseLockState = function(newState) CursorUnlockedOverride = newState and tru
 mouseLockToggleBtn.MouseButton1Click:Connect(function() SetMouseLockState(not CursorUnlockedOverride)
 end) mouseLockKeyAssignBtn.MouseButton1Click:Connect(function()
 	mouseLockKeyAssignBtn.Text = "[Key / Del]" ActiveKeybindCaptureCallback = function(keyName)
-		Config.MouseLockKeybind = keyName RefreshMouseLockUI() SaveConfig(false) end end)
+		TryAssignUniqueKeybind(keyName, "MouseLock", function(val) Config.MouseLockKeybind = val end, RefreshMouseLockUI, mouseLockKeyAssignBtn) end end)
 mouseLockKeyDeleteBtn.MouseButton1Click:Connect(function() Config.MouseLockKeybind = "None"
 	ActiveKeybindCaptureCallback = nil RefreshMouseLockUI() SaveConfig(false) end) RefreshMouseLockUI()
 CreateSectionHeader(Tab1_Dashboard, "Protection & Physics Stabilizers", 6)
@@ -570,7 +646,7 @@ table.insert(Connections, player.Idled:Connect(function() if Config.AntiAFK then
 --==============================================================================
 -- 8. TAB 2: WAYPOINTS & TELEPORT
 --==============================================================================
-local GetRootPart, freezePosition, lastSafeAntiFlingCF, SafeTeleportToCoords, ActiveKeybindCaptureCallback
+local GetRootPart, freezePosition, lastSafeAntiFlingCF, SafeTeleportToCoords
 do CreateSectionHeader(Tab2_Waypoints, "Coordinates & Direct Teleport", 1)
 local CoordsTopCard = CreateCard(Tab2_Waypoints, 88, 2)
 local CopyCoordsBtn = MakeButton(CoordsTopCard, UDim2.new(0, 160, 0, 32), UDim2.new(0, 12, 0, 10), E.Clip .. " Copy Coords", "Accent", 12)
@@ -631,8 +707,10 @@ ActiveKeybindCaptureCallback = nil local function RebuildWaypointsUI()
 		local CoordsLbl = MakeLabel(Row, UDim2.new(0, 135, 1, 0), UDim2.new(0, 192, 0, 0), string.format("%.0f, %.0f, %.0f", wp.X or 0, wp.Y or 0, wp.Z or 0), Enum.Font.Gotham, 11, "TextSecondary", Enum.TextXAlignment.Left)
 		local KeyBtn = MakeButton(Row, UDim2.new(0, 78, 0, 28), UDim2.new(1, -206, 0.5, -14), "[" .. (wp.Keybind or "None") .. "]", "PanelBg", 11)
 		KeyBtn.MouseButton1Click:Connect(function() KeyBtn.Text = "[Key/Del]"
-			ActiveKeybindCaptureCallback = function(keyName) wp.Keybind = keyName
-				KeyBtn.Text = "[" .. keyName .. "]" SaveConfig(false) end end)
+			ActiveKeybindCaptureCallback = function(keyName)
+				TryAssignUniqueKeybind(keyName, "Waypoint:" .. tostring(idx), function(val) wp.Keybind = val end, function()
+					KeyBtn.Text = "[" .. (wp.Keybind or "None") .. "]"
+				end, KeyBtn) end end)
 		KeyBtn.MouseButton2Click:Connect(function() wp.Keybind = "None" KeyBtn.Text = "[None]"
 			ActiveKeybindCaptureCallback = nil SaveConfig(false) end)
 		local TpBtn = MakeButton(Row, UDim2.new(0, 74, 0, 28), UDim2.new(1, -122, 0.5, -14), "Teleport", "Accent", 11)
@@ -676,9 +754,12 @@ RefreshRadarCards = function() for _, child in ipairs(RadarContainer:GetChildren
 		local savedKey = savedConfig.RadarKeybinds[plr.Name] or "None"
 		local KeyBtn = MakeButton(Card, UDim2.new(0, 74, 0, 28), UDim2.new(1, -258, 0.5, -14), "[" .. savedKey .. "]", "PanelBg", 11)
 		KeyBtn.MouseButton1Click:Connect(function() KeyBtn.Text = "[Key/Del]"
-			ActiveKeybindCaptureCallback = function(keyName) if keyName == "None" then
-					savedConfig.RadarKeybinds[plr.Name] = nil else savedConfig.RadarKeybinds[plr.Name] = keyName end
-				KeyBtn.Text = "[" .. keyName .. "]" SaveConfig(false) end end)
+			ActiveKeybindCaptureCallback = function(keyName)
+				TryAssignUniqueKeybind(keyName, "Radar:" .. tostring(plr.Name), function(val)
+					if val == "None" then savedConfig.RadarKeybinds[plr.Name] = nil else savedConfig.RadarKeybinds[plr.Name] = val end
+				end, function()
+					KeyBtn.Text = "[" .. (savedConfig.RadarKeybinds[plr.Name] or "None") .. "]"
+				end, KeyBtn) end end)
 		KeyBtn.MouseButton2Click:Connect(function() savedConfig.RadarKeybinds[plr.Name] = nil
 			KeyBtn.Text = "[None]" ActiveKeybindCaptureCallback = nil SaveConfig(false) end)
 		local TpBtn = MakeButton(Card, UDim2.new(0, 78, 0, 28), UDim2.new(1, -176, 0.5, -14), "Teleport", "Accent", 11)
@@ -807,8 +888,8 @@ end toggleFlightState = function() if not masterFlightEnabled then return end if
 	if syncAllSystems then syncAllSystems() end RefreshFlyKeyTexts() if not masterFlightEnabled then
 		stopFlight() end end) keyFlyToggleBtn.MouseButton1Click:Connect(toggleFlightState)
 flyKeyAssignBtn.MouseButton1Click:Connect(function() flyKeyAssignBtn.Text = "[Key / Del]"
-	ActiveKeybindCaptureCallback = function(keyName) savedConfig.Settings.FlyKeybind = keyName
-		RefreshFlyKeyTexts() SaveConfig(false) end end) flyKeyDeleteBtn.MouseButton1Click:Connect(function()
+	ActiveKeybindCaptureCallback = function(keyName)
+		TryAssignUniqueKeybind(keyName, "Flight", function(val) savedConfig.Settings.FlyKeybind = val end, RefreshFlyKeyTexts, flyKeyAssignBtn) end end) flyKeyDeleteBtn.MouseButton1Click:Connect(function()
 	savedConfig.Settings.FlyKeybind = "None" ActiveKeybindCaptureCallback = nil RefreshFlyKeyTexts()
 	SaveConfig(false) end) RefreshFlyKeyTexts()
 RecordNaturalHumanoidDefaults = function(hum)
@@ -981,25 +1062,30 @@ deselectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(false) e
 --==============================================================================
 -- 13. TAB 7: AIMBOT, ESP, CAMERA & LIGHTING VISUALS
 --==============================================================================
-local ESP_UPDATE_INTERVAL, MAX_DISTANCE, LERP_ALPHA = 0.033333333333333, 500, 0.16
+local ESP_UPDATE_INTERVAL, LERP_ALPHA = 0.033333333333333, 0.16
 local FOV_RADIUS = tonumber(Config.AimbotFOVRadius) or 200
 local fovCircleEnabled = (Config.AimbotFOVCircleEnabled ~= false)
 local aimbotEnabled = (Config.AimbotEnabled == true)
 local silentAimEnabled = (Config.SilentAimEnabled == true)
+if aimbotEnabled and silentAimEnabled then aimbotEnabled = false Config.AimbotEnabled = false end
 genv._TR_SilentAimActive = silentAimEnabled
 local strongLock = (Config.StrongLock == true)
-local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
 local aimbotTeamCheck = (Config.AimbotTeamCheck ~= false)
 local autoShootEnabled = (Config.AutoShootEnabled == true) local lastAutoShoot = 0
-local espShowTeammates = (Config.ESPShowTeammates == true)
-local aimPartName = Config.AimPartName or "Head" local currentTarget, lastEspUpdate = nil, 0
+local currentTarget, lastEspUpdate = nil, 0
 local excludedPlayers, characterCache, adornmentsCache = {}, {}, {}
-local guiFovCircle, guiFovStroke = nil, nil
+local guiFovCircle = nil
 local reusableWallcheckParams, updateWallcheckFilter
-local IsTeammate, getTargetPart, isTargetVisible, removePlayerAdornments, clearAllAdornments
-local RefreshESPHighlights, updateAllAdornments, findBestTarget, getSilentTargetPart, HookRivalsUtilityRaycast
-local aimbotStatusLabel, excludeFrame, updateExcludeCount, rebuildExcludeList, toggleAimbot, ApplyCameraMode, triggerAutoShoot
-do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
+local IsTeammate, getTargetPart, isTargetVisible, removePlayerAdornments, clearAllAdornments, worldToScreenDistance
+local RefreshESPHighlights, updateAllAdornments, findBestTarget, getSilentTargetPart
+local aimbotStatusLabel, silentAimStatusLabel, excludeFrame, updateExcludeCount, rebuildExcludeList, toggleAimbot, toggleSilentAim, ApplyCameraMode, triggerAutoShoot
+;(function()
+	local MAX_DISTANCE = 500
+	local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
+	local espShowTeammates = (Config.ESPShowTeammates == true)
+	local aimPartName = Config.AimPartName or "Head"
+	local guiFovStroke, HookRivalsUtilityRaycast
+	guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	guiFovCircle.AnchorPoint = Vector2.new(0.5, 0.5) guiFovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
 	guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2)
 	guiFovCircle.BackgroundTransparency = 1 guiFovCircle.BorderSizePixel = 0 guiFovCircle.Visible = false
@@ -1050,11 +1136,16 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		reusableWallcheckParams.FilterDescendantsInstances = reusableWallFilter end updateWallcheckFilter()
 	isTargetVisible = function(targetPart, targetCharacter) if not wallcheckEnabled then return true end
 		local cam = workspace.CurrentCamera if not cam or not targetPart then return false end
+		if reusableWallFilter[1] ~= LocalPlayer.Character then updateWallcheckFilter(LocalPlayer.Character) end
 		local camPos = cam.CFrame.Position local tPos = targetPart.Position
 		local dir = Vector3.new(tPos.X - camPos.X, tPos.Y - camPos.Y, tPos.Z - camPos.Z)
 		local res = workspace:Raycast(camPos, dir, reusableWallcheckParams)
-		return (not res) or (targetCharacter and res.Instance and res.Instance:IsDescendantOf(targetCharacter))
-	end local function worldToScreenDistance(worldPos) local cam = workspace.CurrentCamera
+		if not res or not res.Instance then return true end
+		if targetCharacter and res.Instance:IsDescendantOf(targetCharacter) then return true end
+		local hurtFolder = workspace:FindFirstChild("HurtEffect")
+		if hurtFolder and res.Instance:IsDescendantOf(hurtFolder) then return true end
+		return false
+	end worldToScreenDistance = function(worldPos) local cam = workspace.CurrentCamera
 		if not cam then return nil, false, math.huge end
 		local vp, onScreen = cam:WorldToViewportPoint(worldPos)
 		if not onScreen or vp.Z <= 0 then return nil, false, math.huge end local vs = cam.ViewportSize
@@ -1110,35 +1201,67 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 							bestDist, bestPlr = sDist, plr end end end end end return bestPlr end
 	getSilentTargetPart = function()
 		if not silentAimEnabled then return nil, nil end
-		local plr = currentTarget or findBestTarget()
-		if plr and plr.Character then
-			local p = getTargetPart(plr.Character)
-			if p then return p, plr.DisplayName or plr.Name end
-		end
 		local cam = workspace.CurrentCamera
-		local myChar = LocalPlayer.Character
 		if not cam then return nil, nil end
-		local bestPart, bestName, bestDist = nil, nil, fovCircleEnabled and FOV_RADIUS or math.huge
+		local myChar = LocalPlayer.Character
+		local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar.PrimaryPart)
+		local refPos = (myRoot and myRoot.Position) or cam.CFrame.Position
 		local camPos = cam.CFrame.Position
 		local maxDistSq = MAX_DISTANCE * MAX_DISTANCE
-		local function checkModel(mdl)
-			if not mdl or mdl == myChar or not mdl:IsA("Model") then return end
-			local hum = mdl:FindFirstChildOfClass("Humanoid")
-			local part = getTargetPart(mdl)
-			if part and (not hum or hum.Health > 0) then
-				local pp = part.Position
-				local dx, dy, dz = pp.X - camPos.X, pp.Y - camPos.Y, pp.Z - camPos.Z
-				if (dx * dx + dy * dy + dz * dz) <= maxDistSq then
-					local _, onScreen, sDist = worldToScreenDistance(pp)
-					if onScreen and sDist <= bestDist and isTargetVisible(part, mdl) then
-						bestDist, bestPart, bestName = sDist, part, mdl.Name
+		local maxFovRadius = fovCircleEnabled and FOV_RADIUS or math.huge
+		local bestPart, bestName, bestScore = nil, nil, math.huge
+		for _, plr in ipairs(Players:GetPlayers()) do
+			local validEnemy = (not aimbotTeamCheck) or (not IsTeammate(plr))
+			if plr ~= LocalPlayer and not excludedPlayers[plr] and validEnemy then
+				local char = plr.Character
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				local part = getTargetPart(char)
+				if char and hum and hum.Health > 0 and part then
+					local pp = part.Position
+					local cdx, cdy, cdz = pp.X - camPos.X, pp.Y - camPos.Y, pp.Z - camPos.Z
+					local camDistSq = cdx * cdx + cdy * cdy + cdz * cdz
+					if camDistSq <= maxDistSq then
+						local _, onScreen, sDist = worldToScreenDistance(pp)
+						if onScreen and sDist <= maxFovRadius and isTargetVisible(part, char) then
+							local rdx, rdy, rdz = pp.X - refPos.X, pp.Y - refPos.Y, pp.Z - refPos.Z
+							local worldDist = math.sqrt(rdx * rdx + rdy * rdy + rdz * rdz)
+							local score = worldDist + (sDist * 0.15)
+							if score < bestScore then
+								bestScore = score
+								bestPart = part
+								bestName = plr.DisplayName or plr.Name
+							end
+						end
 					end
 				end
 			end
 		end
+		if bestPart then return bestPart, bestName end
 		local hurtFolder = workspace:FindFirstChild("HurtEffect")
 		if hurtFolder then
-			for _, m in ipairs(hurtFolder:GetChildren()) do checkModel(m) end
+			for _, mdl in ipairs(hurtFolder:GetChildren()) do
+				if mdl and mdl ~= myChar and mdl:IsA("Model") then
+					local hum = mdl:FindFirstChildOfClass("Humanoid")
+					local part = getTargetPart(mdl)
+					if part and (not hum or hum.Health > 0) then
+						local pp = part.Position
+						local cdx, cdy, cdz = pp.X - camPos.X, pp.Y - camPos.Y, pp.Z - camPos.Z
+						if (cdx * cdx + cdy * cdy + cdz * cdz) <= maxDistSq then
+							local _, onScreen, sDist = worldToScreenDistance(pp)
+							if onScreen and sDist <= maxFovRadius and isTargetVisible(part, mdl) then
+								local rdx, rdy, rdz = pp.X - refPos.X, pp.Y - refPos.Y, pp.Z - refPos.Z
+								local worldDist = math.sqrt(rdx * rdx + rdy * rdy + rdz * rdz)
+								local score = worldDist + (sDist * 0.15)
+								if score < bestScore then
+									bestScore = score
+									bestPart = part
+									bestName = mdl.Name
+								end
+							end
+						end
+					end
+				end
+			end
 		end
 		return bestPart, bestName
 	end
@@ -1194,12 +1317,28 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	aimbotKeyDeleteBtn.Font = Enum.Font.GothamBold aimbotKeyDeleteBtn.TextSize = 11
 	aimbotKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	aimbotKeyDeleteBtn.Text = E.Trash .. " Delete Key" AddCorner(aimbotKeyDeleteBtn, 6)
-	-- Neat V94 CreateToggle rows for Aimbot & RIVALS Silent Aim Settings
-	CreateToggle(Tab7_Visuals, "Silent Aim [RIVALS & Universal] (Bullet Redirect - No Camera Move)", silentAimEnabled, 3, function(state)
-		silentAimEnabled = state Config.SilentAimEnabled = state genv._TR_SilentAimActive = state
-		if state then HookRivalsUtilityRaycast() end
-		if not state and not aimbotEnabled then currentTarget = nil if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end end
-		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
+	-- Silent Aim Engine & Keybind Controls Card (Mutual Exclusive with Aimbot + FOV Circle & Dynamic Nearest Visible Target)
+	local SilentAimEngineCard = CreateCard(Tab7_Visuals, 92, 3)
+	local silentAimToggleBtn = Instance.new("TextButton", SilentAimEngineCard)
+	silentAimToggleBtn.Size = UDim2.new(0.48, -12, 0, 34) silentAimToggleBtn.Position = UDim2.new(0, 10, 0, 10)
+	silentAimToggleBtn.Font = Enum.Font.GothamBold silentAimToggleBtn.TextSize = 12
+	silentAimToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255) AddCorner(silentAimToggleBtn, 6)
+	silentAimStatusLabel = Instance.new("TextLabel", SilentAimEngineCard)
+	silentAimStatusLabel.Size = UDim2.new(0.52, -14, 0, 34)
+	silentAimStatusLabel.Position = UDim2.new(0.48, 4, 0, 10) silentAimStatusLabel.BackgroundTransparency = 0.15
+	silentAimStatusLabel.Font = Enum.Font.GothamSemibold silentAimStatusLabel.TextSize = 12
+	silentAimStatusLabel.Text = "Silent: Idle"
+	RegisterThemeObject(silentAimStatusLabel, "BackgroundColor3", "PanelBg")
+	RegisterThemeObject(silentAimStatusLabel, "TextColor3", "TextPrimary") AddCorner(silentAimStatusLabel, 6)
+	local silentKeyBindLabel = MakeLabel(SilentAimEngineCard, UDim2.new(0, 210, 0, 30), UDim2.new(0, 12, 0, 52), "Silent Aim Shortcut Keybind:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+	local silentAimKeyAssignBtn = MakeButton(SilentAimEngineCard, UDim2.new(0, 130, 0, 30), UDim2.new(1, -240, 0, 52), "Bind Key: [T]", "PanelBg", 11)
+	local silentAimKeyDeleteBtn = Instance.new("TextButton", SilentAimEngineCard)
+	silentAimKeyDeleteBtn.Size = UDim2.new(0, 92, 0, 30)
+	silentAimKeyDeleteBtn.Position = UDim2.new(1, -102, 0, 52)
+	silentAimKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
+	silentAimKeyDeleteBtn.Font = Enum.Font.GothamBold silentAimKeyDeleteBtn.TextSize = 11
+	silentAimKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	silentAimKeyDeleteBtn.Text = E.Trash .. " Delete Key" AddCorner(silentAimKeyDeleteBtn, 6)
 	CreateToggle(Tab7_Visuals, "Strong Lock Mode (Instant Camera Snap vs Smooth Lerp)", strongLock, 4, function(state)
 		strongLock = state Config.StrongLock = state if not strongLock then currentTarget = nil end
 		SaveConfig(false) end)
@@ -1243,6 +1382,9 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		local k = Config.AimbotKeybind or "None" aimbotKeyAssignBtn.Text = "Bind Key: [" .. k .. "]"
 		aimbotToggleBtn.Text = "Aimbot Lock [" .. k .. "]: " .. (aimbotEnabled and "ON" or "OFF")
 		aimbotToggleBtn.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(38, 168, 92) or Color3.fromRGB(185, 52, 52)
+		local sk = Config.SilentAimKeybind or "None" silentAimKeyAssignBtn.Text = "Bind Key: [" .. sk .. "]"
+		silentAimToggleBtn.Text = "Silent Aim [" .. sk .. "]: " .. (silentAimEnabled and "ON" or "OFF")
+		silentAimToggleBtn.BackgroundColor3 = silentAimEnabled and Color3.fromRGB(38, 168, 92) or Color3.fromRGB(185, 52, 52)
 		aimPartBtn.Text = (aimPartName == "Head") and "Aim Part: Head" or "Aim Part: Body"
 		SyncAimbotFovCircleVisibility() end table.insert(ThemeObjects.CustomCallbacks, RefreshAimbotVisuals)
 	updateExcludeCount = function() local c = 0 for _ in pairs(excludedPlayers) do c = c + 1 end
@@ -1260,15 +1402,54 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 					end updateExcludeCount() RefreshESPHighlights() end) totalH = totalH + 31 end end
 		excludeList.CanvasSize = UDim2.new(0, 0, 0, totalH) updateExcludeCount() end
 	table.insert(ThemeObjects.CustomCallbacks, function() if excludeFrame.Visible then rebuildExcludeList() end end)
-	toggleAimbot = function() aimbotEnabled = not aimbotEnabled Config.AimbotEnabled = aimbotEnabled
-		if not aimbotEnabled then currentTarget = nil aimbotStatusLabel.Text = "Status: Idle" end
-		RefreshAimbotVisuals() SaveConfig(false) end aimbotToggleBtn.MouseButton1Click:Connect(toggleAimbot)
+	toggleAimbot = function()
+		aimbotEnabled = not aimbotEnabled
+		Config.AimbotEnabled = aimbotEnabled
+		if aimbotEnabled and silentAimEnabled then
+			silentAimEnabled = false
+			Config.SilentAimEnabled = false
+			genv._TR_SilentAimActive = false
+			if silentAimStatusLabel then silentAimStatusLabel.Text = "Silent: Idle" end
+		end
+		if not aimbotEnabled then
+			currentTarget = nil
+			if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end
+		end
+		RefreshAimbotVisuals()
+		SaveConfig(false)
+	end
+	toggleSilentAim = function()
+		silentAimEnabled = not silentAimEnabled
+		Config.SilentAimEnabled = silentAimEnabled
+		genv._TR_SilentAimActive = silentAimEnabled
+		if silentAimEnabled then
+			if aimbotEnabled then
+				aimbotEnabled = false
+				Config.AimbotEnabled = false
+			end
+			currentTarget = nil
+			if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end
+			HookRivalsUtilityRaycast()
+		else
+			if silentAimStatusLabel then silentAimStatusLabel.Text = "Silent: Idle" end
+		end
+		RefreshAimbotVisuals()
+		SaveConfig(false)
+	end
+	aimbotToggleBtn.MouseButton1Click:Connect(toggleAimbot)
+	silentAimToggleBtn.MouseButton1Click:Connect(toggleSilentAim)
 	aimPartBtn.MouseButton1Click:Connect(function()
 		aimPartName = (aimPartName == "Head") and "HumanoidRootPart" or "Head" Config.AimPartName = aimPartName
-		RefreshAimbotVisuals() SaveConfig(false) end) aimbotKeyAssignBtn.MouseButton1Click:Connect(function()
+		RefreshAimbotVisuals() SaveConfig(false) end)
+	aimbotKeyAssignBtn.MouseButton1Click:Connect(function()
 		aimbotKeyAssignBtn.Text = "[Key / Del]" ActiveKeybindCaptureCallback = function(k)
-			Config.AimbotKeybind = k RefreshAimbotVisuals() SaveConfig(false) end end)
+			TryAssignUniqueKeybind(k, "Aimbot", function(val) Config.AimbotKeybind = val end, RefreshAimbotVisuals, aimbotKeyAssignBtn) end end)
 	aimbotKeyDeleteBtn.MouseButton1Click:Connect(function() Config.AimbotKeybind = "None"
+		ActiveKeybindCaptureCallback = nil RefreshAimbotVisuals() SaveConfig(false) end)
+	silentAimKeyAssignBtn.MouseButton1Click:Connect(function()
+		silentAimKeyAssignBtn.Text = "[Key / Del]" ActiveKeybindCaptureCallback = function(k)
+			TryAssignUniqueKeybind(k, "SilentAim", function(val) Config.SilentAimKeybind = val end, RefreshAimbotVisuals, silentAimKeyAssignBtn) end end)
+	silentAimKeyDeleteBtn.MouseButton1Click:Connect(function() Config.SilentAimKeybind = "None"
 		ActiveKeybindCaptureCallback = nil RefreshAimbotVisuals() SaveConfig(false) end)
 	fovBox.FocusLost:Connect(function() local v = tonumber(fovBox.Text) if v then
 			FOV_RADIUS = math.clamp(math.floor(v + 0.5), 20, 800) Config.AimbotFOVRadius = FOV_RADIUS
@@ -1319,7 +1500,7 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		PBtn.MouseButton1Click:Connect(function() Config.LockedTime = preset.Value if preset.Value ~= nil then
 				pcall(function() Lighting.ClockTime = preset.Value end) else
 				pcall(function() Lighting.ClockTime = DefaultLighting.ClockTime end) end SaveConfig(false) end) end
-end
+end)()
 --==============================================================================
 -- 14. TAB 8: MULTI-TAB SCRIPT EXECUTOR
 --==============================================================================
@@ -1478,31 +1659,37 @@ local function stepShiftLockCore(cam) UserInputService.MouseBehavior = Enum.Mous
 		hum.CameraOffset = (camDist > 1) and Vector3.new(1.75, 0, 0) or V3_ZERO
 		local lv = cam.CFrame.LookVector local flat = Vector3.new(lv.X, 0, lv.Z) if flat.Magnitude > 0.001 then
 			hum.AutoRotate = false root.CFrame = CFrame.new(root.Position, root.Position + flat.Unit) end end end
-local function setAimbotStatusText(txt) if aimbotStatusLabel and aimbotStatusLabel.Text ~= txt then
-		aimbotStatusLabel.Text = txt end end
 RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 1, function()
+	local function setAimbotStatusText(txt) if aimbotStatusLabel and aimbotStatusLabel.Text ~= txt then
+		aimbotStatusLabel.Text = txt end end
+	local function setSilentStatusText(txt) if silentAimStatusLabel and silentAimStatusLabel.Text ~= txt then
+		silentAimStatusLabel.Text = txt end end
 	local cam = workspace.CurrentCamera if not cam then return end
 	local showFov = (aimbotEnabled or silentAimEnabled) and fovCircleEnabled and not isClosingPermanently
 	if guiFovCircle and guiFovCircle.Visible ~= showFov then guiFovCircle.Visible = showFov end
 	if CursorUnlockedOverride and not isClosingPermanently then pcall(stepShiftLockCore, cam) else
-		lastShiftLook = nil end if not aimbotEnabled and not silentAimEnabled then return end if strongLock and currentTarget then
-		local ch = currentTarget.Character local h = ch and ch:FindFirstChildOfClass("Humanoid")
-		local p = getTargetPart(ch)
-		if not ch or not h or h.Health <= 0 or not p or not isTargetVisible(p, ch) or (aimbotTeamCheck and IsTeammate(currentTarget)) then currentTarget = nil end
-	else currentTarget = findBestTarget() end if not currentTarget then currentTarget = findBestTarget() end
-	if silentAimEnabled and not aimbotEnabled then
+		lastShiftLook = nil end
+	if not aimbotEnabled and not silentAimEnabled then return end
+	if silentAimEnabled then
+		currentTarget = nil
 		local sPart, sName = getSilentTargetPart()
 		if sPart then
-			setAimbotStatusText("Silent Target: " .. tostring(sName))
+			setSilentStatusText("Target: " .. tostring(sName))
 			if autoShootEnabled and triggerAutoShoot then
 				local nowT = os.clock()
 				if nowT - lastAutoShoot >= 0.05 then lastAutoShoot = nowT triggerAutoShoot() end
 			end
 		else
-			setAimbotStatusText("Silent Aim: Searching...")
+			setSilentStatusText(fovCircleEnabled and "No Target in FOV" or "Searching...")
 		end
 		return
 	end
+	if strongLock and currentTarget then
+		local ch = currentTarget.Character local h = ch and ch:FindFirstChildOfClass("Humanoid")
+		local p = getTargetPart(ch)
+		local _, onScr, sDist = worldToScreenDistance(p and p.Position or V3_ZERO)
+		if not ch or not h or h.Health <= 0 or not p or not onScr or (fovCircleEnabled and sDist > FOV_RADIUS) or not isTargetVisible(p, ch) or (aimbotTeamCheck and IsTeammate(currentTarget)) then currentTarget = nil end
+	else currentTarget = findBestTarget() end if not currentTarget then currentTarget = findBestTarget() end
 	if currentTarget and currentTarget.Character then
 		local targetPart = getTargetPart(currentTarget.Character) if targetPart then
 			local goalCF = CFrame.new(cam.CFrame.Position, targetPart.Position) local beforeCF = cam.CFrame
@@ -1660,6 +1847,8 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 		if mlKey ~= "None" and keyName == mlKey then SetMouseLockState(not CursorUnlockedOverride) return end
 		if gp then return end local aimKey = Config.AimbotKeybind or "Q"
 		if aimKey ~= "None" and keyName == aimKey then toggleAimbot() return end
+		local silentKey = Config.SilentAimKeybind or "T"
+		if silentKey ~= "None" and keyName == silentKey then toggleSilentAim() return end
 		if input.KeyCode == Enum.KeyCode.E and ActiveTabName == "Items & Prompts" then
 			if pullNearbyItems then pullNearbyItems() end return end
 		local flyKey = savedConfig.Settings.FlyKeybind or "E"
@@ -1674,7 +1863,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 						SafeTeleportToCoords(pos.X, pos.Y + 3, pos.Z) end end end end end end))
 -- Close, Re-Execution Cleanup & Full Shutdown Handler
 local function ShutdownInstance(immediate) if isClosingPermanently then return end
-	FlingActive, aimbotEnabled, currentTarget, masterFlightEnabled = false, false, nil, false
+	FlingActive, aimbotEnabled, silentAimEnabled, currentTarget, masterFlightEnabled = false, false, false, nil, false genv._TR_SilentAimActive = false
 	genv.TR_AntiCheatActive = false pcall(StopFling) pcall(stopFlight)
 	for _, thread in ipairs(RunningExecutorThreads) do pcall(function() task.cancel(thread) end) end
 	RunningExecutorThreads = {} pcall(function() SetMouseLockState(false) end)
