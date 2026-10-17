@@ -74,6 +74,44 @@ if not genv._TR_HooksActive and hookmetamethod and getnamecallmethod and checkca
 						local low = args[i]:lower()
 						if low:find("bac-", 1, true) or low:find("cheat", 1, true) or low:find("exploit", 1, true)
 						   or low:find("anticheat", 1, true) or low:find("kick", 1, true) then return nil end end end end
+			-- 5. RIVALS & Universal Silent Aim Raycast Redirection (No Camera Movement)
+			if genv._TR_SilentAimActive and genv._TR_GetSilentTargetPart and self == workspace then
+				if method == "Raycast" then
+					local origin, direction, rParams = ...
+					if typeof and typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+						local callerName = ""
+						if getcallingscript then
+							local okCs, cs = pcall(getcallingscript)
+							if okCs and cs then callerName = tostring(cs) end
+						end
+						local isRivalsWeapon = (callerName == "Equipment" or callerName == "FighterController" or callerName == "PlayerDataController" or callerName == "ControlsController" or callerName:find("Weapon") or callerName:find("Gun") or callerName:find("Bullet"))
+						if isRivalsWeapon or direction.Magnitude >= 30 then
+							local tPart = genv._TR_GetSilentTargetPart()
+							if tPart and tPart.Parent then
+								local cam = workspace.CurrentCamera
+								local startPos = (isRivalsWeapon and cam and cam.CFrame.Position) or origin
+								local diff = tPart.Position - startPos
+								local mag = math.max(direction.Magnitude, 1000)
+								if diff.Magnitude > 0.001 then
+									return oldNamecall(self, startPos, diff.Unit * mag, rParams)
+								end
+							end
+						end
+					end
+				elseif method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" then
+					local rayObj, a2, a3, a4 = ...
+					if typeof and typeof(rayObj) == "Ray" and rayObj.Direction.Magnitude >= 30 then
+						local tPart = genv._TR_GetSilentTargetPart()
+						if tPart and tPart.Parent then
+							local orig = rayObj.Origin
+							local diff = tPart.Position - orig
+							if diff.Magnitude > 0.001 then
+								return oldNamecall(self, Ray.new(orig, diff.Unit * math.max(rayObj.Direction.Magnitude, 1000)), a2, a3, a4)
+							end
+						end
+					end
+				end
+			end
 		end return oldNamecall(self, ...) end) local oldIndex
 	oldIndex = hookmetamethod(game, "__index", function(self, key)
 		if not checkcaller() and typeof and typeof(self) == "Instance" then
@@ -146,7 +184,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 16, JumpPower = 50, FOV = 70,
 		FlySpeed = 50, FlyKeybind = "E", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotFOVRadius = 200,
-		AimbotFOVCircleEnabled = true, AimbotEnabled = false, StrongLock = false, WallcheckEnabled = true,
+		AimbotFOVCircleEnabled = true, AimbotEnabled = false, SilentAimEnabled = false, StrongLock = false, WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
 		MasterUtilityEnabled = false, MasterFlightEnabled = false, NoclipEnabled = false,
@@ -415,13 +453,21 @@ local function CreateSlider(parent, labelText, minVal, maxVal, initialVal, order
 		local alpha = (BarBg.AbsoluteSize.X > 0) and (relX / BarBg.AbsoluteSize.X) or 0
 		local value = math.floor(minVal + (maxVal - minVal) * alpha + 0.5)
 		Fill.Size = UDim2.new(alpha, 0, 1, 0) ValueLabel.Text = tostring(value)
-		if callback then pcall(callback, value) end end BarBg.InputBegan:Connect(function(input)
+		if callback then pcall(callback, value) end end 	BarBg.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			sliding = true UpdateFromInput(input.Position.X) input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then sliding = false end end) end end)
-	UserInputService.InputChanged:Connect(function(input)
-		if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			UpdateFromInput(input.Position.X) end end) return { SetValue = function(val)
+	if UserInputService.InputEnded then table.insert(Connections, UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			sliding = false end end)) end
+	table.insert(Connections, UserInputService.InputChanged:Connect(function(input)
+		if not sliding then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			if UserInputService.IsMouseButtonPressed and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+				sliding = false return end
+			UpdateFromInput(input.Position.X)
+		elseif input.UserInputType == Enum.UserInputType.Touch then
+			UpdateFromInput(input.Position.X) end end)) return { SetValue = function(val)
 			local clamped = math.clamp(val, minVal, maxVal)
 			Fill.Size = UDim2.new((clamped - minVal) / (maxVal - minVal), 0, 1, 0)
 			ValueLabel.Text = tostring(clamped) end } end
@@ -697,7 +743,7 @@ pullNearbyItems = function() local char = player.Character local root = GetRootP
 					for _, sub in ipairs(child:GetChildren()) do processCandidate(sub) end end end end end) end
 CreateToggle(Tab4_Items, "Item Vacuum / Magnet (Pulls Nearby Items & Drops to Character)", Config.ItemMagnetEnabled == true, 4, function(state)
 	Config.ItemMagnetEnabled = state if state then pullNearbyItems() end SaveConfig(false) end)
-CreateSlider(Tab4_Items, "Item Vacuum Radius (studs)", 15, 300, Config.ItemMagnetRadius or 60, 5, function(val)
+CreateSlider(Tab4_Items, "Item Vacuum Radius (studs)", 15, 1000, Config.ItemMagnetRadius or 60, 5, function(val)
 	Config.ItemMagnetRadius = val SaveConfig(false) end) local MagnetCard = CreateCard(Tab4_Items, 46, 6)
 local PulseBtn = MakeButton(MagnetCard, UDim2.new(1, -20, 0, 30), UDim2.new(0, 10, 0.5, -15), E.Magnet .. " Instant Vacuum Pulse (Pull All Items Now [E])", "Accent", 11)
 PulseBtn.MouseButton1Click:Connect(pullNearbyItems) end
@@ -706,7 +752,10 @@ PulseBtn.MouseButton1Click:Connect(pullNearbyItems) end
 --==============================================================================
 local masterFlightEnabled = (savedConfig.Settings.MasterFlightEnabled == true)
 local keyFlying, fakeGroundPart = false, nil
-local isFlightActive, stopFlight, startFlight, toggleFlightState do
+local isFlightActive, stopFlight, startFlight, toggleFlightState
+local naturalWalkSpeed, naturalJumpPower, naturalJumpHeight, naturalUseJumpPower = 16, 50, 7.2, true
+local lastRecordedHum = nil
+local RecordNaturalHumanoidDefaults, RestoreNaturalHumanoidDefaults do
 CreateSectionHeader(Tab5_Flight, "Flight Engine & Keybind Controls", 1)
 local FlightEngineCard = CreateCard(Tab5_Flight, 92, 2)
 local masterFlightToggleBtn = Instance.new("TextButton")
@@ -762,9 +811,37 @@ flyKeyAssignBtn.MouseButton1Click:Connect(function() flyKeyAssignBtn.Text = "[Ke
 		RefreshFlyKeyTexts() SaveConfig(false) end end) flyKeyDeleteBtn.MouseButton1Click:Connect(function()
 	savedConfig.Settings.FlyKeybind = "None" ActiveKeybindCaptureCallback = nil RefreshFlyKeyTexts()
 	SaveConfig(false) end) RefreshFlyKeyTexts()
+RecordNaturalHumanoidDefaults = function(hum)
+	if hum and hum ~= lastRecordedHum then
+		lastRecordedHum = hum
+		naturalWalkSpeed = tonumber(hum.WalkSpeed) or 16
+		naturalJumpPower = tonumber(hum.JumpPower) or 50
+		naturalJumpHeight = tonumber(hum.JumpHeight) or 7.2
+		naturalUseJumpPower = (hum.UseJumpPower ~= false)
+	end
+end
+RestoreNaturalHumanoidDefaults = function()
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		RecordNaturalHumanoidDefaults(hum)
+		pcall(function()
+			hum.WalkSpeed = naturalWalkSpeed
+			hum.UseJumpPower = naturalUseJumpPower
+			hum.JumpPower = naturalJumpPower
+			hum.JumpHeight = naturalJumpHeight
+		end)
+	end
+end
+if player.Character then
+	local h = player.Character:FindFirstChildOfClass("Humanoid")
+	if h then RecordNaturalHumanoidDefaults(h) end
+end
 CreateSectionHeader(Tab5_Flight, "Master Utility & Physics Controls", 3)
 CreateToggle(Tab5_Flight, "Master Utility Switch (Enable WalkSpeed & JumpPower)", Config.MasterUtilityEnabled, 4, function(state)
-	Config.MasterUtilityEnabled = state SaveConfig(false) end)
+	Config.MasterUtilityEnabled = state
+	if not state then RestoreNaturalHumanoidDefaults() end
+	SaveConfig(false) end)
 CreateToggle(Tab5_Flight, "Noclip Mode (Disable Character CanCollide)", Config.NoclipEnabled, 5, function(state)
 	Config.NoclipEnabled = state SaveConfig(false) end)
 CreateToggle(Tab5_Flight, "Infinite Jump (Jump Continuously Mid-Air Without Ground Touch)", Config.InfiniteJump == true, 6, function(state)
@@ -776,9 +853,9 @@ CreateToggle(Tab5_Flight, "Shift-Down Flight Descent (Hold LeftShift to Descend)
 CreateToggle(Tab5_Flight, "Countdown / Spawn Freeze Bypass (Unanchor & Clear Freeze Tags)", Config.CountdownBypass, 9, function(state)
 	Config.CountdownBypass = state SaveConfig(false) end)
 CreateSectionHeader(Tab5_Flight, "Speed & Movement Sliders", 10)
-CreateSlider(Tab5_Flight, "Fly Speed", 1, 1000, Config.FlySpeed, 11, function(val) Config.FlySpeed = val; SaveConfig(false) end)
-CreateSlider(Tab5_Flight, "WalkSpeed", 16, 500, Config.WalkSpeed, 12, function(val) Config.WalkSpeed = val; SaveConfig(false) end)
-CreateSlider(Tab5_Flight, "JumpPower", 50, 500, Config.JumpPower, 13, function(val) Config.JumpPower = val; SaveConfig(false) end)
+CreateSlider(Tab5_Flight, "Fly Speed", 1, 1000, math.clamp(tonumber(Config.FlySpeed) or 50, 1, 1000), 11, function(val) Config.FlySpeed = val; savedConfig.Settings.FlySpeed = val; SaveConfig(false) end)
+CreateSlider(Tab5_Flight, "WalkSpeed", 1, 500, math.clamp(tonumber(Config.WalkSpeed) or 16, 1, 500), 12, function(val) Config.WalkSpeed = val; savedConfig.Settings.WalkSpeed = val; SaveConfig(false) end)
+CreateSlider(Tab5_Flight, "JumpPower (1-500 | Low = Normal in Rivals / Steal an Egg)", 1, 500, math.clamp(tonumber(Config.JumpPower) or 50, 1, 500), 13, function(val) Config.JumpPower = val; savedConfig.Settings.JumpPower = val; SaveConfig(false) end)
 end
 --==============================================================================
 -- 12. TAB 6: MULTI-TARGET FLING HUB (WITH NETWORK PAUSE BYPASS)
@@ -907,7 +984,10 @@ deselectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(false) e
 local ESP_UPDATE_INTERVAL, MAX_DISTANCE, LERP_ALPHA = 0.033333333333333, 500, 0.16
 local FOV_RADIUS = tonumber(Config.AimbotFOVRadius) or 200
 local fovCircleEnabled = (Config.AimbotFOVCircleEnabled ~= false)
-local aimbotEnabled = (Config.AimbotEnabled == true) local strongLock = (Config.StrongLock == true)
+local aimbotEnabled = (Config.AimbotEnabled == true)
+local silentAimEnabled = (Config.SilentAimEnabled == true)
+genv._TR_SilentAimActive = silentAimEnabled
+local strongLock = (Config.StrongLock == true)
 local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
 local aimbotTeamCheck = (Config.AimbotTeamCheck ~= false)
 local autoShootEnabled = (Config.AutoShootEnabled == true) local lastAutoShoot = 0
@@ -915,8 +995,9 @@ local espShowTeammates = (Config.ESPShowTeammates == true)
 local aimPartName = Config.AimPartName or "Head" local currentTarget, lastEspUpdate = nil, 0
 local excludedPlayers, characterCache, adornmentsCache = {}, {}, {}
 local guiFovCircle, guiFovStroke = nil, nil
+local reusableWallcheckParams, updateWallcheckFilter
 local IsTeammate, getTargetPart, isTargetVisible, removePlayerAdornments, clearAllAdornments
-local RefreshESPHighlights, updateAllAdornments, findBestTarget
+local RefreshESPHighlights, updateAllAdornments, findBestTarget, getSilentTargetPart, HookRivalsUtilityRaycast
 local aimbotStatusLabel, excludeFrame, updateExcludeCount, rebuildExcludeList, toggleAimbot, ApplyCameraMode, triggerAutoShoot
 do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	guiFovCircle.AnchorPoint = Vector2.new(0.5, 0.5) guiFovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -926,9 +1007,9 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	guiFovStroke = Instance.new("UIStroke", guiFovCircle) guiFovStroke.Thickness = 1.8
 	guiFovStroke.Transparency = 0.15 RegisterThemeObject(guiFovStroke, "Color", "Accent")
 	SyncAimbotFovCircleVisibility = function()
-		local showCircle = aimbotEnabled and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
+		local showCircle = (aimbotEnabled or silentAimEnabled) and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
 			guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2) guiFovCircle.Visible = showCircle
-		end end triggerAutoShoot = function() if not aimbotEnabled or not autoShootEnabled then return end
+		end end triggerAutoShoot = function() if (not aimbotEnabled and not silentAimEnabled) or not autoShootEnabled then return end
 		local char = player.Character if not char then return end
 		local hum = char:FindFirstChildOfClass("Humanoid") if not hum or hum.Health <= 0 then return end
 		local tool = char:FindFirstChildOfClass("Tool") if tool then pcall(function() tool:Activate() end) end
@@ -963,7 +1044,7 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		if hrp and hrp:IsA("BasePart") then return hrp end
 		local t = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
 		return (t and t:IsA("BasePart") and t) or character.PrimaryPart end
-	local reusableWallcheckParams = RaycastParams.new()
+	reusableWallcheckParams = RaycastParams.new()
 	reusableWallcheckParams.FilterType = Enum.RaycastFilterType.Blacklist local reusableWallFilter = {}
 	updateWallcheckFilter = function(char) char = char or LocalPlayer.Character reusableWallFilter[1] = char
 		reusableWallcheckParams.FilterDescendantsInstances = reusableWallFilter end updateWallcheckFilter()
@@ -1027,6 +1108,69 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 						local _, onScreen, sDist = worldToScreenDistance(pp)
 						if onScreen and sDist <= bestDist and isTargetVisible(part, char) then
 							bestDist, bestPlr = sDist, plr end end end end end return bestPlr end
+	getSilentTargetPart = function()
+		if not silentAimEnabled then return nil, nil end
+		local plr = currentTarget or findBestTarget()
+		if plr and plr.Character then
+			local p = getTargetPart(plr.Character)
+			if p then return p, plr.DisplayName or plr.Name end
+		end
+		local cam = workspace.CurrentCamera
+		local myChar = LocalPlayer.Character
+		if not cam then return nil, nil end
+		local bestPart, bestName, bestDist = nil, nil, fovCircleEnabled and FOV_RADIUS or math.huge
+		local camPos = cam.CFrame.Position
+		local maxDistSq = MAX_DISTANCE * MAX_DISTANCE
+		local function checkModel(mdl)
+			if not mdl or mdl == myChar or not mdl:IsA("Model") then return end
+			local hum = mdl:FindFirstChildOfClass("Humanoid")
+			local part = getTargetPart(mdl)
+			if part and (not hum or hum.Health > 0) then
+				local pp = part.Position
+				local dx, dy, dz = pp.X - camPos.X, pp.Y - camPos.Y, pp.Z - camPos.Z
+				if (dx * dx + dy * dy + dz * dz) <= maxDistSq then
+					local _, onScreen, sDist = worldToScreenDistance(pp)
+					if onScreen and sDist <= bestDist and isTargetVisible(part, mdl) then
+						bestDist, bestPart, bestName = sDist, part, mdl.Name
+					end
+				end
+			end
+		end
+		local hurtFolder = workspace:FindFirstChild("HurtEffect")
+		if hurtFolder then
+			for _, m in ipairs(hurtFolder:GetChildren()) do checkModel(m) end
+		end
+		return bestPart, bestName
+	end
+	genv._TR_GetSilentTargetPart = getSilentTargetPart
+	HookRivalsUtilityRaycast = function()
+		pcall(function()
+			local rep = game:GetService("ReplicatedStorage")
+			local modules = rep and rep:FindFirstChild("Modules")
+			local utilMod = modules and modules:FindFirstChild("Utility")
+			if utilMod and utilMod:IsA("ModuleScript") then
+				local okReq, utilTbl = pcall(require, utilMod)
+				if okReq and type(utilTbl) == "table" and type(utilTbl.Raycast) == "function" and not utilTbl._TR_SilentHooked then
+					utilTbl._TR_SilentHooked = true
+					local oldUtilRaycast = utilTbl.Raycast
+					utilTbl.Raycast = function(...)
+						local args = { ... }
+						if genv._TR_SilentAimActive and genv._TR_GetSilentTargetPart then
+							local tPart = genv._TR_GetSilentTargetPart()
+							if tPart and tPart.Parent then
+								if typeof and typeof(args[3]) == "Vector3" then
+									args[3] = tPart.Position
+								end
+							end
+						end
+						return oldUtilRaycast(unpack(args))
+					end
+				end
+			end
+		end)
+	end
+	HookRivalsUtilityRaycast()
+	task.delay(3, HookRivalsUtilityRaycast)
 	-- Section 1: Aimbot Engine & Keybind Controls (matching Tab 5 FlightEngineCard layout!)
 	CreateSectionHeader(Tab7_Visuals, "Aimbot Engine & Keybind Controls", 1)
 	local AimbotEngineCard = CreateCard(Tab7_Visuals, 92, 2)
@@ -1050,28 +1194,33 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	aimbotKeyDeleteBtn.Font = Enum.Font.GothamBold aimbotKeyDeleteBtn.TextSize = 11
 	aimbotKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	aimbotKeyDeleteBtn.Text = E.Trash .. " Delete Key" AddCorner(aimbotKeyDeleteBtn, 6)
-	-- Neat V94 CreateToggle rows for Aimbot Settings
-	CreateToggle(Tab7_Visuals, "Strong Lock Mode (Instant Camera Snap vs Smooth Lerp)", strongLock, 3, function(state)
+	-- Neat V94 CreateToggle rows for Aimbot & RIVALS Silent Aim Settings
+	CreateToggle(Tab7_Visuals, "Silent Aim [RIVALS & Universal] (Bullet Redirect - No Camera Move)", silentAimEnabled, 3, function(state)
+		silentAimEnabled = state Config.SilentAimEnabled = state genv._TR_SilentAimActive = state
+		if state then HookRivalsUtilityRaycast() end
+		if not state and not aimbotEnabled then currentTarget = nil if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end end
+		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
+	CreateToggle(Tab7_Visuals, "Strong Lock Mode (Instant Camera Snap vs Smooth Lerp)", strongLock, 4, function(state)
 		strongLock = state Config.StrongLock = state if not strongLock then currentTarget = nil end
 		SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "Raycast Wallcheck (Line-of-Sight Target Verification)", wallcheckEnabled, 4, function(state)
+	CreateToggle(Tab7_Visuals, "Raycast Wallcheck (Line-of-Sight Target Verification)", wallcheckEnabled, 5, function(state)
 		wallcheckEnabled = state Config.WallcheckEnabled = state SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "Only Aim at Enemies (Ignore Teammates)", aimbotTeamCheck, 5, function(state)
+	CreateToggle(Tab7_Visuals, "Only Aim at Enemies (Ignore Teammates)", aimbotTeamCheck, 6, function(state)
 		aimbotTeamCheck = state Config.AimbotTeamCheck = state
 		if state and currentTarget and IsTeammate(currentTarget) then currentTarget = nil end SaveConfig(false)
 	end)
-	CreateToggle(Tab7_Visuals, "Auto Shoot (Automatically Shoot when Locked into Head/Body)", autoShootEnabled, 6, function(state)
+	CreateToggle(Tab7_Visuals, "Auto Shoot (Automatically Shoot when Locked into Head/Body)", autoShootEnabled, 7, function(state)
 		autoShootEnabled = state Config.AutoShootEnabled = state SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "Show Aimbot FOV Circle (Turn OFF for Full-Screen Aimbot)", fovCircleEnabled, 7, function(state)
+	CreateToggle(Tab7_Visuals, "Show Aimbot FOV Circle (Turn OFF for Full-Screen Aimbot)", fovCircleEnabled, 8, function(state)
 		fovCircleEnabled = state Config.AimbotFOVCircleEnabled = state currentTarget = nil
 		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
 	-- Neat V94 CreateSlider for Aimbot FOV Circle Radius
 	local FovSliderObj local fovBox
-	FovSliderObj = CreateSlider(Tab7_Visuals, "Aimbot FOV Circle Radius (px)", 20, 800, FOV_RADIUS, 8, function(val)
+	FovSliderObj = CreateSlider(Tab7_Visuals, "Aimbot FOV Circle Radius (px)", 20, 800, FOV_RADIUS, 9, function(val)
 		FOV_RADIUS = val Config.AimbotFOVRadius = val if fovBox then fovBox.Text = tostring(val) end
 		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
 	-- Target Part, Manual FOV Input & Player Exclusion Row Card
-	local AimbotExtraCard = CreateCard(Tab7_Visuals, 48, 9)
+	local AimbotExtraCard = CreateCard(Tab7_Visuals, 48, 10)
 	local aimPartBtn = MakeButton(AimbotExtraCard, UDim2.new(0.34, -10, 0, 32), UDim2.new(0, 10, 0, 8), "", "Accent", 12)
 	fovBox = Instance.new("TextBox", AimbotExtraCard) fovBox.Size = UDim2.new(0.32, -8, 0, 32)
 	fovBox.Position = UDim2.new(0.34, 4, 0, 8)
@@ -1129,18 +1278,18 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		AimbotExtraCard.Size = excludeFrame.Visible and UDim2.new(1, 0, 0, 186) or UDim2.new(1, 0, 0, 48)
 		if excludeFrame.Visible then rebuildExcludeList() end end) RefreshAimbotVisuals()
 	-- Section 2: Player ESP Highlights & 3D Bounding Boxes
-	CreateSectionHeader(Tab7_Visuals, "Player ESP (Chams & 3D Hitbox Boxes)", 10)
-	CreateToggle(Tab7_Visuals, "Player Highlight & 3D Box ESP (Chams + Hitbox Boxes)", Config.ESPEnabled, 11, function(state)
+	CreateSectionHeader(Tab7_Visuals, "Player ESP (Chams & 3D Hitbox Boxes)", 11)
+	CreateToggle(Tab7_Visuals, "Player Highlight & 3D Box ESP (Chams + Hitbox Boxes)", Config.ESPEnabled, 12, function(state)
 		Config.ESPEnabled = state if not state then clearAllAdornments() else updateAllAdornments() end
 		RefreshESPHighlights() SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "Turn On ESP for Teammates (Show Teammate Highlights & Boxes)", espShowTeammates, 12, function(state)
+	CreateToggle(Tab7_Visuals, "Turn On ESP for Teammates (Show Teammate Highlights & Boxes)", espShowTeammates, 13, function(state)
 		espShowTeammates = state Config.ESPShowTeammates = state RefreshESPHighlights() updateAllAdornments()
 		SaveConfig(false) end)
 	-- Section 3: Camera Field of View & Perspective
-	CreateSectionHeader(Tab7_Visuals, "Camera Field of View & Perspective", 13)
-	CreateSlider(Tab7_Visuals, "Camera Field of View (FOV)", 30, 120, Config.FOV, 14, function(val)
+	CreateSectionHeader(Tab7_Visuals, "Camera Field of View & Perspective", 14)
+	CreateSlider(Tab7_Visuals, "Camera Field of View (FOV)", 30, 120, Config.FOV, 15, function(val)
 		Config.FOV = val pcall(function() workspace.CurrentCamera.FieldOfView = val end) SaveConfig(false) end)
-	local CamModeCard = CreateCard(Tab7_Visuals, 50, 15) local CamModeList = Instance.new("UIListLayout")
+	local CamModeCard = CreateCard(Tab7_Visuals, 50, 16) local CamModeList = Instance.new("UIListLayout")
 	CamModeList.FillDirection = Enum.FillDirection.Horizontal
 	CamModeList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	CamModeList.VerticalAlignment = Enum.VerticalAlignment.Center CamModeList.Padding = UDim.new(0, 8)
@@ -1154,13 +1303,13 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		local MBtn = MakeButton(CamModeCard, UDim2.new(0, 165, 0, 32), nil, modeName, "AccentDark", 11)
 		MBtn.MouseButton1Click:Connect(function() ApplyCameraMode(modeName) end) end
 	-- Section 4: World Lighting, Fullbright & Time Presets
-	CreateSectionHeader(Tab7_Visuals, "Lighting, Fullbright & Time Presets", 16)
-	CreateToggle(Tab7_Visuals, "Fullbright Lighting Mode (No Shadows + Max Illumination)", Config.FullbrightEnabled, 17, function(state)
+	CreateSectionHeader(Tab7_Visuals, "Lighting, Fullbright & Time Presets", 17)
+	CreateToggle(Tab7_Visuals, "Fullbright Lighting Mode (No Shadows + Max Illumination)", Config.FullbrightEnabled, 18, function(state)
 		Config.FullbrightEnabled = state if not state then pcall(function()
 				Lighting.Brightness = DefaultLighting.Brightness
 				Lighting.GlobalShadows = DefaultLighting.GlobalShadows
 				Lighting.OutdoorAmbient = DefaultLighting.OutdoorAmbient end) end SaveConfig(false) end)
-	local TimeCard = CreateCard(Tab7_Visuals, 50, 18) local TimeList = Instance.new("UIListLayout")
+	local TimeCard = CreateCard(Tab7_Visuals, 50, 19) local TimeList = Instance.new("UIListLayout")
 	TimeList.FillDirection = Enum.FillDirection.Horizontal
 	TimeList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	TimeList.VerticalAlignment = Enum.VerticalAlignment.Center TimeList.Padding = UDim.new(0, 10)
@@ -1293,9 +1442,17 @@ table.insert(Connections, UserInputService.JumpRequest:Connect(function() if Con
 		local char = player.Character local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local root = GetRootPart(char) if hum and hum.Health > 0 and root then
 			hum:ChangeState(Enum.HumanoidStateType.Jumping)
-			local jp = Config.MasterUtilityEnabled and (Config.JumpPower or 50) or (hum.UseJumpPower and hum.JumpPower or 50)
+			local jp
+			if Config.MasterUtilityEnabled then
+				jp = math.clamp(tonumber(Config.JumpPower) or 50, 1, 500)
+			elseif hum.UseJumpPower then
+				jp = hum.JumpPower
+			else
+				local g = workspace.Gravity or 196.2
+				jp = math.sqrt(2 * g * math.max(hum.JumpHeight or 7.2, 1))
+			end
 			local v = root.AssemblyLinearVelocity
-			root.AssemblyLinearVelocity = Vector3.new(v.X, math.max(jp, 50), v.Z) end end end)) end
+			root.AssemblyLinearVelocity = Vector3.new(v.X, jp, v.Z) end end end)) end
 table.insert(Connections, RunService.RenderStepped:Connect(function(dt)
 	if not Config.ESPEnabled and next(adornmentsCache) == nil then return end
 	lastEspUpdate = lastEspUpdate + dt if lastEspUpdate >= ESP_UPDATE_INTERVAL then lastEspUpdate = 0
@@ -1325,14 +1482,27 @@ local function setAimbotStatusText(txt) if aimbotStatusLabel and aimbotStatusLab
 		aimbotStatusLabel.Text = txt end end
 RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 1, function()
 	local cam = workspace.CurrentCamera if not cam then return end
-	local showFov = aimbotEnabled and fovCircleEnabled and not isClosingPermanently
+	local showFov = (aimbotEnabled or silentAimEnabled) and fovCircleEnabled and not isClosingPermanently
 	if guiFovCircle and guiFovCircle.Visible ~= showFov then guiFovCircle.Visible = showFov end
 	if CursorUnlockedOverride and not isClosingPermanently then pcall(stepShiftLockCore, cam) else
-		lastShiftLook = nil end if not aimbotEnabled then return end if strongLock and currentTarget then
+		lastShiftLook = nil end if not aimbotEnabled and not silentAimEnabled then return end if strongLock and currentTarget then
 		local ch = currentTarget.Character local h = ch and ch:FindFirstChildOfClass("Humanoid")
 		local p = getTargetPart(ch)
 		if not ch or not h or h.Health <= 0 or not p or not isTargetVisible(p, ch) or (aimbotTeamCheck and IsTeammate(currentTarget)) then currentTarget = nil end
 	else currentTarget = findBestTarget() end if not currentTarget then currentTarget = findBestTarget() end
+	if silentAimEnabled and not aimbotEnabled then
+		local sPart, sName = getSilentTargetPart()
+		if sPart then
+			setAimbotStatusText("Silent Target: " .. tostring(sName))
+			if autoShootEnabled and triggerAutoShoot then
+				local nowT = os.clock()
+				if nowT - lastAutoShoot >= 0.05 then lastAutoShoot = nowT triggerAutoShoot() end
+			end
+		else
+			setAimbotStatusText("Silent Aim: Searching...")
+		end
+		return
+	end
 	if currentTarget and currentTarget.Character then
 		local targetPart = getTargetPart(currentTarget.Character) if targetPart then
 			local goalCF = CFrame.new(cam.CFrame.Position, targetPart.Position) local beforeCF = cam.CFrame
@@ -1371,12 +1541,14 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 	camera = workspace.CurrentCamera local char = player.Character
 	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	-- 1. Flight Subsystem
+	-- 1. Flight Subsystem (Isolated from WalkSpeed/JumpPower so FlySpeed never shoots to 1000)
 	if isFlightActive() and char and root and hum and camera then
-		hum:ChangeState(Enum.HumanoidStateType.Running) if UserInputService:GetFocusedTextBox() then
-			if freezePosition then
-				root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camera.CFrame:ToEulerAnglesXYZ())
-				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO end else
+		hum:ChangeState(Enum.HumanoidStateType.Running)
+		if hum.WalkSpeed ~= 16 then hum.WalkSpeed = 16 end
+		if not freezePosition then freezePosition = root.Position end
+		if UserInputService:GetFocusedTextBox() then
+			root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camera.CFrame:ToEulerAnglesXYZ())
+			root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO else
 			local camCF = camera.CFrame local mvX, mvY, mvZ = 0, 0, 0
 			if UserInputService:IsKeyDown(Enum.KeyCode.W) then local lv = camCF.LookVector
 				mvX, mvY, mvZ = mvX + lv.X, mvY + lv.Y, mvZ + lv.Z end
@@ -1389,17 +1561,16 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then mvY = mvY + 1 end
 			if savedConfig.Settings.ShiftDownEnabled ~= false then
 				if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
-					mvY = mvY - 1 end end local currentFlySpeed = savedConfig.Settings.FlySpeed or 50
+					mvY = mvY - 1 end end local currentFlySpeed = math.clamp(tonumber(Config.FlySpeed) or 50, 1, 1000)
 			local magSq = mvX * mvX + mvY * mvY + mvZ * mvZ if magSq > 0.0001 then
 				local invMag = 1 / math.sqrt(magSq) local uX, uY, uZ = mvX * invMag, mvY * invMag, mvZ * invMag
-				local stepX = uX * (currentFlySpeed * deltaTime) local stepY = uY * (currentFlySpeed * deltaTime)
-				local stepZ = uZ * (currentFlySpeed * deltaTime) local curPos = root.Position
-				local newPos = Vector3.new(curPos.X + stepX, curPos.Y + stepY, curPos.Z + stepZ)
+				local dtClamped = math.min(deltaTime or 0.016, 0.1)
+				local stepX = uX * (currentFlySpeed * dtClamped) local stepY = uY * (currentFlySpeed * dtClamped)
+				local stepZ = uZ * (currentFlySpeed * dtClamped)
+				local newPos = Vector3.new(freezePosition.X + stepX, freezePosition.Y + stepY, freezePosition.Z + stepZ)
 				freezePosition = newPos root.CFrame = CFrame.new(newPos) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
-				local linSpeed = math.min(currentFlySpeed, 45)
-				root.AssemblyLinearVelocity = Vector3.new(uX * linSpeed, uY * linSpeed, uZ * linSpeed)
-				root.AssemblyAngularVelocity = V3_ZERO else if not freezePosition then freezePosition = root.Position
-				end root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
+				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO else
+				root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
 				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO end
 			if fakeGroundPart then
 				local footOffset = math.max((hum.HipHeight or 0) + (root.Size.Y * 0.5) + 0.1, 3.05)
@@ -1440,18 +1611,30 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 		local tpDiff = root.Position - teleportBypassTargetCF.Position
 		if (tpDiff.X * tpDiff.X + tpDiff.Y * tpDiff.Y + tpDiff.Z * tpDiff.Z) > 64 then
 			root.CFrame = teleportBypassTargetCF lastSafeAntiFlingCF = teleportBypassTargetCF end end
-	-- 8. Master Utility WalkSpeed & JumpPower
-	if Config.MasterUtilityEnabled and not FlingActive then
-		if Config.AntiCheatBypass ~= false and not hookmetamethod then hum.WalkSpeed = 16 hum.JumpPower = 50
-			local extraSpeed = math.max(0, (Config.WalkSpeed or 16) - 16)
+	-- 8. Master Utility WalkSpeed & JumpPower (Paused while flying so it never interferes with Flight)
+	if RecordNaturalHumanoidDefaults then RecordNaturalHumanoidDefaults(hum) end
+	if Config.MasterUtilityEnabled and not FlingActive and not isFlightActive() then
+		local targetWS = math.clamp(tonumber(Config.WalkSpeed) or 16, 1, 500)
+		local targetJP = math.clamp(tonumber(Config.JumpPower) or 50, 1, 500)
+		local g = workspace.Gravity or 196.2
+		local targetJH = (targetJP * targetJP) / (2 * g)
+		if Config.AntiCheatBypass ~= false and not hookmetamethod then
+			hum.WalkSpeed = math.min(targetWS, naturalWalkSpeed)
+			if naturalUseJumpPower then hum.JumpPower = math.min(targetJP, naturalJumpPower) else hum.JumpHeight = math.min(targetJH, naturalJumpHeight) end
+			local extraSpeed = math.max(0, targetWS - naturalWalkSpeed)
 			if extraSpeed > 0 and hum.MoveDirection.Magnitude > 0 then
 				local nextPos = root.Position + (hum.MoveDirection.Unit * (extraSpeed * 0.016))
 				root.CFrame = CFrame.new(nextPos) * (root.CFrame - root.CFrame.Position)
 				lastSafeAntiFlingCF = root.CFrame end
-			if (Config.JumpPower or 50) > 50 and UserInputService:IsKeyDown(Enum.KeyCode.Space) and hum.FloorMaterial ~= Enum.Material.Air then
+			if targetJP > naturalJumpPower and UserInputService:IsKeyDown(Enum.KeyCode.Space) and hum.FloorMaterial ~= Enum.Material.Air then
 				local v = root.AssemblyLinearVelocity
-				root.AssemblyLinearVelocity = Vector3.new(v.X, Config.JumpPower, v.Z) end else
-			hum.WalkSpeed = Config.WalkSpeed hum.UseJumpPower = true hum.JumpPower = Config.JumpPower end end
+				root.AssemblyLinearVelocity = Vector3.new(v.X, targetJP, v.Z) end else
+			hum.WalkSpeed = targetWS
+			if naturalUseJumpPower then
+				hum.UseJumpPower = true hum.JumpPower = targetJP
+			else
+				hum.UseJumpPower = false hum.JumpHeight = targetJH hum.JumpPower = targetJP
+			end end end
 	-- 9. Speed-Synced Spider Climb
 	if Config.SpiderClimb and not isFlightActive() and not FlingActive and hum.MoveDirection.Magnitude > 0.05 then
 		local rayDir = hum.MoveDirection.Unit * 2.5 local rayPos = root.Position
