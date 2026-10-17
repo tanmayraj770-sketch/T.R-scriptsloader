@@ -36,24 +36,27 @@ if genv.TRScripts_ScreenGui then pcall(function() genv.TRScripts_ScreenGui:Destr
 local function DeepCleanup() pcall(function() RunService:UnbindFromRenderStep("Aimbot_v2") end)
 	pcall(function() RunService:UnbindFromRenderStep("TR_ShiftLock_Pre") end)
 	pcall(function() if cleardrawcache then cleardrawcache() end end)
-	for _, name in ipairs({ "TRScriptsHub", "UtilityHubGui", "TRScriptsFlingGui", "AimbotUI_v2" }) do
-		if gethui then pcall(function() local hui = gethui() if hui then
-					for _, ch in ipairs(hui:GetChildren()) do if ch.Name == name then ch:Destroy() end end end end) end
-		pcall(function() for _, ch in ipairs(CoreGui:GetChildren()) do if ch.Name == name then ch:Destroy() end
-			end end) pcall(function() local pg = player:FindFirstChildOfClass("PlayerGui") if pg then
-				for _, ch in ipairs(pg:GetChildren()) do if ch.Name == name then ch:Destroy() end end end end) end
-	pcall(function() for _, obj in ipairs(workspace:GetChildren()) do
-			if obj.Name == "TR_FakeFloor" then obj:Destroy() end end end) pcall(function()
-		local pg = player:FindFirstChildOfClass("PlayerGui") if pg then
-			for _, ch in ipairs(pg:GetChildren()) do
-				if ch.Name == "ESP_HitboxInner" or ch.Name == "ESP_HitboxOutline" then ch:Destroy() end end end end)
+	local oldGui = genv._TR_GUI_INSTANCE or genv.TRScripts_ScreenGui if oldGui then
+		pcall(function() oldGui:Destroy() end) genv._TR_GUI_INSTANCE = nil genv.TRScripts_ScreenGui = nil end
+	local targets = { TRScriptsHub = true, UtilityHubGui = true, TRScriptsFlingGui = true, AimbotUI_v2 = true, TR_CoreTest = true }
+	local function purge(container) if not container then return end pcall(function()
+			for _, ch in ipairs(container:GetChildren()) do
+				if targets[ch.Name] or ch.Name:find("RobloxGui_") or ch.Name:find("AssetAdornment") or ch.Name:find("AssetOutline") then
+					pcall(function() ch:Destroy() end) end end end) end
+	if gethui then pcall(function() purge(gethui()) end) end pcall(function() purge(CoreGui) end)
+	pcall(function() purge(player:FindFirstChildOfClass("PlayerGui")) end) pcall(function()
+		for _, obj in ipairs(workspace:GetChildren()) do
+			if obj.Name == "TR_FakeFloor" or obj.Name == "TR_Floor" then obj:Destroy() end end end)
 	pcall(function() for _, plr in ipairs(Players:GetPlayers()) do
-			local esp = plr.Character and plr.Character:FindFirstChild("TR_ESP_Highlight")
-			if esp then esp:Destroy() end end end) end DeepCleanup() local function GetSafeGuiParent()
+			local esp = plr.Character and (plr.Character:FindFirstChild("TR_ESP_Highlight") or plr.Character:FindFirstChild("AssetHighlight"))
+			if esp then esp:Destroy() end end end) end DeepCleanup() local function GetSafeGuiParent(targetGui)
 	if gethui then local ok, hui = pcall(gethui) if ok and hui then return hui end end
-	local ok, parent = pcall(function() local _ = CoreGui:GetChildren() local t = Instance.new("ScreenGui")
-		t.Name = "TR_CoreTest" t.Parent = CoreGui t:Destroy() return CoreGui end)
-	if ok and parent then return parent end return player:WaitForChild("PlayerGui") end
+	local protector = (syn and syn.protect_gui) or protect_gui or protectgui or (fluxus and fluxus.protect_gui)
+	if protector and targetGui then pcall(protector, targetGui) end
+	local okCore, cg = pcall(function() return CoreGui end) if okCore and cg then
+		local canCore = pcall(function() if targetGui then targetGui.Parent = cg end end)
+		if canCore and targetGui and targetGui.Parent == cg then return cg end end
+	return player:WaitForChild("PlayerGui") end
 local SafeClipboard = setclipboard or toclipboard or set_clipboard or (Clipboard and Clipboard.set) or function() end
 local SafeWriteFile = writefile or function() end
 local SafeReadFile = readfile or function() return nil end
@@ -72,11 +75,12 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 		Theme = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 16, JumpPower = 50, FOV = 70,
 		FlySpeed = 50, FlyKeybind = "E", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotFOVRadius = 200,
 		AimbotFOVCircleEnabled = true, AimbotEnabled = false, StrongLock = false, WallcheckEnabled = true,
-		AimbotTeamCheck = true, ESPShowTeammates = false, AimPartName = "Head", MasterUtilityEnabled = false,
-		MasterFlightEnabled = false, NoclipEnabled = false, AntiFlingEnabled = true, AutoSelectFling = false,
-		AntiCheatBypass = true, ShiftDownEnabled = true, CountdownBypass = false, AntiAFK = true,
-		InstantPrompt = false, ESPEnabled = false, FullbrightEnabled = false,
-		CameraOverrideMode = "Free / Unlocked", LockedTime = nil }, Waypoints = {
+		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
+		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
+		MasterUtilityEnabled = false, MasterFlightEnabled = false, NoclipEnabled = false,
+		AntiFlingEnabled = true, AutoSelectFling = false, AntiCheatBypass = true, ShiftDownEnabled = true,
+		CountdownBypass = false, AntiAFK = true, InstantPrompt = false, ESPEnabled = false,
+		FullbrightEnabled = false, CameraOverrideMode = "Free / Unlocked", LockedTime = nil }, Waypoints = {
 		{ Name = "Spawn Point", X = 0, Y = 50, Z = 0, Keybind = "None" } }, RadarKeybinds = {},
 	ExecutorTabs = {
 		{ Name = "Script 1", Code = "-- Welcome to T.R Scripts V94\nprint('T.R Scripts V94 Ready!')" } },
@@ -161,9 +165,11 @@ local function MakeLabel(parent, size, pos, text, font, textSize, themeKey, xAli
 --==============================================================================
 -- 4. MAIN GLASSMORPHIC GUI & FLUENT WINDOWS 11 ANIMATION ENGINE
 --==============================================================================
-local ScreenGui = Instance.new("ScreenGui") ScreenGui.Name = "TRScriptsHub"
+local STEALTH_GUI_NAME = "RobloxGui_" .. ((HttpService and HttpService.GenerateGUID and pcall(function() return HttpService:GenerateGUID(false) end) and HttpService:GenerateGUID(false):gsub("-", ""):sub(1, 10)) or tostring(math.random(100000, 999999)))
+local ScreenGui = Instance.new("ScreenGui") ScreenGui.Name = STEALTH_GUI_NAME
 ScreenGui.ResetOnSpawn = false ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.IgnoreGuiInset = true ScreenGui.Parent = GetSafeGuiParent()
+ScreenGui.IgnoreGuiInset = true ScreenGui.DisplayOrder = 9999
+ScreenGui.Parent = GetSafeGuiParent(ScreenGui) genv._TR_GUI_INSTANCE = ScreenGui
 genv.TRScripts_ScreenGui = ScreenGui local MIN_WIDTH, MIN_HEIGHT = 560, 360
 local MAX_WIDTH, MAX_HEIGHT = 1150, 820
 local CurrentWidth = math.clamp(tonumber(Config.WindowWidth) or 760, MIN_WIDTH, MAX_WIDTH)
@@ -256,9 +262,9 @@ local draggingGui, resizingMode = false, nil do local dragStartPos, startFramePo
 		local t3 = TweenService:Create(MainStroke, info, { Transparency = 1 })
 		activeWindowTweens = { t1, t2, t3 } t1:Play() t2:Play() t3:Play() t1.Completed:Connect(function(st)
 			if st == Enum.PlaybackState.Completed then if not isMenuVisible then MainFrame.Visible = false end
-				if onComplete then onComplete() end end end) end end MainScale.Scale = 0
-MainFrame.BackgroundTransparency = 1 MainStroke.Transparency = 1 SetMenuVisible(true)
-MinBtn.MouseButton1Click:Connect(function() SetMenuVisible(false) end)
+				if onComplete then onComplete() end end end) end end MainScale.Scale = 1
+MainFrame.BackgroundTransparency = 0.06 MainStroke.Transparency = 0.25 MainFrame.Visible = true
+isMenuVisible = true MinBtn.MouseButton1Click:Connect(function() SetMenuVisible(false) end)
 local Sidebar = Instance.new("ScrollingFrame") Sidebar.Size = UDim2.new(0, 185, 1, -56)
 Sidebar.Position = UDim2.new(0, 10, 0, 50) Sidebar.BackgroundTransparency = 0.12
 Sidebar.BorderSizePixel = 0 Sidebar.ScrollBarThickness = 3 Sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -431,55 +437,69 @@ CreateToggle(Tab1_Dashboard, "Super Anti-Fling Shield (No-Collide Players + Velo
 						if part:IsA("BasePart") and (part.Name == "Head" or part.Name == "Torso" or part.Name == "UpperTorso" or part.Name == "LowerTorso" or part.Name == "HumanoidRootPart") then
 							part.CanCollide = true end end end end end) end SaveConfig(false) end)
 genv.TR_AntiCheatActive = (Config.AntiCheatBypass ~= false) local function DisableAntiCheatSignals(char)
-	if not Config.AntiCheatBypass or not getconnections then return end pcall(function()
-		local c = char or player.Character if not c then return end
-		local hum = c:FindFirstChildOfClass("Humanoid") local root = c:FindFirstChild("HumanoidRootPart")
-		local checkExecutor = isexecutorclosure or checkclosure or is_synapse_function
-		local function clearSig(sig) if not sig then return end for _, conn in ipairs(getconnections(sig)) do
-				if conn and conn.Function and (not checkExecutor or not checkExecutor(conn.Function)) then
-					pcall(function() conn:Disable() end) end end end if hum then
-			clearSig(hum:GetPropertyChangedSignal("WalkSpeed"))
-			clearSig(hum:GetPropertyChangedSignal("JumpPower"))
-			clearSig(hum:GetPropertyChangedSignal("JumpHeight"))
-			clearSig(hum:GetPropertyChangedSignal("PlatformStand"))
-			clearSig(hum:GetPropertyChangedSignal("AutoRotate")) clearSig(hum.StateChanged) end if root then
-			clearSig(root:GetPropertyChangedSignal("CFrame")) clearSig(root:GetPropertyChangedSignal("Position"))
-			clearSig(root:GetPropertyChangedSignal("Velocity"))
-			clearSig(root:GetPropertyChangedSignal("AssemblyLinearVelocity")) end end) end
+	-- Intentionally avoid destroying internal replication signals (StateChanged / CFrame)
+	-- to prevent games from detecting missing heartbeats and kicking after 5 seconds.
+	-- Metamethod spoofing on __index safely handles property inquiries.
+end
 CreateToggle(Tab1_Dashboard, "Undetected Anti-Cheat Bypass (Fly, Speed, Jump & Teleport)", Config.AntiCheatBypass ~= false, 9, function(state)
 	Config.AntiCheatBypass = state genv.TR_AntiCheatActive = state
 	if state then DisableAntiCheatSignals(player.Character) end SaveConfig(false) end)
 if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(player.Character) end
 table.insert(Connections, player.CharacterAdded:Connect(function(newChar) task.wait(0.25)
 	if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(newChar) end end)) pcall(function()
-	local HIDDEN_NAMES = { TR_FakeFloor = true, TRScriptsHub = true, TR_ESP_Highlight = true,
-		ESP_HitboxInner = true, ESP_HitboxOutline = true, TR_FOVCircle = true }
-	local AC_KEYWORDS = { "walkspeed", "jumppower", "fly", "noclip", "teleport", "anticheat", "exploit", "velocity", "bodyvelocity", "bvelocity" }
+	local HIDDEN_NAMES = {
+		TR_FakeFloor = true, TR_Floor = true, TRScriptsHub = true, TR_ESP_Highlight = true,
+		AssetHighlight = true, ESP_HitboxInner = true, ESP_HitboxOutline = true,
+		AssetAdornment = true, AssetOutline = true, TR_FOVCircle = true, [STEALTH_GUI_NAME] = true }
+	local AC_KEYWORDS = { "anticheat", "ac_detect", "exploit_detect", "clientcheck", "check_gui", "detected_gui" }
 	if not genv.TR_HooksInstalled and hookmetamethod and getnamecallmethod and checkcaller then
 		genv.TR_HooksInstalled = true local oldNamecall
 		oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 			if not checkcaller() and genv.TR_AntiCheatActive then local method = getnamecallmethod()
-				if self == player and (method == "Kick" or method == "kick") then return nil end
-				if method == "FindFirstChild" then local arg1 = ...
-					if type(arg1) == "string" and HIDDEN_NAMES[arg1] then return nil end
+				-- 1. Anti-Kick Protection (Neutralize client-side kick calls)
+				if (method == "Kick" or method == "kick") and (self == player or (typeof and typeof(self) == "Instance" and self:IsA("Player"))) then
+					return nil end
+				-- 2. Anti-GUI Detection (Filter GUI from GetChildren / GetDescendants)
+				if (method == "GetChildren" or method == "get_children") and (self == PlayerGui or self == CoreGui) then
+					local list = oldNamecall(self, ...) local filtered = {} for _, child in ipairs(list) do
+						if child ~= ScreenGui and child.Name ~= STEALTH_GUI_NAME and not HIDDEN_NAMES[child.Name] then
+							table.insert(filtered, child) end end return filtered
+				elseif (method == "GetDescendants" or method == "get_descendants") and (self == PlayerGui or self == CoreGui or self == game) then
+					local list = oldNamecall(self, ...) local filtered = {} for _, child in ipairs(list) do
+						if child ~= ScreenGui and not child:IsDescendantOf(ScreenGui) and not HIDDEN_NAMES[child.Name] then
+							table.insert(filtered, child) end end return filtered end
+				-- 3. Filter FindFirstChild inquiries for our GUI or stealth instances
+				if method == "FindFirstChild" or method == "findFirstChild" then local arg1 = ...
+					if (type(arg1) == "string" and (arg1 == STEALTH_GUI_NAME or HIDDEN_NAMES[arg1])) or arg1 == ScreenGui then
+						return nil end
+				elseif (method == "FindFirstChildOfClass" or method == "FindFirstChildWhichIsA") and (self == PlayerGui or self == CoreGui) then
+					local arg1 = ... if arg1 == "ScreenGui" then local list = oldNamecall(self, "GetChildren")
+						for _, child in ipairs(list) do
+							if child:IsA("ScreenGui") and child ~= ScreenGui and child.Name ~= STEALTH_GUI_NAME then
+								return child end end return nil end
 				elseif method == "GetState" and typeof and typeof(self) == "Instance" and self:IsA("Humanoid") then
 					return Enum.HumanoidStateType.Running
+				-- 4. Block anti-cheat report remotes
 				elseif (method == "FireServer" or method == "InvokeServer") and typeof and typeof(self) == "Instance" then
 					local remName = tostring(self.Name):lower()
-					if remName:find("ban", 1, true) or remName:find("kick", 1, true) or remName:find("anticheat", 1, true) or remName:find("ac_", 1, true) or remName:find("cheat", 1, true) or remName:find("flag", 1, true) then
+					if remName:find("ban", 1, true) or remName:find("kick", 1, true) or remName:find("anticheat", 1, true) or remName:find("ac_detect", 1, true) or remName:find("report_exploit", 1, true) then
 						return nil end local args = { ... } for i = 1, #args do if type(args[i]) == "string" then
 							local low = args[i]:lower() for _, kw in ipairs(AC_KEYWORDS) do
 								if low:find(kw, 1, true) then return nil end end end end end end return oldNamecall(self, ...)
 		end) local oldIndex oldIndex = hookmetamethod(game, "__index", function(self, key)
 			if not checkcaller() and genv.TR_AntiCheatActive and typeof and typeof(self) == "Instance" then
-				if self:IsA("Humanoid") then if key == "WalkSpeed" then return 16
-					elseif key == "JumpPower" then return 50 elseif key == "JumpHeight" then return 7.2
-					elseif key == "PlatformStand" then return false elseif key == "AutoRotate" then return true
+				-- Intercept .Kick property/method access on Player
+				if (key == "Kick" or key == "kick") and (self == player or self:IsA("Player")) then
+					return function() return nil end elseif self:IsA("Humanoid") then
+					if key == "WalkSpeed" then return 16 elseif key == "JumpPower" then return 50
+					elseif key == "JumpHeight" then return 7.2 elseif key == "PlatformStand" then return false
+					elseif key == "AutoRotate" then return true
 					elseif key == "FloorMaterial" then return Enum.Material.Plastic end
-				elseif type(key) == "string" and HIDDEN_NAMES[key] then return nil end end return oldIndex(self, key)
-		end) end end) table.insert(Connections, player.Idled:Connect(function() if Config.AntiAFK then
-		pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end) end end))
-end
+				elseif (self == PlayerGui or self == CoreGui) and (key == STEALTH_GUI_NAME or (type(key) == "string" and HIDDEN_NAMES[key])) then
+					return nil elseif type(key) == "string" and (key == STEALTH_GUI_NAME or HIDDEN_NAMES[key]) then
+					return nil end end return oldIndex(self, key) end) end end)
+table.insert(Connections, player.Idled:Connect(function() if Config.AntiAFK then pcall(function()
+			VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end) end end)) end
 --==============================================================================
 -- 8. TAB 2: WAYPOINTS & TELEPORT
 --==============================================================================
@@ -607,9 +627,9 @@ RefreshRadarCards = function() for _, child in ipairs(RadarContainer:GetChildren
 					if hum then workspace.CurrentCamera.CameraSubject = hum end end RefreshRadarCards() end) end) end
 end end
 --==============================================================================
--- 10. TAB 4: ITEMS SCANNER & INSTANT PROXIMITY PROMPTS
+-- 10. TAB 4: ITEMS & INSTANT PROXIMITY PROMPTS (ITEM VACUUM / MAGNET)
 --==============================================================================
-local CollectTargetItem, ScanWorkspaceItems do
+local pullNearbyItems do
 CreateSectionHeader(Tab4_Items, "Proximity Prompt Instant Interaction Engine", 1)
 local function ApplyInstantPrompts() if not Config.InstantPrompt then return end pcall(function()
 		for _, desc in ipairs(workspace:GetDescendants()) do
@@ -621,63 +641,45 @@ table.insert(Connections, ProximityPromptService.PromptButtonHoldBegan:Connect(f
 end)) table.insert(Connections, workspace.DescendantAdded:Connect(function(desc)
 	if Config.InstantPrompt and desc:IsA("ProximityPrompt") then pcall(function() desc.HoldDuration = 0 end)
 	end end)) if Config.InstantPrompt then ApplyInstantPrompts() end
-CreateSectionHeader(Tab4_Items, "Workspace Items & Proximity Scanner (Manual Scan | Collect: [E])", 3)
-local ScannerControlCard = CreateCard(Tab4_Items, 46, 4) local ItemSearchBox = Instance.new("TextBox")
-ItemSearchBox.Size = UDim2.new(1, -240, 0, 30) ItemSearchBox.Position = UDim2.new(0, 10, 0.5, -15)
-ItemSearchBox.PlaceholderText = E.Search .. " Filter items by name..." ItemSearchBox.Text = ""
-ItemSearchBox.ClearTextOnFocus = false ItemSearchBox.Font = Enum.Font.Gotham ItemSearchBox.TextSize = 12
-ItemSearchBox.Parent = ScannerControlCard
-RegisterThemeObject(ItemSearchBox, "BackgroundColor3", "PanelBg")
-RegisterThemeObject(ItemSearchBox, "TextColor3", "TextPrimary") AddCorner(ItemSearchBox, 6)
-local ScanNowBtn = MakeButton(ScannerControlCard, UDim2.new(0, 100, 0, 30), UDim2.new(1, -220, 0.5, -15), E.Refresh .. " Rescan", "Accent", 11)
-local CollectNearestBtn = MakeButton(ScannerControlCard, UDim2.new(0, 104, 0, 30), UDim2.new(1, -112, 0.5, -15), E.Magnet .. " Collect [E]", "AccentDark", 11)
-local ItemsListContainer = Instance.new("Frame") ItemsListContainer.LayoutOrder = 5
-ItemsListContainer.Size = UDim2.new(1, 0, 0, 0) ItemsListContainer.AutomaticSize = Enum.AutomaticSize.Y
-ItemsListContainer.BackgroundTransparency = 1 ItemsListContainer.Parent = Tab4_Items
-local ItemsListLayout = Instance.new("UIListLayout") ItemsListLayout.Padding = UDim.new(0, 6)
-ItemsListLayout.SortOrder = Enum.SortOrder.LayoutOrder ItemsListLayout.Parent = ItemsListContainer
-local ITEM_KEYWORDS = { "drop", "item", "loot", "weapon", "ammo", "coin", "chest", "box", "pack", "pickup", "apple", "gold", "gem" }
-local ScannedItemsCache = {} local function IsCharacterDescendant(inst)
-	for _, plr in ipairs(Players:GetPlayers()) do
+CreateSectionHeader(Tab4_Items, "Item Vacuum & Magnet Engine", 3)
+local function IsCharacterDescendant(inst) for _, plr in ipairs(Players:GetPlayers()) do
 		if plr.Character and inst:IsDescendantOf(plr.Character) then return true end end return false end
-local function GetItemBasePart(obj) if obj:IsA("BasePart") then return obj end
-	if obj:IsA("Tool") or obj:IsA("Model") then
-		return obj:FindFirstChild("Handle") or obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
-	end return nil end local function MatchesItemCriteria(obj)
-	if obj.Name == "TR_FakeFloor" or IsCharacterDescendant(obj) then return false end
-	if obj:IsA("Tool") then return GetItemBasePart(obj) ~= nil end
-	if obj:IsA("BasePart") or obj:IsA("Model") then
-		if obj:FindFirstChildWhichIsA("ProximityPrompt", true) then return GetItemBasePart(obj) ~= nil end
-		local lower = obj.Name:lower() for _, kw in ipairs(ITEM_KEYWORDS) do
-			if lower:find(kw, 1, true) then return GetItemBasePart(obj) ~= nil end end end return false end
-CollectTargetItem = function(itemData) pcall(function() local myRoot = GetRootPart()
-		if not myRoot or not itemData or not itemData.Part or not itemData.Part.Parent then return end
-		local origCFrame = myRoot.CFrame myRoot.CFrame = itemData.Part.CFrame + Vector3.new(0, 2, 0)
-		task.wait(0.06) SafeFireTouch(myRoot, itemData.Part, 0) SafeFireTouch(myRoot, itemData.Part, 1)
-		local prompt = itemData.Object:FindFirstChildWhichIsA("ProximityPrompt", true)
-			or itemData.Part:FindFirstChildWhichIsA("ProximityPrompt", true) if prompt then
-			prompt.HoldDuration = 0 SafeFirePrompt(prompt) end task.wait(0.06)
-		if myRoot and myRoot.Parent then myRoot.CFrame = origCFrame end end) end
-ScanWorkspaceItems = function() ScannedItemsCache = {} local filter = ItemSearchBox.Text:lower()
-	local myRoot = GetRootPart() local myPos = myRoot and myRoot.Position or Vector3.new(0, 0, 0)
-	for _, obj in ipairs(workspace:GetDescendants()) do if MatchesItemCriteria(obj) then
-			local part = GetItemBasePart(obj)
-			if part and (filter == "" or obj.Name:lower():find(filter, 1, true)) then
-				table.insert(ScannedItemsCache, { Object = obj, Part = part, Name = obj.Name,
-					Distance = (part.Position - myPos).Magnitude }) end end if #ScannedItemsCache >= 35 then break end
-	end table.sort(ScannedItemsCache, function(a, b) return a.Distance < b.Distance end)
-	for _, child in ipairs(ItemsListContainer:GetChildren()) do
-		if child:IsA("Frame") then child:Destroy() end end for idx, item in ipairs(ScannedItemsCache) do
-		local Row = CreateCard(ItemsListContainer, 42, idx)
-		local Lbl = MakeLabel(Row, UDim2.new(1, -190, 1, 0), UDim2.new(0, 12, 0, 0), string.format("%s %s (%.0f studs)", E.Box, item.Name, item.Distance), Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
-		local TpBtn = MakeButton(Row, UDim2.new(0, 78, 0, 28), UDim2.new(1, -172, 0.5, -14), "Teleport", "Accent", 11)
-		TpBtn.MouseButton1Click:Connect(function() if item.Part and item.Part.Parent then
-				local pos = item.Part.Position SafeTeleportToCoords(pos.X, pos.Y + 3, pos.Z) end end)
-		local ColBtn = MakeButton(Row, UDim2.new(0, 78, 0, 28), UDim2.new(1, -86, 0.5, -14), "Collect", "AccentDark", 11)
-		ColBtn.MouseButton1Click:Connect(function() CollectTargetItem(item) end) end end
-ScanNowBtn.MouseButton1Click:Connect(ScanWorkspaceItems)
-CollectNearestBtn.MouseButton1Click:Connect(function()
-	if ScannedItemsCache[1] then CollectTargetItem(ScannedItemsCache[1]) end end) end
+pullNearbyItems = function() local char = player.Character local root = GetRootPart(char)
+	if not root then return end local myPos = root.Position local radius = Config.ItemMagnetRadius or 60
+	local radiusSq = radius * radius local function processCandidate(obj)
+		if not obj or obj == char or obj.Name == "TR_FakeFloor" then return end if obj:IsA("Tool") then
+			local handle = obj:FindFirstChild("Handle")
+			if handle and handle:IsA("BasePart") and not handle.Anchored then local hp = handle.Position
+				local dx = hp.X - myPos.X local dy = hp.Y - myPos.Y local dz = hp.Z - myPos.Z
+				if (dx * dx + dy * dy + dz * dz) <= radiusSq then handle.CFrame = root.CFrame
+					handle.AssemblyLinearVelocity = V3_ZERO SafeFireTouch(root, handle, 0)
+					SafeFireTouch(root, handle, 1) end end
+		elseif obj:IsA("BasePart") and not obj.Anchored and obj.CanTouch ~= false then
+			if not IsCharacterDescendant(obj) then local op = obj.Position local dx = op.X - myPos.X
+				local dy = op.Y - myPos.Y local dz = op.Z - myPos.Z if (dx * dx + dy * dy + dz * dz) <= radiusSq then
+					local lower = obj.Name:lower()
+					if lower:find("drop") or lower:find("coin") or lower:find("loot") or lower:find("item") or lower:find("gem") or lower:find("cash") or lower:find("gold") or obj:FindFirstChildOfClass("TouchTransmitter") then
+						obj.CFrame = root.CFrame obj.AssemblyLinearVelocity = V3_ZERO SafeFireTouch(root, obj, 0)
+						SafeFireTouch(root, obj, 1) end end end
+		elseif obj:IsA("Model") and not IsCharacterDescendant(obj) then
+			local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+			if part and not part.Anchored then local op = part.Position local dx = op.X - myPos.X
+				local dy = op.Y - myPos.Y local dz = op.Z - myPos.Z if (dx * dx + dy * dy + dz * dz) <= radiusSq then
+					local lower = obj.Name:lower() local hasPrompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+					if lower:find("drop") or lower:find("coin") or lower:find("loot") or lower:find("item") or lower:find("gem") or lower:find("cash") or lower:find("gold") or hasPrompt then
+						part.CFrame = root.CFrame part.AssemblyLinearVelocity = V3_ZERO SafeFireTouch(root, part, 0)
+						SafeFireTouch(root, part, 1) if hasPrompt then hasPrompt.HoldDuration = 0 SafeFirePrompt(hasPrompt)
+						end end end end end end pcall(function() for _, child in ipairs(workspace:GetChildren()) do
+			processCandidate(child) if child:IsA("Folder") or child:IsA("Model") then
+				local folderName = child.Name:lower()
+				if folderName:find("drop") or folderName:find("item") or folderName:find("loot") or folderName:find("coin") or folderName:find("spawn") or folderName:find("debris") or folderName:find("pickup") then
+					for _, sub in ipairs(child:GetChildren()) do processCandidate(sub) end end end end end) end
+CreateToggle(Tab4_Items, "Item Vacuum / Magnet (Pulls Nearby Items & Drops to Character)", Config.ItemMagnetEnabled == true, 4, function(state)
+	Config.ItemMagnetEnabled = state if state then pullNearbyItems() end SaveConfig(false) end)
+CreateSlider(Tab4_Items, "Item Vacuum Radius (studs)", 15, 300, Config.ItemMagnetRadius or 60, 5, function(val)
+	Config.ItemMagnetRadius = val SaveConfig(false) end) local MagnetCard = CreateCard(Tab4_Items, 46, 6)
+local PulseBtn = MakeButton(MagnetCard, UDim2.new(1, -20, 0, 30), UDim2.new(0, 10, 0.5, -15), E.Magnet .. " Instant Vacuum Pulse (Pull All Items Now [E])", "Accent", 11)
+PulseBtn.MouseButton1Click:Connect(pullNearbyItems) end
 --==============================================================================
 -- 11. TAB 5: FLIGHT & MOVEMENT
 --==============================================================================
@@ -744,12 +746,16 @@ CreateToggle(Tab5_Flight, "Master Utility Switch (Enable WalkSpeed & JumpPower)"
 	Config.MasterUtilityEnabled = state SaveConfig(false) end)
 CreateToggle(Tab5_Flight, "Noclip Mode (Disable Character CanCollide)", Config.NoclipEnabled, 5, function(state)
 	Config.NoclipEnabled = state SaveConfig(false) end)
-CreateToggle(Tab5_Flight, "Shift-Down Flight Descent (Hold LeftShift to Descend)", Config.ShiftDownEnabled, 7, function(state)
+CreateToggle(Tab5_Flight, "Infinite Jump (Jump Continuously Mid-Air Without Ground Touch)", Config.InfiniteJump == true, 6, function(state)
+	Config.InfiniteJump = state SaveConfig(false) end)
+CreateToggle(Tab5_Flight, "Speed-Synced Spider Climb (Climb Walls at Character WalkSpeed)", Config.SpiderClimb == true, 7, function(state)
+	Config.SpiderClimb = state SaveConfig(false) end)
+CreateToggle(Tab5_Flight, "Shift-Down Flight Descent (Hold LeftShift to Descend)", Config.ShiftDownEnabled, 8, function(state)
 	Config.ShiftDownEnabled = state SaveConfig(false) end)
-CreateToggle(Tab5_Flight, "Countdown / Spawn Freeze Bypass (Unanchor & Clear Freeze Tags)", Config.CountdownBypass, 8, function(state)
+CreateToggle(Tab5_Flight, "Countdown / Spawn Freeze Bypass (Unanchor & Clear Freeze Tags)", Config.CountdownBypass, 9, function(state)
 	Config.CountdownBypass = state SaveConfig(false) end)
-CreateSectionHeader(Tab5_Flight, "Speed & Movement Sliders", 9)
-CreateSlider(Tab5_Flight, "Fly Speed", 1, 1000, Config.FlySpeed, 10, function(val) Config.FlySpeed = val; SaveConfig(false) end)
+CreateSectionHeader(Tab5_Flight, "Speed & Movement Sliders", 10)
+CreateSlider(Tab5_Flight, "Fly Speed", 1, 1000, Config.FlySpeed, 11, function(val) Config.FlySpeed = val; SaveConfig(false) end)
 CreateSlider(Tab5_Flight, "WalkSpeed", 16, 500, Config.WalkSpeed, 12, function(val) Config.WalkSpeed = val; SaveConfig(false) end)
 CreateSlider(Tab5_Flight, "JumpPower", 50, 500, Config.JumpPower, 13, function(val) Config.JumpPower = val; SaveConfig(false) end)
 end
@@ -883,13 +889,14 @@ local fovCircleEnabled = (Config.AimbotFOVCircleEnabled ~= false)
 local aimbotEnabled = (Config.AimbotEnabled == true) local strongLock = (Config.StrongLock == true)
 local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
 local aimbotTeamCheck = (Config.AimbotTeamCheck ~= false)
+local autoShootEnabled = (Config.AutoShootEnabled == true) local lastAutoShoot = 0
 local espShowTeammates = (Config.ESPShowTeammates == true)
 local aimPartName = Config.AimPartName or "Head" local currentTarget, lastEspUpdate = nil, 0
 local excludedPlayers, characterCache, adornmentsCache = {}, {}, {}
 local guiFovCircle, guiFovStroke = nil, nil
 local IsTeammate, getTargetPart, isTargetVisible, removePlayerAdornments, clearAllAdornments
 local RefreshESPHighlights, updateAllAdornments, findBestTarget
-local aimbotStatusLabel, excludeFrame, updateExcludeCount, rebuildExcludeList, toggleAimbot, ApplyCameraMode
+local aimbotStatusLabel, excludeFrame, updateExcludeCount, rebuildExcludeList, toggleAimbot, ApplyCameraMode, triggerAutoShoot
 do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	guiFovCircle.AnchorPoint = Vector2.new(0.5, 0.5) guiFovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
 	guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2)
@@ -900,8 +907,15 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	SyncAimbotFovCircleVisibility = function()
 		local showCircle = aimbotEnabled and fovCircleEnabled and not isClosingPermanently if guiFovCircle then
 			guiFovCircle.Size = UDim2.new(0, FOV_RADIUS * 2, 0, FOV_RADIUS * 2) guiFovCircle.Visible = showCircle
-		end end local teamCache = {} local lastTeamCacheClear = 0 local function getTeamValFast(p)
-		if not p then return nil end
+		end end triggerAutoShoot = function() if not aimbotEnabled or not autoShootEnabled then return end
+		local char = player.Character if not char then return end
+		local hum = char:FindFirstChildOfClass("Humanoid") if not hum or hum.Health <= 0 then return end
+		local tool = char:FindFirstChildOfClass("Tool") if tool then pcall(function() tool:Activate() end) end
+		if mouse1click then pcall(mouse1click) elseif mouse1press and mouse1release then pcall(mouse1press)
+			task.delay(0.016, function() pcall(mouse1release) end) elseif VirtualUser then pcall(function()
+				if VirtualUser.CaptureController and VirtualUser.ClickButton1 then VirtualUser:CaptureController()
+					VirtualUser:ClickButton1(Vector2.new(0, 0)) end end) end end local teamCache = {}
+	local lastTeamCacheClear = 0 local function getTeamValFast(p) if not p then return nil end
 		local v = p:FindFirstChild("Team") or p:FindFirstChild("TeamColor") or (p:FindFirstChild("leaderstats") and p.leaderstats:FindFirstChild("Team"))
 		if not v and p.Character then
 			v = p.Character:FindFirstChild("Team") or p.Character:FindFirstChild("TeamColor") end
@@ -951,13 +965,13 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		for plr in pairs(adornmentsCache) do removePlayerAdornments(plr) end end
 	RefreshESPHighlights = function() local themeAccent = GetTheme().Accent
 		for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
-				local existing = plr.Character:FindFirstChild("TR_ESP_Highlight")
+				local existing = ScreenGui:FindFirstChild("HL_" .. plr.Name) or plr.Character:FindFirstChild("TR_ESP_Highlight")
 				local allowTeam = espShowTeammates or not IsTeammate(plr)
 				if Config.ESPEnabled and not excludedPlayers[plr] and allowTeam then if not existing then
-						pcall(function() local hl = Instance.new("Highlight") hl.Name = "TR_ESP_Highlight"
+						pcall(function() local hl = Instance.new("Highlight") hl.Name = "AssetHighlight"
 							hl.FillColor = themeAccent hl.OutlineColor = Color3.fromRGB(255, 255, 255)
 							hl.FillTransparency = 0.45 hl.OutlineTransparency = 0.1 hl.Adornee = plr.Character
-							hl.Parent = plr.Character end) else if existing.FillColor ~= themeAccent then
+							hl.Parent = ScreenGui end) else if existing.FillColor ~= themeAccent then
 							existing.FillColor = themeAccent end end elseif existing then existing:Destroy() end end end end
 	updateAllAdornments = function() if not Config.ESPEnabled then
 			if next(adornmentsCache) ~= nil then clearAllAdornments() end return end
@@ -969,13 +983,13 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 				local hum = char and char:FindFirstChildOfClass("Humanoid")
 				if char and root and hum and hum.Health > 0 then local pair = adornmentsCache[plr] if not pair then
 						local inner = Instance.new("BoxHandleAdornment") inner.AlwaysOnTop = true inner.ZIndex = 10
-						inner.Transparency = 0.35 inner.Color3 = accentCol inner.Name = "ESP_HitboxInner"
-						inner.Size = V3_ESP_BOX inner.CFrame = CF_ESP_OFFSET inner.Parent = PlayerGui
+						inner.Transparency = 0.35 inner.Color3 = accentCol inner.Name = "AssetAdornment"
+						inner.Size = V3_ESP_BOX inner.CFrame = CF_ESP_OFFSET inner.Parent = ScreenGui
 						local outline = Instance.new("BoxHandleAdornment") outline.AlwaysOnTop = true outline.ZIndex = 9
-						outline.Transparency = 0.75 outline.Color3 = Color3.fromRGB(0, 0, 0)
-						outline.Name = "ESP_HitboxOutline" outline.Size = V3_ESP_OUTLINE outline.CFrame = CF_ESP_OFFSET
-						outline.Parent = PlayerGui pair = { inner = inner, outline = outline } adornmentsCache[plr] = pair
-					end if pair.inner.Adornee ~= root then pair.inner.Adornee = root pair.outline.Adornee = root end
+						outline.Transparency = 0.75 outline.Color3 = Color3.fromRGB(0, 0, 0) outline.Name = "AssetOutline"
+						outline.Size = V3_ESP_OUTLINE outline.CFrame = CF_ESP_OFFSET outline.Parent = ScreenGui
+						pair = { inner = inner, outline = outline } adornmentsCache[plr] = pair end
+					if pair.inner.Adornee ~= root then pair.inner.Adornee = root pair.outline.Adornee = root end
 					if pair.inner.Color3 ~= accentCol then pair.inner.Color3 = accentCol end else
 					if adornmentsCache[plr] then removePlayerAdornments(plr) end end else
 				if adornmentsCache[plr] then removePlayerAdornments(plr) end end end end findBestTarget = function()
@@ -1025,16 +1039,18 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		aimbotTeamCheck = state Config.AimbotTeamCheck = state
 		if state and currentTarget and IsTeammate(currentTarget) then currentTarget = nil end SaveConfig(false)
 	end)
-	CreateToggle(Tab7_Visuals, "Show Aimbot FOV Circle (Turn OFF for Full-Screen Aimbot)", fovCircleEnabled, 6, function(state)
+	CreateToggle(Tab7_Visuals, "Auto Shoot (Automatically Shoot when Locked into Head/Body)", autoShootEnabled, 6, function(state)
+		autoShootEnabled = state Config.AutoShootEnabled = state SaveConfig(false) end)
+	CreateToggle(Tab7_Visuals, "Show Aimbot FOV Circle (Turn OFF for Full-Screen Aimbot)", fovCircleEnabled, 7, function(state)
 		fovCircleEnabled = state Config.AimbotFOVCircleEnabled = state currentTarget = nil
 		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
 	-- Neat V94 CreateSlider for Aimbot FOV Circle Radius
 	local FovSliderObj local fovBox
-	FovSliderObj = CreateSlider(Tab7_Visuals, "Aimbot FOV Circle Radius (px)", 20, 800, FOV_RADIUS, 7, function(val)
+	FovSliderObj = CreateSlider(Tab7_Visuals, "Aimbot FOV Circle Radius (px)", 20, 800, FOV_RADIUS, 8, function(val)
 		FOV_RADIUS = val Config.AimbotFOVRadius = val if fovBox then fovBox.Text = tostring(val) end
 		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
 	-- Target Part, Manual FOV Input & Player Exclusion Row Card
-	local AimbotExtraCard = CreateCard(Tab7_Visuals, 48, 8)
+	local AimbotExtraCard = CreateCard(Tab7_Visuals, 48, 9)
 	local aimPartBtn = MakeButton(AimbotExtraCard, UDim2.new(0.34, -10, 0, 32), UDim2.new(0, 10, 0, 8), "", "Accent", 12)
 	fovBox = Instance.new("TextBox", AimbotExtraCard) fovBox.Size = UDim2.new(0.32, -8, 0, 32)
 	fovBox.Position = UDim2.new(0.34, 4, 0, 8)
@@ -1092,18 +1108,18 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		AimbotExtraCard.Size = excludeFrame.Visible and UDim2.new(1, 0, 0, 186) or UDim2.new(1, 0, 0, 48)
 		if excludeFrame.Visible then rebuildExcludeList() end end) RefreshAimbotVisuals()
 	-- Section 2: Player ESP Highlights & 3D Bounding Boxes
-	CreateSectionHeader(Tab7_Visuals, "Player ESP (Chams & 3D Hitbox Boxes)", 9)
-	CreateToggle(Tab7_Visuals, "Player Highlight & 3D Box ESP (Chams + Hitbox Boxes)", Config.ESPEnabled, 10, function(state)
+	CreateSectionHeader(Tab7_Visuals, "Player ESP (Chams & 3D Hitbox Boxes)", 10)
+	CreateToggle(Tab7_Visuals, "Player Highlight & 3D Box ESP (Chams + Hitbox Boxes)", Config.ESPEnabled, 11, function(state)
 		Config.ESPEnabled = state if not state then clearAllAdornments() else updateAllAdornments() end
 		RefreshESPHighlights() SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "Turn On ESP for Teammates (Show Teammate Highlights & Boxes)", espShowTeammates, 11, function(state)
+	CreateToggle(Tab7_Visuals, "Turn On ESP for Teammates (Show Teammate Highlights & Boxes)", espShowTeammates, 12, function(state)
 		espShowTeammates = state Config.ESPShowTeammates = state RefreshESPHighlights() updateAllAdornments()
 		SaveConfig(false) end)
 	-- Section 3: Camera Field of View & Perspective
-	CreateSectionHeader(Tab7_Visuals, "Camera Field of View & Perspective", 12)
-	CreateSlider(Tab7_Visuals, "Camera Field of View (FOV)", 30, 120, Config.FOV, 13, function(val)
+	CreateSectionHeader(Tab7_Visuals, "Camera Field of View & Perspective", 13)
+	CreateSlider(Tab7_Visuals, "Camera Field of View (FOV)", 30, 120, Config.FOV, 14, function(val)
 		Config.FOV = val pcall(function() workspace.CurrentCamera.FieldOfView = val end) SaveConfig(false) end)
-	local CamModeCard = CreateCard(Tab7_Visuals, 50, 14) local CamModeList = Instance.new("UIListLayout")
+	local CamModeCard = CreateCard(Tab7_Visuals, 50, 15) local CamModeList = Instance.new("UIListLayout")
 	CamModeList.FillDirection = Enum.FillDirection.Horizontal
 	CamModeList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	CamModeList.VerticalAlignment = Enum.VerticalAlignment.Center CamModeList.Padding = UDim.new(0, 8)
@@ -1117,13 +1133,13 @@ do guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 		local MBtn = MakeButton(CamModeCard, UDim2.new(0, 165, 0, 32), nil, modeName, "AccentDark", 11)
 		MBtn.MouseButton1Click:Connect(function() ApplyCameraMode(modeName) end) end
 	-- Section 4: World Lighting, Fullbright & Time Presets
-	CreateSectionHeader(Tab7_Visuals, "Lighting, Fullbright & Time Presets", 15)
-	CreateToggle(Tab7_Visuals, "Fullbright Lighting Mode (No Shadows + Max Illumination)", Config.FullbrightEnabled, 16, function(state)
+	CreateSectionHeader(Tab7_Visuals, "Lighting, Fullbright & Time Presets", 16)
+	CreateToggle(Tab7_Visuals, "Fullbright Lighting Mode (No Shadows + Max Illumination)", Config.FullbrightEnabled, 17, function(state)
 		Config.FullbrightEnabled = state if not state then pcall(function()
 				Lighting.Brightness = DefaultLighting.Brightness
 				Lighting.GlobalShadows = DefaultLighting.GlobalShadows
 				Lighting.OutdoorAmbient = DefaultLighting.OutdoorAmbient end) end SaveConfig(false) end)
-	local TimeCard = CreateCard(Tab7_Visuals, 50, 17) local TimeList = Instance.new("UIListLayout")
+	local TimeCard = CreateCard(Tab7_Visuals, 50, 18) local TimeList = Instance.new("UIListLayout")
 	TimeList.FillDirection = Enum.FillDirection.Horizontal
 	TimeList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	TimeList.VerticalAlignment = Enum.VerticalAlignment.Center TimeList.Padding = UDim.new(0, 10)
@@ -1239,7 +1255,7 @@ TerminateBtn.MouseButton1Click:Connect(function()
 -- 15. CORE HEARTBEAT, STEPPED, PLAYER LIST & INPUT ENGINES
 --==============================================================================
 local FREEZE_TAG_NAMES = { Frozen = true, Freeze = true, Stunned = true, CountdownLock = true, SpawnBarrier = true, RootAnchor = true }
-local frameCount, lastFpsTime, currentFps, lastRadarRefresh = 0, os.clock(), 60, 0
+local frameCount, lastFpsTime, currentFps, lastRadarRefresh, lastMagnetTime = 0, os.clock(), 60, 0, 0
 table.insert(Connections, Players.PlayerAdded:Connect(function(newPlayer)
 	if Config.AutoSelectFling == true and newPlayer ~= player and not IsFriend(newPlayer) then
 		SelectedTargets[newPlayer.Name] = newPlayer end RefreshFlingPlayerList()
@@ -1251,7 +1267,14 @@ table.insert(Connections, Players.PlayerRemoving:Connect(function(leftPlayer)
 	if excludeFrame and excludeFrame.Visible then rebuildExcludeList() else updateExcludeCount() end end))
 table.insert(Connections, LocalPlayer.CharacterAdded:Connect(function(c) currentTarget = nil
 	if updateWallcheckFilter then pcall(updateWallcheckFilter, c) end
-	for k in pairs(characterCache) do characterCache[k] = nil end end))
+	for k in pairs(characterCache) do characterCache[k] = nil end end)) if UserInputService.JumpRequest then
+table.insert(Connections, UserInputService.JumpRequest:Connect(function() if Config.InfiniteJump then
+		local char = player.Character local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local root = GetRootPart(char) if hum and hum.Health > 0 and root then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			local jp = Config.MasterUtilityEnabled and (Config.JumpPower or 50) or (hum.UseJumpPower and hum.JumpPower or 50)
+			local v = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(v.X, math.max(jp, 50), v.Z) end end end)) end
 table.insert(Connections, RunService.RenderStepped:Connect(function(dt)
 	if not Config.ESPEnabled and next(adornmentsCache) == nil then return end
 	lastEspUpdate = lastEspUpdate + dt if lastEspUpdate >= ESP_UPDATE_INTERVAL then lastEspUpdate = 0
@@ -1294,8 +1317,14 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 1, f
 			local goalCF = CFrame.new(cam.CFrame.Position, targetPart.Position) local beforeCF = cam.CFrame
 			cam.CFrame = strongLock and goalCF or beforeCF:Lerp(goalCF, LERP_ALPHA)
 			setAimbotStatusText((cam.CFrame == beforeCF) and "Aimed: Camera writes blocked" or ("Target: " .. tostring(currentTarget.DisplayName)))
-		end else setAimbotStatusText("Status: Searching...") end end) local lastAirTimeReset = 0
-local function landHum(h) h:ChangeState(Enum.HumanoidStateType.Landed)
+			if autoShootEnabled and triggerAutoShoot then local canShoot = strongLock if not canShoot then
+					local tp = targetPart.Position local cp = cam.CFrame.Position local dx = tp.X - cp.X
+					local dy = tp.Y - cp.Y local dz = tp.Z - cp.Z local distSq = dx * dx + dy * dy + dz * dz
+					if distSq > 0.0001 then local invDist = 1 / math.sqrt(distSq) local lv = cam.CFrame.LookVector
+						local dot = (dx * lv.X + dy * lv.Y + dz * lv.Z) * invDist canShoot = (dot >= 0.94) end end
+				if canShoot then local nowT = os.clock() if nowT - lastAutoShoot >= 0.05 then lastAutoShoot = nowT
+						triggerAutoShoot() end end end end else setAimbotStatusText("Status: Searching...") end end)
+local lastAirTimeReset = 0 local function landHum(h) h:ChangeState(Enum.HumanoidStateType.Landed)
 	h:ChangeState(Enum.HumanoidStateType.Running) end
 table.insert(Connections, RunService.Stepped:Connect(function() local char = player.Character
 	if not char then return end if Config.AntiCheatBypass ~= false and isFlightActive() then
@@ -1411,7 +1440,19 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 				local v = root.AssemblyLinearVelocity
 				root.AssemblyLinearVelocity = Vector3.new(v.X, Config.JumpPower, v.Z) end else
 			hum.WalkSpeed = Config.WalkSpeed hum.UseJumpPower = true hum.JumpPower = Config.JumpPower end end
-end))
+	-- 9. Speed-Synced Spider Climb
+	if Config.SpiderClimb and not isFlightActive() and not FlingActive and hum.MoveDirection.Magnitude > 0.05 then
+		local rayDir = hum.MoveDirection.Unit * 2.5 local rayPos = root.Position
+		local spiderHit = workspace:Raycast(rayPos, rayDir, reusableWallcheckParams) if not spiderHit then
+			spiderHit = workspace:Raycast(rayPos - Vector3.new(0, 1.4, 0), rayDir, reusableWallcheckParams) end
+		if spiderHit and spiderHit.Instance and spiderHit.Instance.CanCollide then
+			local curSpeed = (Config.MasterUtilityEnabled and (Config.WalkSpeed or 16)) or hum.WalkSpeed
+			local climbSpeed = math.clamp(curSpeed * 0.9, 18, 250) local curVel = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(curVel.X * 0.25, climbSpeed, curVel.Z * 0.25)
+			hum:ChangeState(Enum.HumanoidStateType.Climbing) end end
+	-- 10. Item Vacuum / Magnet Periodic Check (every 0.2s)
+	if Config.ItemMagnetEnabled and pullNearbyItems then if now - lastMagnetTime >= 0.2 then
+			lastMagnetTime = now pullNearbyItems() end end end))
 -- Global InputBegan Shortcut Engine
 table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp)
 	if UserInputService:GetFocusedTextBox() ~= nil then return end
@@ -1425,7 +1466,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 		if gp then return end local aimKey = Config.AimbotKeybind or "Q"
 		if aimKey ~= "None" and keyName == aimKey then toggleAimbot() return end
 		if input.KeyCode == Enum.KeyCode.E and ActiveTabName == "Items & Prompts" then
-			if ScannedItemsCache[1] then CollectTargetItem(ScannedItemsCache[1]) end return end
+			if pullNearbyItems then pullNearbyItems() end return end
 		local flyKey = savedConfig.Settings.FlyKeybind or "E"
 		if flyKey ~= "None" and keyName == flyKey and masterFlightEnabled then toggleFlightState() return end
 		for _, wp in ipairs(savedConfig.Waypoints) do
