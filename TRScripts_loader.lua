@@ -2356,13 +2356,31 @@ local function ReorderDetectorCards()
 end
 
 local function isGrounded(hrp, character, humanoid)
+	if not hrp then return false end
+	if hrp.Anchored then return true end
 	if humanoid and humanoid.FloorMaterial ~= nil and humanoid.FloorMaterial ~= Enum.Material.Air then
 		return true
 	end
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = { character }
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	return workspace:Raycast(hrp.Position, Vector3.new(0, -5.5, 0), params) ~= nil
+	-- Raycast down 16 studs to catch arena floors, platforms, ramps, stairs, and spawn cages
+	if workspace:Raycast(hrp.Position, Vector3.new(0, -16, 0), params) ~= nil then
+		return true
+	end
+	-- Diagonal rays to catch platform edges and uneven geometry
+	local diagDirs = {
+		Vector3.new(4, -14, 0),
+		Vector3.new(-4, -14, 0),
+		Vector3.new(0, -14, 4),
+		Vector3.new(0, -14, -4)
+	}
+	for _, dir in ipairs(diagDirs) do
+		if workspace:Raycast(hrp.Position, dir, params) ~= nil then
+			return true
+		end
+	end
+	return false
 end
 
 local function checkServerTeleport()
@@ -2401,6 +2419,7 @@ local function samplePlayerPhysics(plr)
 	if not playerData[plr.Name] then
 		playerData[plr.Name] = {
 			spawnTime = now,
+			lastTeleportTime = now,
 			airTime = 0, lastPosition = hrp.Position, lastCheck = now,
 			speedSamples = {}, wasDetected = false,
 			lastHSpeed = 0, lastTotalSpeed = 0, lastVelY = 0,
@@ -2417,9 +2436,28 @@ local function samplePlayerPhysics(plr)
 	local isSeated = humanoid.Sit or (humanoid.SeatPart ~= nil) or (humanoid:GetState() == Enum.HumanoidStateType.Seated)
 	local isClimbing = (humanoid:GetState() == Enum.HumanoidStateType.Climbing)
 	local isSwimming = (humanoid:GetState() == Enum.HumanoidStateType.Swimming) or (humanoid.FloorMaterial == Enum.Material.Water)
-	local isJustSpawned = (now - (data.spawnTime or now) < 3.5)
+	local isAnchored = (hrp.Anchored == true) or (character:FindFirstChild("CountdownLock") ~= nil) or (character:FindFirstChild("Freeze") ~= nil) or (character:FindFirstChild("Frozen") ~= nil)
 
-	if isDead or isSeated then
+	-- Check if player teleported (e.g. from lobby to arena, round start, or respawn)
+	local distance = (hrp.Position - data.lastPosition).Magnitude
+	local isTeleporting = (distance > 40)
+	if isTeleporting then
+		data.lastTeleportTime = now
+		data.airTime = 0
+		data.flyStreak = 0
+		data.speedStreak = 0
+		data.teleportStreak = 0
+		data.noclipStreak = 0
+		data.lastPosition = hrp.Position
+		data.lastCheck = now
+		data.recentTeleport = false
+		data.recentNoClip = false
+		return
+	end
+
+	local isJustSpawned = (now - (data.spawnTime or now) < 5.0) or (now - (data.lastTeleportTime or 0) < 5.0)
+
+	if isDead or isSeated or isAnchored or isJustSpawned then
 		data.airTime = 0
 		data.speedStreak = 0
 		data.flyStreak = 0
@@ -2446,20 +2484,21 @@ local function samplePlayerPhysics(plr)
 	local jumpPower = humanoid.JumpPower
 	local grounded = isGrounded(hrp, character, humanoid)
 
-	if grounded or isClimbing or isSwimming then
+	if grounded or isClimbing or isSwimming or isAnchored then
 		data.airTime = 0
 	else
 		data.airTime = data.airTime + dt
 	end
 
-	local distance = (hrp.Position - data.lastPosition).Magnitude
-	if not isJustSpawned and dt < 0.4 and distance > DETECTOR_CONFIG.TELEPORT_DISTANCE and hSpeed < 80 then
+	-- Real in-combat teleport detection: only outside of spawn/teleport immunity window
+	if dt < 0.4 and distance > DETECTOR_CONFIG.TELEPORT_DISTANCE and hSpeed < 80 then
 		if not serverTeleporting then
 			data.recentTeleport = true
 		end
 	end
 
-	if not isJustSpawned and distance > 2.5 and distance < 65 and not grounded then
+	-- Real NoClip verification: raycast between previous and current position through solid wall
+	if distance > 2.5 and distance < 40 and not grounded then
 		local rayP = RaycastParams.new()
 		rayP.FilterDescendantsInstances = { character }
 		rayP.FilterType = Enum.RaycastFilterType.Exclude
@@ -2497,13 +2536,16 @@ local function checkPlayer(plr)
 	local character = GetCharacterFromPlayer(plr)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local hrp = GetRootPart(character)
+	local now = tick()
 	local isDead = not humanoid or (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
 	local isSeated = humanoid and (humanoid.Sit or (humanoid.SeatPart ~= nil))
+	local isAnchored = hrp and (hrp.Anchored == true or character:FindFirstChild("CountdownLock") ~= nil or character:FindFirstChild("Freeze") ~= nil)
+	local isJustSpawned = (now - (data.spawnTime or now) < 5.0) or (now - (data.lastTeleportTime or 0) < 5.0)
 
-	if isDead or isSeated then
+	if isDead or isSeated or isAnchored or isJustSpawned then
 		card.studLbl.Text = "Speed: 0.0 s/s"
 		card.wsLbl.Text = string.format("WalkSpeed: %d", (humanoid and humanoid.WalkSpeed) or 16)
-		card.groundLbl.Text = isDead and "Dead" or "Seated"
+		card.groundLbl.Text = isDead and "Dead" or (isAnchored and "Anchored" or "Spawn Protected")
 		card.groundLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Clean
 		card.stateTier = 3
 		card.flagsLbl.Text = ""
@@ -2569,11 +2611,13 @@ local function checkPlayer(plr)
 		data.speedStreak = math.max(0, (data.speedStreak or 0) - 1)
 	end
 
-	-- 2. FLY HACK (Requires hovering horizontally without falling velY between -3.5 and 3.5, OR continuously rising velY > 6, while in mid-air > 3.5s)
-	local isHoveringOrRising = (math.abs(velY) < 3.5 and hSpeed > 8) or (velY > 6 and hSpeed > 5)
-	if not grounded and data.airTime > DETECTOR_CONFIG.MAX_AIR_TIME and isHoveringOrRising then
+	-- 2. FLY HACK: Only triggered if in the open air (no ground within 16 studs), airTime > 5.0s, and actively flying horizontally with high speed or ascending continuously
+	-- Notice: velY < -10 is natural falling with gravity, so falling players NEVER trigger Fly
+	local isHighInSky = (not grounded) and (data.airTime > 5.0)
+	local isActivelyFlying = (math.abs(velY) < 2.5 and hSpeed >= 20) or (velY >= 14 and hSpeed >= 8)
+	if isHighInSky and isActivelyFlying and not isJustSpawned and not isAnchored then
 		data.flyStreak = (data.flyStreak or 0) + 1
-		if data.flyStreak >= 2 then
+		if data.flyStreak >= 3 then
 			table.insert(hardFlags, "Fly")
 		end
 	else
