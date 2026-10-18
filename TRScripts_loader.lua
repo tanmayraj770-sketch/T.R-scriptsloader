@@ -274,91 +274,52 @@ local ContentContainer = Instance.new("Frame") ContentContainer.Size = UDim2.new
 ContentContainer.Position = UDim2.new(0, 200, 0, 50) ContentContainer.BackgroundTransparency = 0.12
 ContentContainer.BorderSizePixel = 0 ContentContainer.Parent = MainFrame
 RegisterThemeObject(ContentContainer, "BackgroundColor3", "PanelBg") AddCorner(ContentContainer, 10)
-local AnimOverlay = Instance.new("Frame") AnimOverlay.Name = "TR_AnimOverlay"
-AnimOverlay.Size = UDim2.new(1, 0, 1, 0) AnimOverlay.Position = UDim2.new(0, 0, 0, 0)
-AnimOverlay.BackgroundTransparency = 1 AnimOverlay.BorderSizePixel = 0
-AnimOverlay.ZIndex = 50 AnimOverlay.Active = false AnimOverlay.Parent = MainFrame
-AddCorner(AnimOverlay, 12)
-local function ResetInnerPanelPositions()
-	MainFrame.Rotation = 0
-	TopBar.Position = UDim2.new(0, 0, 0, 0)
-	Sidebar.Position = UDim2.new(0, 10, 0, 50)
-	ContentContainer.Position = UDim2.new(0, 200, 0, 50)
-	AnimOverlay.BackgroundTransparency = 1
-	MainStroke.Thickness = 1.6
-end
 local function SetMenuVisible(state, onComplete) if isClosingPermanently then return end
 	for _, tw in ipairs(activeWindowTweens) do pcall(function() tw:Cancel() end) end activeWindowTweens = {}
 	local wasVisible = MainFrame.Visible
 	isMenuVisible = state if SyncAimbotFovCircleVisibility then SyncAimbotFovCircleVisibility() end
 	local animStyle = Config.Animation or "Default"
 	MainFrame.Size = UDim2.new(0, CurrentWidth, 0, CurrentHeight)
+	MainFrame.Rotation = 0
+	TopBar.Position = UDim2.new(0, 0, 0, 0)
+	Sidebar.Position = UDim2.new(0, 10, 0, 50)
+	ContentContainer.Position = UDim2.new(0, 200, 0, 50)
+	MainStroke.Thickness = 1.6
 	if state then MainFrame.Visible = true
 		if animStyle == "Windows" then
-			-- Enhanced Windows 11 Fluent Acrylic Flyout & Staggered Panel Cascade
-			MainFrame.Rotation = 0
-			MainScale.Scale = 0.85
-			MainFrame.Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 48)
-			MainFrame.BackgroundTransparency = 0.72
-			MainStroke.Thickness = 2.8 MainStroke.Transparency = 0.05
-			AnimOverlay.BackgroundColor3 = GetTheme().Accent AnimOverlay.BackgroundTransparency = 0.64
-			TopBar.Position = UDim2.new(0, 0, 0, -10)
-			Sidebar.Position = UDim2.new(0, 10, 0, 72)
-			ContentContainer.Position = UDim2.new(0, 200, 0, 82)
-			local infoWin = TweenInfo.new(0.28, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
-			local infoAcrylic = TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-			local infoSide = TweenInfo.new(0.32, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
-			local infoContent = TweenInfo.new(0.38, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
-			local t1 = TweenService:Create(MainScale, infoWin, { Scale = 1 })
-			local t2 = TweenService:Create(MainFrame, infoWin, { Position = RestingPosition, BackgroundTransparency = 0.06 })
-			local t3 = TweenService:Create(MainStroke, infoAcrylic, { Transparency = 0.25, Thickness = 1.6 })
-			local t4 = TweenService:Create(AnimOverlay, infoAcrylic, { BackgroundTransparency = 1 })
-			local t5 = TweenService:Create(TopBar, infoWin, { Position = UDim2.new(0, 0, 0, 0) })
-			local t6 = TweenService:Create(Sidebar, infoSide, { Position = UDim2.new(0, 10, 0, 50) })
-			local t7 = TweenService:Create(ContentContainer, infoContent, { Position = UDim2.new(0, 200, 0, 50) })
-			activeWindowTweens = { t1, t2, t3, t4, t5, t6, t7 }
-			for _, tw in ipairs(activeWindowTweens) do tw:Play() end
+			-- Improved Windows 11 Fluent Window Open (Zero Clipping, Zero Flash)
+			MainScale.Scale = 0.88
+			MainFrame.Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 36)
+			MainFrame.BackgroundTransparency = 0.70
+			MainStroke.Transparency = 0.85
+			local info = TweenInfo.new(0.24, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+			local t1 = TweenService:Create(MainScale, info, { Scale = 1 })
+			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = 0.06 })
+			local t3 = TweenService:Create(MainStroke, info, { Transparency = 0.25 })
+			activeWindowTweens = { t1, t2, t3 }
+			t1:Play() t2:Play() t3:Play()
 			t1.Completed:Connect(function(st)
-				if st == Enum.PlaybackState.Completed then
-					ResetInnerPanelPositions()
-					if onComplete then onComplete() end
-				end
+				if st == Enum.PlaybackState.Completed and onComplete then onComplete() end
 			end)
 		elseif animStyle == "macOS" then
-			-- Enhanced macOS Sequoia Dock Genie Launch + CoreAnimation Spring Overshoot & Glass Specular Sheen
-			MainScale.Scale = 0.06
-			MainFrame.Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 230)
-			MainFrame.Rotation = -4.2
-			MainFrame.BackgroundTransparency = 0.55
-			MainStroke.Thickness = 2.6 MainStroke.Transparency = 0.05
-			AnimOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255) AnimOverlay.BackgroundTransparency = 0.56
-			TopBar.Position = UDim2.new(0, 0, 0, 14)
-			Sidebar.Position = UDim2.new(0, 10, 0, 76)
-			ContentContainer.Position = UDim2.new(0, 200, 0, 86)
-			local infoScale = TweenInfo.new(0.44, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local infoPos = TweenInfo.new(0.40, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local infoRot = TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local infoGlass = TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			local infoSide = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local infoContent = TweenInfo.new(0.46, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			-- Improved macOS Window Open (Dock Spring Bounce, Zero Clipping, Zero Flash)
+			MainScale.Scale = 0.12
+			MainFrame.Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 130)
+			MainFrame.BackgroundTransparency = 0.65
+			MainStroke.Transparency = 0.80
+			local infoScale = TweenInfo.new(0.36, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local infoPos = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local infoStroke = TweenInfo.new(0.28, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 			local t1 = TweenService:Create(MainScale, infoScale, { Scale = 1 })
 			local t2 = TweenService:Create(MainFrame, infoPos, { Position = RestingPosition, BackgroundTransparency = 0.06 })
-			local t3 = TweenService:Create(MainFrame, infoRot, { Rotation = 0 })
-			local t4 = TweenService:Create(MainStroke, infoGlass, { Transparency = 0.25, Thickness = 1.6 })
-			local t5 = TweenService:Create(AnimOverlay, infoGlass, { BackgroundTransparency = 1 })
-			local t6 = TweenService:Create(TopBar, infoPos, { Position = UDim2.new(0, 0, 0, 0) })
-			local t7 = TweenService:Create(Sidebar, infoSide, { Position = UDim2.new(0, 10, 0, 50) })
-			local t8 = TweenService:Create(ContentContainer, infoContent, { Position = UDim2.new(0, 200, 0, 50) })
-			activeWindowTweens = { t1, t2, t3, t4, t5, t6, t7, t8 }
-			for _, tw in ipairs(activeWindowTweens) do tw:Play() end
+			local t3 = TweenService:Create(MainStroke, infoStroke, { Transparency = 0.25 })
+			activeWindowTweens = { t1, t2, t3 }
+			t1:Play() t2:Play() t3:Play()
 			t1.Completed:Connect(function(st)
-				if st == Enum.PlaybackState.Completed then
-					ResetInnerPanelPositions()
-					if onComplete then onComplete() end
-				end
+				if st == Enum.PlaybackState.Completed and onComplete then onComplete() end
 			end)
 		else
-			ResetInnerPanelPositions()
+			-- Default Quint Animation: 100% untouched
 			if not wasVisible then
 				MainScale.Scale = 0 MainFrame.Position = RestingPosition
 				MainFrame.BackgroundTransparency = 1 MainStroke.Transparency = 1
@@ -373,50 +334,37 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 	else
 		draggingGui, resizingMode = false, nil
 		if animStyle == "Windows" then
-			-- Enhanced Windows 11 Fluent Snap-Down Close Transition
-			AnimOverlay.BackgroundColor3 = GetTheme().Accent AnimOverlay.BackgroundTransparency = 0.80
-			local infoClose = TweenInfo.new(0.22, Enum.EasingStyle.Cubic, Enum.EasingDirection.In)
-			local infoPanel = TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.In)
-			local t1 = TweenService:Create(MainScale, infoClose, { Scale = 0.85 })
-			local t2 = TweenService:Create(MainFrame, infoClose, { Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 48), BackgroundTransparency = 1 })
-			local t3 = TweenService:Create(MainStroke, infoClose, { Transparency = 1, Thickness = 2.4 })
-			local t4 = TweenService:Create(AnimOverlay, infoClose, { BackgroundTransparency = 1 })
-			local t5 = TweenService:Create(Sidebar, infoPanel, { Position = UDim2.new(0, 10, 0, 66) })
-			local t6 = TweenService:Create(ContentContainer, infoPanel, { Position = UDim2.new(0, 200, 0, 74) })
-			activeWindowTweens = { t1, t2, t3, t4, t5, t6 }
-			for _, tw in ipairs(activeWindowTweens) do tw:Play() end
+			-- Improved Windows 11 Fluent Window Close (Clean Snap-Down, Zero Clipping, Zero Flash)
+			local info = TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.In)
+			local t1 = TweenService:Create(MainScale, info, { Scale = 0.88 })
+			local t2 = TweenService:Create(MainFrame, info, { Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 36), BackgroundTransparency = 1 })
+			local t3 = TweenService:Create(MainStroke, info, { Transparency = 1 })
+			activeWindowTweens = { t1, t2, t3 }
+			t1:Play() t2:Play() t3:Play()
 			t1.Completed:Connect(function(st)
 				if st == Enum.PlaybackState.Completed then
-					ResetInnerPanelPositions()
 					if not isMenuVisible then MainFrame.Visible = false end
 					if onComplete then onComplete() end
 				end
 			end)
 		elseif animStyle == "macOS" then
-			-- Enhanced macOS Sequoia Dock Genie Vacuum-Minimize Transition
-			AnimOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255) AnimOverlay.BackgroundTransparency = 0.72
-			local infoScale = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-			local infoPos = TweenInfo.new(0.34, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-			local infoRot = TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			local infoPanel = TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-			local t1 = TweenService:Create(MainScale, infoScale, { Scale = 0.04 })
-			local t2 = TweenService:Create(MainFrame, infoPos, { Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 230), BackgroundTransparency = 1 })
-			local t3 = TweenService:Create(MainFrame, infoRot, { Rotation = 3.8 })
-			local t4 = TweenService:Create(MainStroke, infoRot, { Transparency = 1 })
-			local t5 = TweenService:Create(AnimOverlay, infoRot, { BackgroundTransparency = 1 })
-			local t6 = TweenService:Create(Sidebar, infoPanel, { Position = UDim2.new(0, 10, 0, 70) })
-			local t7 = TweenService:Create(ContentContainer, infoPanel, { Position = UDim2.new(0, 200, 0, 78) })
-			activeWindowTweens = { t1, t2, t3, t4, t5, t6, t7 }
-			for _, tw in ipairs(activeWindowTweens) do tw:Play() end
+			-- Improved macOS Window Close (Smooth Dock Minimize, Zero Clipping, Zero Flash)
+			local infoScale = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+			local infoPos = TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+			local infoStroke = TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
+			local t1 = TweenService:Create(MainScale, infoScale, { Scale = 0.06 })
+			local t2 = TweenService:Create(MainFrame, infoPos, { Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 130), BackgroundTransparency = 1 })
+			local t3 = TweenService:Create(MainStroke, infoStroke, { Transparency = 1 })
+			activeWindowTweens = { t1, t2, t3 }
+			t1:Play() t2:Play() t3:Play()
 			t1.Completed:Connect(function(st)
 				if st == Enum.PlaybackState.Completed then
-					ResetInnerPanelPositions()
 					if not isMenuVisible then MainFrame.Visible = false end
 					if onComplete then onComplete() end
 				end
 			end)
 		else
-			ResetInnerPanelPositions()
+			-- Default Quint Animation Close: 100% untouched
 			local info = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 			local t1 = TweenService:Create(MainScale, info, { Scale = 0 })
 			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = 1 })
@@ -953,10 +901,11 @@ RefreshRadarCards = function() for _, child in ipairs(RadarContainer:GetChildren
 	for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player then local isFriend = IsFriend(plr)
 			local theirRoot = GetRootPart(plr)
 			local dist = theirRoot and (theirRoot.Position - myPos).Magnitude or 999999
-			local tier, tag = 3, nil
-			if GetPlayerDetectionState then tier, tag = GetPlayerDetectionState(plr.Name) end
-			table.insert(entries, { Player = plr, IsFriend = isFriend, Distance = dist, Tier = tier or 3, Tag = tag }) end end
+			local tier, tag, hRank = 3, nil, 80
+			if GetPlayerDetectionState then tier, tag, hRank = GetPlayerDetectionState(plr.Name) end
+			table.insert(entries, { Player = plr, IsFriend = isFriend, Distance = dist, Tier = tier or 3, Tag = tag, HackRank = hRank or 80 }) end end
 	table.sort(entries, function(a, b)
+		if (a.HackRank or 80) ~= (b.HackRank or 80) then return (a.HackRank or 80) < (b.HackRank or 80) end
 		if a.Tier ~= b.Tier then return a.Tier < b.Tier end
 		if a.IsFriend ~= b.IsFriend then return a.IsFriend end
 		return a.Distance < b.Distance end)
@@ -1999,10 +1948,21 @@ local function tweenDetectorObj(obj, props, duration, style, direction)
 end
 
 GetPlayerDetectionState = function(plrName)
-	if whitelistedPlayers[plrName] then return 4, "WHITELISTED" end
-	if detectedPlayers[plrName] then return 1, "HACKER" end
-	if speedPlayers[plrName] then return 2, "SPEED" end
-	return 3, nil
+	if whitelistedPlayers[plrName] then return 4, "WHITELISTED", 90 end
+	if detectedPlayers[plrName] then
+		local cData = playerCards[plrName]
+		local flags = cData and cData.flagsLbl and cData.flagsLbl.Text or ""
+		local rank = GetHackRank and GetHackRank(flags, 1, cData and cData.lastSpeed or 0) or 1
+		local tag = (flags ~= "") and flags or "HACKER"
+		return 1, tag, rank
+	end
+	if speedPlayers[plrName] then
+		local cData = playerCards[plrName]
+		local flags = cData and cData.flagsLbl and cData.flagsLbl.Text or ""
+		local rank = GetHackRank and GetHackRank(flags, 2, cData and cData.lastSpeed or 0) or 9
+		return 2, "SPEED", rank
+	end
+	return 3, nil, 80
 end
 
 CreateSectionHeader(Tab9_Detector, "Hacker & Abnormal Speed Detector (Min Speed: 100 s/s | 1. Hackers | 2. Speed | 3. Normal)", 1)
@@ -2321,6 +2281,23 @@ function Notifications.new(parent)
 end
 notifications = Notifications.new(ScreenGui)
 
+local function GetHackRank(flagsText, tier, speed)
+	if tier == 4 then return 90 end -- Whitelisted
+	if tier == 3 then return 80 end -- Normal
+	local t = flagsText or ""
+	if t:find("|", 1, true) then return 1 end -- Multi-Hack (Top priority)
+	if t:find("Fling", 1, true) then return 2 end -- Fling Hack
+	if t:find("Extreme Speed", 1, true) then return 3 end -- Extreme Speed
+	if t:find("Fly", 1, true) then return 4 end -- Fly Hack
+	if t:find("Teleport", 1, true) then return 5 end -- Teleport Hack
+	if t:find("NoClip", 1, true) then return 6 end -- NoClip Hack
+	if t:find("Jump", 1, true) then return 7 end -- Abnormal Jump
+	if t:find("Speed Hack", 1, true) then return 8 end -- Speed Hack (100+ s/s)
+	if t:find("Abnormal Speed", 1, true) or tier == 2 then return 9 end -- Abnormal Speed
+	if tier == 1 then return 10 end
+	return 80
+end
+
 local function ReorderDetectorCards()
 	local sortable = {}
 	for pName, cData in pairs(playerCards) do
@@ -2334,14 +2311,19 @@ local function ReorderDetectorCards()
 		else
 			tier = 3
 		end
+		local flags = (cData.flagsLbl and cData.flagsLbl.Text) or ""
+		local hackRank = GetHackRank(flags, tier, cData.lastSpeed or 0)
 		table.insert(sortable, {
 			Name = pName,
 			Tier = tier,
+			HackRank = hackRank,
 			Speed = cData.lastSpeed or 0,
 			CardData = cData
 		})
 	end
 	table.sort(sortable, function(a, b)
+		-- Group strictly according to their detected hacks!
+		if a.HackRank ~= b.HackRank then return a.HackRank < b.HackRank end
 		if a.Tier ~= b.Tier then return a.Tier < b.Tier end
 		if (a.Tier == 1 or a.Tier == 2) and math.abs(a.Speed - b.Speed) > 0.5 then
 			return a.Speed > b.Speed
