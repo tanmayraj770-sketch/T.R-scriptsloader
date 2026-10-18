@@ -916,53 +916,131 @@ IsFriend = function(targetPlayer)
 	end)
 	return FriendCache[uid]
 end
-RefreshRadarCards = function() for _, child in ipairs(RadarContainer:GetChildren()) do
-		if child:IsA("Frame") then child:Destroy() end end local myRoot = GetRootPart()
-	local myPos = myRoot and myRoot.Position or Vector3.new(0, 0, 0) local entries = {}
-	for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player then local isFriend = IsFriend(plr)
+local RadarCards = {}
+RefreshRadarCards = function()
+	local myRoot = GetRootPart()
+	local myPos = myRoot and myRoot.Position or Vector3.new(0, 0, 0)
+	local entries = {}
+	local currentPlayersMap = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player then
+			currentPlayersMap[plr] = true
+			local isFriend = IsFriend(plr)
 			local theirRoot = GetRootPart(plr)
 			local dist = theirRoot and (theirRoot.Position - myPos).Magnitude or 999999
 			local tier, tag, hRank = 3, nil, 80
 			if GetPlayerDetectionState then tier, tag, hRank = GetPlayerDetectionState(plr.Name) end
-			table.insert(entries, { Player = plr, IsFriend = isFriend, Distance = dist, Tier = tier or 3, Tag = tag, HackRank = hRank or 80 }) end end
+			table.insert(entries, { Player = plr, IsFriend = isFriend, Distance = dist, Tier = tier or 3, Tag = tag, HackRank = hRank or 80 })
+		end
+	end
 	table.sort(entries, function(a, b)
 		if (a.HackRank or 80) ~= (b.HackRank or 80) then return (a.HackRank or 80) < (b.HackRank or 80) end
 		if a.Tier ~= b.Tier then return a.Tier < b.Tier end
 		if a.IsFriend ~= b.IsFriend then return a.IsFriend end
-		return a.Distance < b.Distance end)
-	for idx, entry in ipairs(entries) do local plr = entry.Player
-		local Card = CreateCard(RadarContainer, 46, idx)
+		return a.Distance < b.Distance
+	end)
+
+	for p, cardData in pairs(RadarCards) do
+		if not currentPlayersMap[p] then
+			if cardData.Card and cardData.Card.Parent then cardData.Card:Destroy() end
+			RadarCards[p] = nil
+		end
+	end
+
+	local theme = GetTheme()
+	for idx, entry in ipairs(entries) do
+		local plr = entry.Player
 		local prefix = entry.IsFriend and (E.Star .. " ") or ""
 		if entry.Tier == 1 then prefix = "[HACKER] " .. prefix
 		elseif entry.Tier == 2 then prefix = "[SPEED] " .. prefix end
 		local distText = (entry.Distance < 999990) and string.format("%.0f studs", entry.Distance) or "N/A"
-		local InfoLbl = MakeLabel(Card, UDim2.new(1, -275, 1, 0), UDim2.new(0, 12, 0, 0), string.format("%s%s (@%s) - %s", prefix, plr.DisplayName, plr.Name, distText), Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
-		if entry.Tier == 1 then InfoLbl.TextColor3 = Color3.fromRGB(255, 65, 65)
-		elseif entry.Tier == 2 then InfoLbl.TextColor3 = Color3.fromRGB(255, 165, 45) end
-		local savedKey = savedConfig.RadarKeybinds[plr.Name] or "None"
-		local KeyBtn = MakeButton(Card, UDim2.new(0, 74, 0, 28), UDim2.new(1, -258, 0.5, -14), "[" .. savedKey .. "]", "PanelBg", 11)
-		KeyBtn.MouseButton1Click:Connect(function() KeyBtn.Text = "[Key/Del]"
-			ActiveKeybindCaptureCallback = function(keyName)
-				TryAssignUniqueKeybind(keyName, "Radar:" .. tostring(plr.Name), function(val)
-					if val == "None" then savedConfig.RadarKeybinds[plr.Name] = nil else savedConfig.RadarKeybinds[plr.Name] = val end
-				end, function()
-					KeyBtn.Text = "[" .. (savedConfig.RadarKeybinds[plr.Name] or "None") .. "]"
-				end, KeyBtn) end end)
-		KeyBtn.MouseButton2Click:Connect(function() savedConfig.RadarKeybinds[plr.Name] = nil
-			KeyBtn.Text = "[None]" ActiveKeybindCaptureCallback = nil SaveConfig(false) end)
-		local TpBtn = MakeButton(Card, UDim2.new(0, 78, 0, 28), UDim2.new(1, -176, 0.5, -14), "Teleport", "Accent", 11)
-		TpBtn.MouseButton1Click:Connect(function() local targetRoot = GetRootPart(plr)
-			if targetRoot then local pos = targetRoot.Position SafeTeleportToCoords(pos.X, pos.Y + 3, pos.Z) end
-		end)
 		local isSpec = (SpectatingTarget == plr)
-		local SpecBtn = MakeButton(Card, UDim2.new(0, 84, 0, 28), UDim2.new(1, -92, 0.5, -14), isSpec and "Unspectate" or "Spectate", isSpec and "Accent" or "AccentDark", 11)
-		SpecBtn.MouseButton1Click:Connect(function()
-			if SpectatingTarget == plr then
-				SetSpectateTarget(nil)
+
+		local cardData = RadarCards[plr]
+		if not cardData or not cardData.Card or not cardData.Card.Parent then
+			local Card = CreateCard(RadarContainer, 48, idx)
+			local AvatarImg = Instance.new("ImageLabel")
+			AvatarImg.Size = UDim2.new(0, 34, 0, 34)
+			AvatarImg.Position = UDim2.new(0, 8, 0.5, -17)
+			AvatarImg.BackgroundTransparency = 0.4
+			AvatarImg.BorderSizePixel = 0
+			AvatarImg.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(plr.UserId) .. "&w=48&h=48"
+			AvatarImg.Parent = Card
+			RegisterThemeObject(AvatarImg, "BackgroundColor3", "PanelBg")
+			AddCorner(AvatarImg, 6)
+
+			local NameLbl = MakeLabel(Card, UDim2.new(1, -315, 0, 20), UDim2.new(0, 48, 0, 4), string.format("%s%s (@%s)", prefix, plr.DisplayName, plr.Name), Enum.Font.GothamBold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+			NameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+			if entry.Tier == 1 then NameLbl.TextColor3 = Color3.fromRGB(255, 65, 65)
+			elseif entry.Tier == 2 then NameLbl.TextColor3 = Color3.fromRGB(255, 165, 45) end
+
+			local DistLbl = MakeLabel(Card, UDim2.new(1, -315, 0, 18), UDim2.new(0, 48, 0, 24), "Distance: " .. distText, Enum.Font.Gotham, 11, "TextSecondary", Enum.TextXAlignment.Left)
+			DistLbl.TextTruncate = Enum.TextTruncate.AtEnd
+
+			local savedKey = savedConfig.RadarKeybinds[plr.Name] or "None"
+			local KeyBtn = MakeButton(Card, UDim2.new(0, 74, 0, 28), UDim2.new(1, -258, 0.5, -14), "[" .. savedKey .. "]", "PanelBg", 11)
+			KeyBtn.MouseButton1Click:Connect(function()
+				KeyBtn.Text = "[Key/Del]"
+				ActiveKeybindCaptureCallback = function(keyName)
+					TryAssignUniqueKeybind(keyName, "Radar:" .. tostring(plr.Name), function(val)
+						if val == "None" then savedConfig.RadarKeybinds[plr.Name] = nil else savedConfig.RadarKeybinds[plr.Name] = val end
+					end, function()
+						KeyBtn.Text = "[" .. (savedConfig.RadarKeybinds[plr.Name] or "None") .. "]"
+					end, KeyBtn)
+				end
+			end)
+			KeyBtn.MouseButton2Click:Connect(function()
+				savedConfig.RadarKeybinds[plr.Name] = nil
+				KeyBtn.Text = "[None]"
+				ActiveKeybindCaptureCallback = nil
+				SaveConfig(false)
+			end)
+
+			local TpBtn = MakeButton(Card, UDim2.new(0, 78, 0, 28), UDim2.new(1, -176, 0.5, -14), "Teleport", "Accent", 11)
+			TpBtn.MouseButton1Click:Connect(function()
+				local targetRoot = GetRootPart(plr)
+				if targetRoot then
+					local pos = targetRoot.Position
+					SafeTeleportToCoords(pos.X, pos.Y + 3, pos.Z)
+				end
+			end)
+
+			local SpecBtn = MakeButton(Card, UDim2.new(0, 84, 0, 28), UDim2.new(1, -92, 0.5, -14), isSpec and "Unspectate" or "Spectate", isSpec and "Accent" or "AccentDark", 11)
+			SpecBtn.MouseButton1Click:Connect(function()
+				if SpectatingTarget == plr then
+					SetSpectateTarget(nil)
+				else
+					SetSpectateTarget(plr)
+				end
+			end)
+
+			cardData = {
+				Card = Card,
+				AvatarImg = AvatarImg,
+				NameLbl = NameLbl,
+				DistLbl = DistLbl,
+				KeyBtn = KeyBtn,
+				TpBtn = TpBtn,
+				SpecBtn = SpecBtn,
+			}
+			RadarCards[plr] = cardData
+		else
+			cardData.Card.LayoutOrder = idx
+			cardData.NameLbl.Text = string.format("%s%s (@%s)", prefix, plr.DisplayName, plr.Name)
+			if entry.Tier == 1 then
+				cardData.NameLbl.TextColor3 = Color3.fromRGB(255, 65, 65)
+			elseif entry.Tier == 2 then
+				cardData.NameLbl.TextColor3 = Color3.fromRGB(255, 165, 45)
 			else
-				SetSpectateTarget(plr)
+				cardData.NameLbl.TextColor3 = theme.TextPrimary
 			end
-		end) end
+			cardData.DistLbl.Text = "Distance: " .. distText
+			local savedKey = savedConfig.RadarKeybinds[plr.Name] or "None"
+			cardData.KeyBtn.Text = "[" .. savedKey .. "]"
+			cardData.SpecBtn.Text = isSpec and "Unspectate" or "Spectate"
+			cardData.SpecBtn.BackgroundColor3 = isSpec and theme.Accent or theme.AccentDark
+		end
+	end
 end genv._TR_RefreshRadar = RefreshRadarCards pcall(RefreshRadarCards) end SetupTab3()
 --==============================================================================
 -- 10. TAB 4: ITEMS & INSTANT PROXIMITY PROMPTS (ITEM VACUUM / MAGNET)
@@ -1844,14 +1922,64 @@ local function HandleTabWheelScroll(input) if input.UserInputType == Enum.UserIn
 		ScrollExecutorTabsBy(-input.Position.Z * 110) end end
 ExecHeaderCard.InputChanged:Connect(HandleTabWheelScroll)
 TabsScroll.InputChanged:Connect(HandleTabWheelScroll)
-local EditorCard = CreateCard(Tab8_Executor, 240, 3) local CodeBox = Instance.new("TextBox")
-CodeBox.Size = UDim2.new(1, -16, 1, -16) CodeBox.Position = UDim2.new(0, 8, 0, 8)
-CodeBox.MultiLine = true CodeBox.ClearTextOnFocus = false CodeBox.TextWrapped = true
-CodeBox.Font = Enum.Font.Code CodeBox.TextSize = 13 CodeBox.TextXAlignment = Enum.TextXAlignment.Left
+local EditorCard = CreateCard(Tab8_Executor, 240, 3)
+EditorCard.ClipsDescendants = true
+
+local CodeScroll = Instance.new("ScrollingFrame")
+CodeScroll.Size = UDim2.new(1, -16, 1, -16)
+CodeScroll.Position = UDim2.new(0, 8, 0, 8)
+CodeScroll.BackgroundTransparency = 0.15
+CodeScroll.BorderSizePixel = 0
+CodeScroll.ScrollBarThickness = 6
+CodeScroll.ScrollingEnabled = true
+CodeScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+CodeScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+CodeScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+CodeScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+CodeScroll.ScrollBarImageTransparency = 0.2
+CodeScroll.ClipsDescendants = true
+CodeScroll.Parent = EditorCard
+RegisterThemeObject(CodeScroll, "BackgroundColor3", "PanelBg")
+RegisterThemeObject(CodeScroll, "ScrollBarImageColor3", "Accent")
+AddCorner(CodeScroll, 6)
+
+local CodeBox = Instance.new("TextBox")
+CodeBox.Size = UDim2.new(1, -12, 1, 0)
+CodeBox.AutomaticSize = Enum.AutomaticSize.Y
+CodeBox.Position = UDim2.new(0, 6, 0, 6)
+CodeBox.BackgroundTransparency = 1
+CodeBox.MultiLine = true
+CodeBox.ClearTextOnFocus = false
+CodeBox.TextWrapped = true
+CodeBox.Font = Enum.Font.Code
+CodeBox.TextSize = 13
+CodeBox.TextXAlignment = Enum.TextXAlignment.Left
 CodeBox.TextYAlignment = Enum.TextYAlignment.Top
-CodeBox.PlaceholderText = "-- Paste or write your Luau script here..." CodeBox.Text = ""
-CodeBox.Parent = EditorCard RegisterThemeObject(CodeBox, "BackgroundColor3", "PanelBg")
-RegisterThemeObject(CodeBox, "TextColor3", "TextPrimary") AddCorner(CodeBox, 6)
+CodeBox.PlaceholderText = "-- Paste or write your Luau script here..."
+CodeBox.Text = ""
+CodeBox.Parent = CodeScroll
+RegisterThemeObject(CodeBox, "TextColor3", "TextPrimary")
+
+local function UpdateCodeScrollCanvas()
+	local minHeight = math.max(0, CodeScroll.AbsoluteSize.Y - 12)
+	local textH = math.max(minHeight, CodeBox.TextBounds.Y + 24)
+	CodeScroll.CanvasSize = UDim2.new(0, 0, 0, textH)
+	CodeBox.Size = UDim2.new(1, -12, 0, textH)
+end
+CodeBox:GetPropertyChangedSignal("Text"):Connect(UpdateCodeScrollCanvas)
+CodeBox:GetPropertyChangedSignal("TextBounds"):Connect(UpdateCodeScrollCanvas)
+CodeScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateCodeScrollCanvas)
+
+local function HandleCodeWheelScroll(input)
+	if input.UserInputType == Enum.UserInputType.MouseWheel then
+		local cur = CodeScroll.CanvasPosition.Y
+		local maxScroll = math.max(0, CodeScroll.CanvasSize.Y.Offset - CodeScroll.AbsoluteSize.Y)
+		local newY = math.clamp(cur - (input.Position.Z * 45), 0, maxScroll)
+		CodeScroll.CanvasPosition = Vector2.new(0, newY)
+	end
+end
+CodeBox.InputChanged:Connect(HandleCodeWheelScroll)
+CodeScroll.InputChanged:Connect(HandleCodeWheelScroll)
 local ExecActionCard = CreateCard(Tab8_Executor, 48, 4)
 local ExecActionLayout = Instance.new("UIListLayout")
 ExecActionLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -2471,12 +2599,13 @@ local function samplePlayerPhysics(plr)
 	local isSwimming = (humanoid:GetState() == Enum.HumanoidStateType.Swimming) or (humanoid.FloorMaterial == Enum.Material.Water)
 	local isAnchored = (hrp.Anchored == true) or (character:FindFirstChild("CountdownLock") ~= nil) or (character:FindFirstChild("Freeze") ~= nil) or (character:FindFirstChild("Frozen") ~= nil)
 
-	-- Check if player teleported (e.g. from lobby to arena, round start, or respawn)
+	-- Check if player teleported (e.g. from lobby to arena, round start, or respawn in Rivals)
 	local distance = (hrp.Position - data.lastPosition).Magnitude
-	local isTeleporting = (distance > 40)
+	local isTeleporting = (distance > 30)
 	if isTeleporting then
 		data.lastTeleportTime = now
 		data.airTime = 0
+		data.flyingTime = 0
 		data.flyStreak = 0
 		data.speedStreak = 0
 		data.teleportStreak = 0
@@ -2519,8 +2648,20 @@ local function samplePlayerPhysics(plr)
 
 	if grounded or isClimbing or isSwimming or isAnchored then
 		data.airTime = 0
+		data.flyingTime = 0
 	else
 		data.airTime = data.airTime + dt
+	end
+
+	-- Active flying requires in-air flight without falling naturally with gravity (vel.Y < -8 is natural falling)
+	local isActivelyFlying = (not grounded) and not (isDead or isSeated or isAnchored or isClimbing or isSwimming or isJustSpawned) and (
+		(math.abs(vel.Y) < 3.0 and hSpeed >= 18) or (vel.Y >= 12 and hSpeed >= 8)
+	)
+
+	if isActivelyFlying then
+		data.flyingTime = (data.flyingTime or 0) + dt
+	else
+		data.flyingTime = 0
 	end
 
 	-- Real in-combat teleport detection: only outside of spawn/teleport immunity window
@@ -2644,13 +2785,12 @@ local function checkPlayer(plr)
 		data.speedStreak = math.max(0, (data.speedStreak or 0) - 1)
 	end
 
-	-- 2. FLY HACK: Only triggered if in the open air (no ground within 16 studs), airTime > 5.0s, and actively flying horizontally with high speed or ascending continuously
-	-- Notice: velY < -10 is natural falling with gravity, so falling players NEVER trigger Fly
-	local isHighInSky = (not grounded) and (data.airTime > 5.0)
-	local isActivelyFlying = (math.abs(velY) < 2.5 and hSpeed >= 20) or (velY >= 14 and hSpeed >= 8)
-	if isHighInSky and isActivelyFlying and not isJustSpawned and not isAnchored then
+	-- 2. FLY HACK: Flagged ONLY when a player is actively flying for AT LEAST 2 SECONDS (data.flyingTime >= 2.0).
+	-- Fixes false-positive flagged reports for players teleporting from lobby to arena in Rivals or falling!
+	local isFlying2Sec = (data.flyingTime and data.flyingTime >= 2.0)
+	if isFlying2Sec and not isJustSpawned and not isAnchored then
 		data.flyStreak = (data.flyStreak or 0) + 1
-		if data.flyStreak >= 3 then
+		if data.flyStreak >= 2 then
 			table.insert(hardFlags, "Fly")
 		end
 	else
