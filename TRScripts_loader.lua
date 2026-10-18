@@ -554,6 +554,7 @@ local Tab5_Flight    = CreateTab("Flight & Movement", E.Rocket, 5)
 local Tab6_Instant   = CreateTab("Target Fling", E.Bolt, 6)
 local Tab7_Visuals   = CreateTab("Aimbot & Visuals", E.Target, 7)
 local Tab8_Executor  = CreateTab("Script Executor", E.Laptop, 8)
+local Tab9_Detector  = CreateTab("Hacker Detector", E.Search, 9)
 --==============================================================================
 -- 7. TAB 1: THEMES, PERFORMANCE & PROTECTION
 --==============================================================================
@@ -823,8 +824,8 @@ AddWaypointBtn.MouseButton1Click:Connect(function() local root = GetRootPart() i
 --==============================================================================
 -- 9. TAB 3: REAL-TIME PLAYER RADAR & TELEPORT KEYBINDS
 --==============================================================================
-local SpectatingTarget, IsFriend, RefreshRadarCards do
-CreateSectionHeader(Tab3_Radar, "Live Player Radar (Friends " .. E.Star .. " First | Press Delete Key to Unassign)", 1)
+local SpectatingTarget, IsFriend, RefreshRadarCards, GetPlayerDetectionState do
+CreateSectionHeader(Tab3_Radar, "Live Player Radar (Hackers & Speeders Top | Friends " .. E.Star .. " | Delete Unassigns)", 1)
 local RadarContainer = Instance.new("Frame") RadarContainer.LayoutOrder = 2
 RadarContainer.Size = UDim2.new(1, 0, 0, 0) RadarContainer.AutomaticSize = Enum.AutomaticSize.Y
 RadarContainer.BackgroundTransparency = 1 RadarContainer.Parent = Tab3_Radar
@@ -838,13 +839,22 @@ RefreshRadarCards = function() for _, child in ipairs(RadarContainer:GetChildren
 	for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player then local isFriend = IsFriend(plr)
 			local theirRoot = GetRootPart(plr.Character)
 			local dist = theirRoot and (theirRoot.Position - myPos).Magnitude or 999999
-			table.insert(entries, { Player = plr, IsFriend = isFriend, Distance = dist }) end end
-	table.sort(entries, function(a, b) if a.IsFriend ~= b.IsFriend then return a.IsFriend end
-		return a.Distance < b.Distance end) for idx, entry in ipairs(entries) do local plr = entry.Player
+			local tier, tag = 3, nil
+			if GetPlayerDetectionState then tier, tag = GetPlayerDetectionState(plr.Name) end
+			table.insert(entries, { Player = plr, IsFriend = isFriend, Distance = dist, Tier = tier or 3, Tag = tag }) end end
+	table.sort(entries, function(a, b)
+		if a.Tier ~= b.Tier then return a.Tier < b.Tier end
+		if a.IsFriend ~= b.IsFriend then return a.IsFriend end
+		return a.Distance < b.Distance end)
+	for idx, entry in ipairs(entries) do local plr = entry.Player
 		local Card = CreateCard(RadarContainer, 46, idx)
 		local prefix = entry.IsFriend and (E.Star .. " ") or ""
+		if entry.Tier == 1 then prefix = "[HACKER] " .. prefix
+		elseif entry.Tier == 2 then prefix = "[SPEED] " .. prefix end
 		local distText = (entry.Distance < 999990) and string.format("%.0f studs", entry.Distance) or "N/A"
 		local InfoLbl = MakeLabel(Card, UDim2.new(1, -275, 1, 0), UDim2.new(0, 12, 0, 0), string.format("%s%s (@%s) - %s", prefix, plr.DisplayName, plr.Name, distText), Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+		if entry.Tier == 1 then InfoLbl.TextColor3 = Color3.fromRGB(255, 65, 65)
+		elseif entry.Tier == 2 then InfoLbl.TextColor3 = Color3.fromRGB(255, 165, 45) end
 		local savedKey = savedConfig.RadarKeybinds[plr.Name] or "None"
 		local KeyBtn = MakeButton(Card, UDim2.new(0, 74, 0, 28), UDim2.new(1, -258, 0.5, -14), "[" .. savedKey .. "]", "PanelBg", 11)
 		KeyBtn.MouseButton1Click:Connect(function() KeyBtn.Text = "[Key/Del]"
@@ -1696,6 +1706,1001 @@ ClearBtn.MouseButton1Click:Connect(function() CodeBox.Text = "" end)
 TerminateBtn.MouseButton1Click:Connect(function()
 	for _, thread in ipairs(RunningExecutorThreads) do pcall(function() task.cancel(thread) end) end
 	RunningExecutorThreads = {} end) RebuildExecutorTabs() end
+--==============================================================================
+-- 14B. TAB 9: HACKER DETECTOR (THEME-SYNCED & 3-TIER PRIORITY SORTED)
+-- Tier 1: Hackers (Top) | Tier 2: Abnormal Speed Hackers (2nd) | Tier 3: Normal Players (3rd)
+--==============================================================================
+do
+local notifCooldown = 10
+local notificationsEnabled = true
+local detectorEnabled = true
+local DETECTOR_CONFIG = {
+	SPEED_MULTIPLIER  = 1.7,
+	ABNORMAL_SPEED_MULT = 1.3,
+	ABNORMAL_RAW_SPEED = 24,
+	MAX_AIR_TIME      = 3.0,
+	FLING_THRESHOLD   = 300,
+	JUMP_MULTIPLIER   = 1.6,
+	TELEPORT_DISTANCE = 75,
+	CHECK_INTERVAL    = 0.35,
+	SAMPLE_COUNT      = 4,
+	ANIM_SPEED        = 0.25,
+	COLORS = {
+		Clean     = Color3.fromRGB(50, 200, 80),
+		Cheat     = Color3.fromRGB(255, 55, 55),
+		Speed     = Color3.fromRGB(255, 155, 40),
+		Warning   = Color3.fromRGB(255, 200, 50),
+		Analyzing = Color3.fromRGB(255, 180, 50),
+	}
+}
+local DETECTOR_ICONS = {
+	username  = "rbxassetid://136485052187963",
+	display   = "rbxassetid://108155244324878",
+	studs     = "rbxassetid://121615540167909",
+	normal    = "rbxassetid://115320390907184",
+	analyzing = "rbxassetid://112148279212860",
+	scripter  = "rbxassetid://125920361880643",
+	off       = "rbxassetid://118026365011536",
+	on        = "rbxassetid://110786993356448",
+	logo      = "rbxassetid://121018724060431",
+	players   = "rbxassetid://113726939624961",
+	credits   = "rbxassetid://112853809073979",
+}
+local notifCooldowns = {}
+local whitelistedPlayers = {}
+local serverTeleporting = false
+local currentViewTarget = nil
+local playerCards = {}
+local playerData = {}
+local detectedPlayers = {}
+local speedPlayers = {}
+
+local function tweenDetectorObj(obj, props, duration, style, direction)
+	return TweenService:Create(obj, TweenInfo.new(
+		duration or DETECTOR_CONFIG.ANIM_SPEED,
+		style or Enum.EasingStyle.Quad,
+		direction or Enum.EasingDirection.Out
+	), props)
+end
+
+GetPlayerDetectionState = function(plrName)
+	if whitelistedPlayers[plrName] then return 4, "WHITELISTED" end
+	if detectedPlayers[plrName] then return 1, "HACKER" end
+	if speedPlayers[plrName] then return 2, "SPEED" end
+	return 3, nil
+end
+
+CreateSectionHeader(Tab9_Detector, "Hacker & Abnormal Speed Detector (1. Hackers | 2. Speed | 3. Normal)", 1)
+local ControlsCard = CreateCard(Tab9_Detector, 82, 2)
+local PlayerCountLabel = MakeLabel(ControlsCard, UDim2.new(0, 110, 0, 28), UDim2.new(0, 12, 0, 8), "Players: 0", Enum.Font.GothamBold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+local DetectedCountLabel = MakeLabel(ControlsCard, UDim2.new(0, 250, 0, 28), UDim2.new(0, 120, 0, 8), "Hackers: 0  |  Abnormal Speed: 0", Enum.Font.GothamBold, 12, "TextSecondary", Enum.TextXAlignment.Left)
+
+local activeSubView = "Players"
+local SubPlayersBtn = MakeButton(ControlsCard, UDim2.new(0, 102, 0, 26), UDim2.new(1, -218, 0, 9), "Players List", "Accent", 11)
+local SubCreditsBtn = MakeButton(ControlsCard, UDim2.new(0, 98, 0, 26), UDim2.new(1, -108, 0, 9), "Info & Credits", "PanelBg", 11)
+
+local DetectorToggleBtn = MakeButton(ControlsCard, UDim2.new(0, 118, 0, 28), UDim2.new(0, 12, 0, 44), "Detector [F4]: ON", nil, 11)
+local AlertLbl = MakeLabel(ControlsCard, UDim2.new(0, 44, 0, 28), UDim2.new(0, 138, 0, 44), "Alerts:", Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
+local NotifToggleBtn = MakeButton(ControlsCard, UDim2.new(0, 48, 0, 26), UDim2.new(0, 184, 0, 45), "ON", nil, 11)
+
+local DelayLbl = MakeLabel(ControlsCard, UDim2.new(0, 42, 0, 28), UDim2.new(0, 240, 0, 44), "Delay:", Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
+local DelayMinus = MakeButton(ControlsCard, UDim2.new(0, 24, 0, 24), UDim2.new(0, 284, 0, 46), "-", "PanelBg", 13)
+local DelayText = MakeLabel(ControlsCard, UDim2.new(0, 36, 0, 28), UDim2.new(0, 310, 0, 44), notifCooldown .. "s", Enum.Font.GothamBold, 11, "TextPrimary", Enum.TextXAlignment.Center)
+local DelayPlus = MakeButton(ControlsCard, UDim2.new(0, 24, 0, 24), UDim2.new(0, 348, 0, 46), "+", "PanelBg", 13)
+
+local UnviewBtn = Instance.new("TextButton")
+UnviewBtn.Size = UDim2.new(0, 78, 0, 26)
+UnviewBtn.Position = UDim2.new(1, -90, 0, 45)
+UnviewBtn.BackgroundColor3 = Color3.fromRGB(185, 38, 58)
+UnviewBtn.Font = Enum.Font.GothamBold
+UnviewBtn.TextSize = 11
+UnviewBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UnviewBtn.Text = "UNVIEW"
+UnviewBtn.Visible = false
+UnviewBtn.Parent = ControlsCard
+AddCorner(UnviewBtn, 6)
+
+local ScannerContainer = Instance.new("Frame")
+ScannerContainer.LayoutOrder = 3
+ScannerContainer.Size = UDim2.new(1, 0, 0, 0)
+ScannerContainer.AutomaticSize = Enum.AutomaticSize.Y
+ScannerContainer.BackgroundTransparency = 1
+ScannerContainer.Parent = Tab9_Detector
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 6)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = ScannerContainer
+
+local CreditsContainer = Instance.new("Frame")
+CreditsContainer.LayoutOrder = 4
+CreditsContainer.Size = UDim2.new(1, 0, 0, 0)
+CreditsContainer.AutomaticSize = Enum.AutomaticSize.Y
+CreditsContainer.BackgroundTransparency = 1
+CreditsContainer.Visible = false
+CreditsContainer.Parent = Tab9_Detector
+local creditsLayout = Instance.new("UIListLayout")
+creditsLayout.Padding = UDim.new(0, 8)
+creditsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+creditsLayout.Parent = CreditsContainer
+
+local function createCreditsSection(title, order)
+	CreateSectionHeader(CreditsContainer, title, order)
+	local sec = Instance.new("Frame")
+	sec.LayoutOrder = order + 1
+	sec.Size = UDim2.new(1, 0, 0, 0)
+	sec.AutomaticSize = Enum.AutomaticSize.Y
+	sec.BackgroundTransparency = 1
+	sec.Parent = CreditsContainer
+	local lay = Instance.new("UIListLayout")
+	lay.Padding = UDim.new(0, 6)
+	lay.SortOrder = Enum.SortOrder.LayoutOrder
+	lay.Parent = sec
+	return sec
+end
+
+local function createCreditEntry(name, role, desc, order, parent)
+	local entry = CreateCard(parent, (desc and desc ~= "") and 54 or 42, order)
+	MakeLabel(entry, UDim2.new(1, -24, 0, 18), UDim2.new(0, 12, 0, 5), name, Enum.Font.GothamBold, 13, "TextPrimary", Enum.TextXAlignment.Left)
+	MakeLabel(entry, UDim2.new(1, -24, 0, 14), UDim2.new(0, 12, 0, 22), role, Enum.Font.GothamBold, 11, "Accent", Enum.TextXAlignment.Left)
+	if desc and desc ~= "" then
+		MakeLabel(entry, UDim2.new(1, -24, 0, 13), UDim2.new(0, 12, 0, 36), desc, Enum.Font.Gotham, 10, "TextSecondary", Enum.TextXAlignment.Left)
+	end
+	return entry
+end
+
+local LogoSection = CreateCard(CreditsContainer, 106, 1)
+local logoHeader = Instance.new("ImageLabel")
+logoHeader.Size = UDim2.new(0, 50, 0, 50)
+logoHeader.Position = UDim2.new(0.5, -25, 0, 10)
+logoHeader.BackgroundTransparency = 1
+logoHeader.Image = DETECTOR_ICONS.logo
+logoHeader.ScaleType = Enum.ScaleType.Fit
+logoHeader.Parent = LogoSection
+MakeLabel(LogoSection, UDim2.new(1, 0, 0, 20), UDim2.new(0, 0, 0, 64), "SCRIPTER & HACKER DETECTOR V2.1", Enum.Font.GothamBold, 14, "TextPrimary", Enum.TextXAlignment.Center)
+MakeLabel(LogoSection, UDim2.new(1, 0, 0, 16), UDim2.new(0, 0, 0, 84), "Integrated into T.R Scripts V95 - Theme-Synced Visual Engine", Enum.Font.Gotham, 11, "TextSecondary", Enum.TextXAlignment.Center)
+
+local devSection = createCreditsSection("DEVELOPMENT TEAM", 2)
+createCreditEntry("Claude (Anthropic)", "Lead Scripter", "Original architecture & core detection systems", 1, devSection)
+createCreditEntry("Bah", "Developer", "Modifications, UI improvements & enhancements", 2, devSection)
+createCreditEntry("ZERETET", "Developer", "Made Improvements", 3, devSection)
+
+local detectSection = createCreditsSection("DETECTION SYSTEMS", 4)
+local detections = {
+	{"Speed Hack Detection", "Velocity & WalkSpeed abnormal analysis"},
+	{"Fly Hack Detection", "Air time & Y-axis monitoring"},
+	{"Noclip Detection", "Collision raycast verification"},
+	{"Teleport Detection", "Position delta analysis"},
+	{"Fling Detection", "Total velocity threshold"},
+	{"Abnormal Jump Detection", "Jump power multiplier check"},
+	{"Sample Averaging", "Reduces false positives"}
+}
+for i, det in ipairs(detections) do
+	local entry = CreateCard(detectSection, 30, i)
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.new(0, 6, 0, 6)
+	dot.Position = UDim2.new(0, 12, 0.5, -3)
+	dot.BackgroundColor3 = DETECTOR_CONFIG.COLORS.Clean
+	dot.BorderSizePixel = 0
+	dot.Parent = entry
+	AddCorner(dot, 3)
+	MakeLabel(entry, UDim2.new(0.55, 0, 1, 0), UDim2.new(0, 26, 0, 0), det[1], Enum.Font.GothamBold, 11, "TextPrimary", Enum.TextXAlignment.Left)
+	MakeLabel(entry, UDim2.new(0.45, -12, 1, 0), UDim2.new(0.55, 0, 0, 0), det[2], Enum.Font.Gotham, 10, "TextSecondary", Enum.TextXAlignment.Right)
+end
+
+local versionSection = createCreditsSection("VERSION & PRIORITY SORTING INFO", 6)
+local versionInfo = {
+	{"Version", "V95 Integrated (Detector 2.1.0)"},
+	{"Priority 1 (Top)", "Confirmed Hackers (Fly, Fling, TP, NoClip, Jump)"},
+	{"Priority 2 (Second)", "Hackers with Abnormal Speeds"},
+	{"Priority 3 (Third)", "Normal & Whitelisted Players"},
+	{"Shortcut Keybind", "F4 (Toggle Detector Scanner)"}
+}
+for i, info in ipairs(versionInfo) do
+	local entry = CreateCard(versionSection, 28, i)
+	MakeLabel(entry, UDim2.new(0.45, 0, 1, 0), UDim2.new(0, 12, 0, 0), info[1], Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
+	MakeLabel(entry, UDim2.new(0.55, -12, 1, 0), UDim2.new(0.45, 0, 0, 0), info[2], Enum.Font.GothamSemibold, 11, "TextPrimary", Enum.TextXAlignment.Right)
+end
+
+local function RefreshDetectorControlVisuals()
+	local theme = GetTheme()
+	SubPlayersBtn.BackgroundColor3 = (activeSubView == "Players") and theme.Accent or theme.PanelBg
+	SubCreditsBtn.BackgroundColor3 = (activeSubView == "Credits") and theme.Accent or theme.PanelBg
+	DetectorToggleBtn.Text = "Detector [F4]: " .. (detectorEnabled and "ON" or "OFF")
+	DetectorToggleBtn.BackgroundColor3 = detectorEnabled and theme.Accent or theme.PanelBg
+	NotifToggleBtn.Text = notificationsEnabled and "ON" or "OFF"
+	NotifToggleBtn.BackgroundColor3 = notificationsEnabled and theme.Accent or theme.PanelBg
+end
+
+local function ApplyCardThemeAndStatus(cardData)
+	if not cardData or not cardData.card or not cardData.card.Parent then return end
+	local theme = GetTheme()
+	cardData.card.BackgroundColor3 = theme.CardBg
+	cardData.avatarFrame.BackgroundColor3 = theme.PanelBg
+	cardData.divider.BackgroundColor3 = theme.Stroke
+	cardData.studLbl.TextColor3 = theme.TextSecondary
+	cardData.wsLbl.TextColor3 = theme.TextSecondary
+	cardData.viewBtn.BackgroundColor3 = theme.PanelBg
+	cardData.viewBtn.TextColor3 = theme.TextPrimary
+	cardData.tpBtn.BackgroundColor3 = theme.AccentDark
+	cardData.tpBtn.TextColor3 = theme.TextPrimary
+	cardData.copyBtn.BackgroundColor3 = theme.PanelBg
+	cardData.copyBtn.TextColor3 = theme.TextPrimary
+	local pName = cardData.playerName
+	if whitelistedPlayers[pName] then
+		cardData.whitelistBtn.BackgroundColor3 = theme.Accent
+		cardData.whitelistBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		cardData.cardStroke.Color = theme.Accent
+		cardData.cardStroke.Transparency = 0.15
+		cardData.statusBar.BackgroundColor3 = theme.Accent
+		cardData.statusIcon.Image = DETECTOR_ICONS.normal
+		cardData.statusLbl.Text = "WHITELISTED"
+		cardData.statusLbl.TextColor3 = theme.Accent
+		cardData.userLbl.TextColor3 = theme.Accent
+		cardData.dispLbl.TextColor3 = theme.TextSecondary
+		cardData.flagsLbl.Text = ""
+	elseif cardData.stateTier == 1 then
+		cardData.whitelistBtn.BackgroundColor3 = theme.PanelBg
+		cardData.whitelistBtn.TextColor3 = theme.TextSecondary
+		cardData.cardStroke.Color = DETECTOR_CONFIG.COLORS.Cheat
+		cardData.cardStroke.Transparency = 0.15
+		cardData.statusBar.BackgroundColor3 = DETECTOR_CONFIG.COLORS.Cheat
+		cardData.statusIcon.Image = DETECTOR_ICONS.scripter
+		cardData.statusLbl.Text = "HACKER DETECTED"
+		cardData.statusLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Cheat
+		cardData.userLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Cheat
+		cardData.dispLbl.TextColor3 = Color3.fromRGB(230, 120, 120)
+		cardData.flagsLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Cheat
+	elseif cardData.stateTier == 2 then
+		cardData.whitelistBtn.BackgroundColor3 = theme.PanelBg
+		cardData.whitelistBtn.TextColor3 = theme.TextSecondary
+		cardData.cardStroke.Color = DETECTOR_CONFIG.COLORS.Speed
+		cardData.cardStroke.Transparency = 0.2
+		cardData.statusBar.BackgroundColor3 = DETECTOR_CONFIG.COLORS.Speed
+		cardData.statusIcon.Image = DETECTOR_ICONS.scripter
+		cardData.statusLbl.Text = "ABNORMAL SPEED HACKER"
+		cardData.statusLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Speed
+		cardData.userLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Speed
+		cardData.dispLbl.TextColor3 = Color3.fromRGB(235, 185, 105)
+		cardData.flagsLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Speed
+	elseif cardData.stateTier == 3 then
+		cardData.whitelistBtn.BackgroundColor3 = theme.PanelBg
+		cardData.whitelistBtn.TextColor3 = theme.TextSecondary
+		cardData.cardStroke.Color = theme.Stroke
+		cardData.cardStroke.Transparency = 0.6
+		cardData.statusBar.BackgroundColor3 = DETECTOR_CONFIG.COLORS.Clean
+		cardData.statusIcon.Image = DETECTOR_ICONS.normal
+		cardData.statusLbl.Text = "Normal"
+		cardData.statusLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Clean
+		cardData.userLbl.TextColor3 = theme.TextPrimary
+		cardData.dispLbl.TextColor3 = theme.TextSecondary
+		cardData.flagsLbl.Text = ""
+	else
+		cardData.whitelistBtn.BackgroundColor3 = theme.PanelBg
+		cardData.whitelistBtn.TextColor3 = theme.TextSecondary
+		cardData.cardStroke.Color = theme.Stroke
+		cardData.cardStroke.Transparency = 0.6
+		cardData.statusBar.BackgroundColor3 = DETECTOR_CONFIG.COLORS.Analyzing
+		cardData.statusIcon.Image = DETECTOR_ICONS.analyzing
+		cardData.statusLbl.Text = "Analyzing..."
+		cardData.statusLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Analyzing
+		cardData.userLbl.TextColor3 = theme.TextPrimary
+		cardData.dispLbl.TextColor3 = theme.TextSecondary
+	end
+end
+
+local function RefreshAllDetectorThemes()
+	RefreshDetectorControlVisuals()
+	for _, cData in pairs(playerCards) do
+		ApplyCardThemeAndStatus(cData)
+	end
+end
+table.insert(ThemeObjects.CustomCallbacks, RefreshAllDetectorThemes)
+
+local function SetSubView(viewName)
+	activeSubView = viewName
+	ScannerContainer.Visible = (viewName == "Players")
+	CreditsContainer.Visible = (viewName == "Credits")
+	RefreshDetectorControlVisuals()
+end
+SubPlayersBtn.MouseButton1Click:Connect(function() SetSubView("Players") end)
+SubCreditsBtn.MouseButton1Click:Connect(function() SetSubView("Credits") end)
+
+local function ToggleDetectorState()
+	detectorEnabled = not detectorEnabled
+	RefreshDetectorControlVisuals()
+end
+DetectorToggleBtn.MouseButton1Click:Connect(ToggleDetectorState)
+NotifToggleBtn.MouseButton1Click:Connect(function()
+	notificationsEnabled = not notificationsEnabled
+	RefreshDetectorControlVisuals()
+end)
+DelayMinus.MouseButton1Click:Connect(function()
+	notifCooldown = math.max(0, notifCooldown - 5)
+	DelayText.Text = notifCooldown .. "s"
+end)
+DelayPlus.MouseButton1Click:Connect(function()
+	notifCooldown = math.min(60, notifCooldown + 5)
+	DelayText.Text = notifCooldown .. "s"
+end)
+
+local notifications
+local function viewPlayer(playerName)
+	local targetPlr = Players:FindFirstChild(playerName)
+	if not targetPlr or not targetPlr.Character then
+		if notifications then notifications:show("View Failed", tostring(playerName) .. " has no active character.", DETECTOR_CONFIG.COLORS.Warning, DETECTOR_ICONS.off) end
+		return
+	end
+	local hum = targetPlr.Character:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		if notifications then notifications:show("View Failed", "Humanoid not found.", DETECTOR_CONFIG.COLORS.Warning, DETECTOR_ICONS.off) end
+		return
+	end
+	currentViewTarget = playerName
+	SpectatingTarget = targetPlr
+	if workspace.CurrentCamera then workspace.CurrentCamera.CameraSubject = hum end
+	UnviewBtn.Visible = true
+	if notifications then notifications:show("Viewing Player", "Camera locked to " .. playerName .. ".", GetTheme().Accent, DETECTOR_ICONS.players) end
+end
+
+UnviewBtn.MouseButton1Click:Connect(function()
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum and workspace.CurrentCamera then
+		workspace.CurrentCamera.CameraSubject = hum
+	end
+	UnviewBtn.Visible = false
+	currentViewTarget = nil
+	SpectatingTarget = nil
+	if notifications then notifications:show("Stopped Viewing", "Camera returned to you.", GetTheme().TextSecondary, DETECTOR_ICONS.normal) end
+end)
+
+local function scrollToPlayer(targetName)
+	if not isMenuVisible then SetMenuVisible(true) end
+	ActiveTabName = "Hacker Detector"
+	for name, data in pairs(Tabs) do
+		data.Page.Visible = (name == "Hacker Detector")
+		local theme = GetTheme()
+		data.Button.BackgroundColor3 = (name == "Hacker Detector") and theme.Accent or theme.CardBg
+		data.Button.BackgroundTransparency = (name == "Hacker Detector") and 0.02 or 0.2
+	end
+	SetSubView("Players")
+	local targetCard = playerCards[targetName]
+	if not targetCard or not targetCard.card then return end
+	task.defer(function()
+		local cFrame = targetCard.card
+		local sFrame = Tab9_Detector
+		local canvasOffset = (cFrame.AbsolutePosition.Y - sFrame.AbsolutePosition.Y) + sFrame.CanvasPosition.Y - 60
+		local maxScroll = math.max(0, sFrame.AbsoluteCanvasSize.Y - sFrame.AbsoluteSize.Y)
+		canvasOffset = math.clamp(canvasOffset, 0, maxScroll)
+		tweenDetectorObj(sFrame, { CanvasPosition = Vector2.new(0, canvasOffset) }):Play()
+		local theme = GetTheme()
+		tweenDetectorObj(targetCard.cardStroke, { Color = theme.Accent, Transparency = 0 }):Play()
+		task.delay(1.5, function()
+			pcall(function() ApplyCardThemeAndStatus(targetCard) end)
+		end)
+	end)
+end
+
+local Notifications = {}
+function Notifications.new(parent)
+	local container = Instance.new("Frame")
+	container.Name = "TR_DetectorNotifs"
+	container.Size = UDim2.new(0, 320, 1, 0)
+	container.Position = UDim2.new(1, -330, 0, 0)
+	container.BackgroundTransparency = 1
+	container.ZIndex = 100
+	container.Parent = parent
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 8)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.VerticalAlignment = Enum.VerticalAlignment.Top
+	layout.Parent = container
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 60)
+	padding.PaddingRight = UDim.new(0, 10)
+	padding.Parent = container
+	return {
+		container = container,
+		show = function(self, title, message, color, icon, playerName)
+			if not notificationsEnabled or isClosingPermanently then return end
+			local theme = GetTheme()
+			color = color or DETECTOR_CONFIG.COLORS.Warning
+			local notification = Instance.new("Frame")
+			notification.Size = UDim2.new(1, 0, 0, 0)
+			notification.BackgroundTransparency = 1
+			notification.LayoutOrder = 100
+			notification.Parent = container
+			local bg = Instance.new("TextButton")
+			bg.Size = UDim2.new(1, 0, 0, 64)
+			bg.BackgroundColor3 = theme.MainBg
+			bg.BorderSizePixel = 0
+			bg.Text = ""
+			bg.AutoButtonColor = false
+			bg.Parent = notification
+			AddCorner(bg, 10)
+			RegisterThemeObject(bg, "BackgroundColor3", "MainBg")
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = color
+			stroke.Thickness = 1.8
+			stroke.Transparency = 0.2
+			stroke.Parent = bg
+			local sidebar = Instance.new("Frame")
+			sidebar.Size = UDim2.new(0, 4, 0.7, 0)
+			sidebar.Position = UDim2.new(0, 8, 0.15, 0)
+			sidebar.BackgroundColor3 = color
+			sidebar.BorderSizePixel = 0
+			sidebar.Parent = bg
+			AddCorner(sidebar, 4)
+			if icon then
+				local iconImg = Instance.new("ImageLabel")
+				iconImg.Size = UDim2.new(0, 22, 0, 22)
+				iconImg.Position = UDim2.new(0, 18, 0, 8)
+				iconImg.BackgroundTransparency = 1
+				iconImg.Image = icon
+				iconImg.ScaleType = Enum.ScaleType.Fit
+				iconImg.ImageColor3 = color
+				iconImg.Parent = bg
+			end
+			local titleLbl = Instance.new("TextLabel")
+			titleLbl.Size = UDim2.new(1, -96, 0, 18)
+			titleLbl.Position = UDim2.new(0, 46, 0, 8)
+			titleLbl.BackgroundTransparency = 1
+			titleLbl.Text = title
+			titleLbl.TextColor3 = color
+			titleLbl.TextSize = 13
+			titleLbl.Font = Enum.Font.GothamBold
+			titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+			titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+			titleLbl.Parent = bg
+			local msgLbl = MakeLabel(bg, UDim2.new(1, -52, 0, 28), UDim2.new(0, 46, 0, 28), message, Enum.Font.Gotham, 11, "TextSecondary", Enum.TextXAlignment.Left)
+			msgLbl.TextTruncate = Enum.TextTruncate.AtEnd
+			msgLbl.TextWrapped = true
+			if playerName then
+				notification.Name = playerName
+				bg.MouseButton1Click:Connect(function() pcall(scrollToPlayer, playerName) end)
+				bg.MouseEnter:Connect(function() tweenDetectorObj(bg, { BackgroundColor3 = GetTheme().CardBg }):Play() end)
+				bg.MouseLeave:Connect(function() tweenDetectorObj(bg, { BackgroundColor3 = GetTheme().MainBg }):Play() end)
+				local viewNotifBtn = MakeButton(bg, UDim2.new(0, 42, 0, 20), UDim2.new(1, -48, 0, 8), "VIEW", "Accent", 9)
+				viewNotifBtn.ZIndex = 105
+				viewNotifBtn.MouseButton1Click:Connect(function() pcall(viewPlayer, playerName) end)
+			end
+			tweenDetectorObj(notification, { Size = UDim2.new(1, 0, 0, 72) }):Play()
+			for _, child in ipairs(container:GetChildren()) do
+				if child:IsA("Frame") and child ~= notification then
+					child.LayoutOrder = math.max(0, child.LayoutOrder - 1)
+				end
+			end
+			task.delay(4, function()
+				pcall(function()
+					tweenDetectorObj(notification, { Size = UDim2.new(1, 0, 0, 0) }):Play()
+					task.delay(0.3, function() if notification then notification:Destroy() end end)
+				end)
+			end)
+		end
+	}
+end
+notifications = Notifications.new(ScreenGui)
+
+local function ReorderDetectorCards()
+	local sortable = {}
+	for pName, cData in pairs(playerCards) do
+		local tier = 3
+		if whitelistedPlayers[pName] then
+			tier = 4
+		elseif detectedPlayers[pName] then
+			tier = 1
+		elseif speedPlayers[pName] then
+			tier = 2
+		else
+			tier = 3
+		end
+		table.insert(sortable, {
+			Name = pName,
+			Tier = tier,
+			Speed = cData.lastSpeed or 0,
+			CardData = cData
+		})
+	end
+	table.sort(sortable, function(a, b)
+		if a.Tier ~= b.Tier then return a.Tier < b.Tier end
+		if (a.Tier == 1 or a.Tier == 2) and math.abs(a.Speed - b.Speed) > 0.5 then
+			return a.Speed > b.Speed
+		end
+		return a.Name:lower() < b.Name:lower()
+	end)
+	for idx, item in ipairs(sortable) do
+		if item.CardData and item.CardData.card then
+			item.CardData.card.LayoutOrder = idx
+		end
+	end
+end
+
+local function createPlayerDetectorCard(plr)
+	if playerCards[plr.Name] then return end
+	local theme = GetTheme()
+	local card = Instance.new("Frame")
+	card.Name = plr.Name
+	card.Size = UDim2.new(1, 0, 0, 126)
+	card.BackgroundColor3 = theme.CardBg
+	card.BackgroundTransparency = 0.1
+	card.BorderSizePixel = 0
+	card.LayoutOrder = 3000
+	card.Parent = ScannerContainer
+	AddCorner(card, 8)
+	local cardStroke = Instance.new("UIStroke")
+	cardStroke.Color = theme.Stroke
+	cardStroke.Thickness = 1.2
+	cardStroke.Transparency = 0.6
+	cardStroke.Parent = card
+	local hoverOverlay = Instance.new("Frame")
+	hoverOverlay.Size = UDim2.new(1, 0, 1, 0)
+	hoverOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	hoverOverlay.BackgroundTransparency = 1
+	hoverOverlay.ZIndex = 1
+	hoverOverlay.Parent = card
+	AddCorner(hoverOverlay, 8)
+	card.MouseEnter:Connect(function() tweenDetectorObj(hoverOverlay, { BackgroundTransparency = 0.95 }):Play() end)
+	card.MouseLeave:Connect(function() tweenDetectorObj(hoverOverlay, { BackgroundTransparency = 1 }):Play() end)
+	local statusBar = Instance.new("Frame")
+	statusBar.Size = UDim2.new(0, 4, 0.84, 0)
+	statusBar.Position = UDim2.new(0, 5, 0.08, 0)
+	statusBar.BackgroundColor3 = DETECTOR_CONFIG.COLORS.Analyzing
+	statusBar.BorderSizePixel = 0
+	statusBar.ZIndex = 3
+	statusBar.Parent = card
+	AddCorner(statusBar, 4)
+	local avatarFrame = Instance.new("Frame")
+	avatarFrame.Size = UDim2.new(0, 38, 0, 38)
+	avatarFrame.Position = UDim2.new(0, 16, 0, 8)
+	avatarFrame.BackgroundColor3 = theme.PanelBg
+	avatarFrame.BorderSizePixel = 0
+	avatarFrame.ZIndex = 3
+	avatarFrame.Parent = card
+	AddCorner(avatarFrame, 19)
+	local avatar = Instance.new("ImageLabel")
+	avatar.Size = UDim2.new(1, 0, 1, 0)
+	avatar.BackgroundTransparency = 1
+	avatar.ZIndex = 4
+	avatar.Parent = avatarFrame
+	AddCorner(avatar, 19)
+	task.spawn(function()
+		pcall(function()
+			avatar.Image = Players:GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+		end)
+	end)
+	local userLbl = Instance.new("TextLabel")
+	userLbl.Size = UDim2.new(1, -265, 0, 18)
+	userLbl.Position = UDim2.new(0, 62, 0, 8)
+	userLbl.BackgroundTransparency = 1
+	userLbl.Text = plr.DisplayName
+	userLbl.TextColor3 = theme.TextPrimary
+	userLbl.TextSize = 13
+	userLbl.Font = Enum.Font.GothamBold
+	userLbl.TextXAlignment = Enum.TextXAlignment.Left
+	userLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	userLbl.ZIndex = 3
+	userLbl.Parent = card
+	local dispLbl = Instance.new("TextLabel")
+	dispLbl.Size = UDim2.new(1, -265, 0, 14)
+	dispLbl.Position = UDim2.new(0, 62, 0, 26)
+	dispLbl.BackgroundTransparency = 1
+	dispLbl.Text = "@" .. plr.Name
+	dispLbl.TextColor3 = theme.TextSecondary
+	dispLbl.TextSize = 11
+	dispLbl.Font = Enum.Font.Gotham
+	dispLbl.TextXAlignment = Enum.TextXAlignment.Left
+	dispLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	dispLbl.ZIndex = 3
+	dispLbl.Parent = card
+	local whitelistBtn = Instance.new("TextButton")
+	whitelistBtn.Size = UDim2.new(0, 68, 0, 24)
+	whitelistBtn.Position = UDim2.new(1, -206, 0, 11)
+	whitelistBtn.BackgroundColor3 = theme.PanelBg
+	whitelistBtn.BorderSizePixel = 0
+	whitelistBtn.Text = "WHITELIST"
+	whitelistBtn.TextColor3 = theme.TextSecondary
+	whitelistBtn.TextSize = 10
+	whitelistBtn.Font = Enum.Font.GothamBold
+	whitelistBtn.ZIndex = 5
+	whitelistBtn.Parent = card
+	AddCorner(whitelistBtn, 6)
+	local viewBtn = Instance.new("TextButton")
+	viewBtn.Size = UDim2.new(0, 44, 0, 24)
+	viewBtn.Position = UDim2.new(1, -134, 0, 11)
+	viewBtn.BackgroundColor3 = theme.PanelBg
+	viewBtn.BorderSizePixel = 0
+	viewBtn.Text = "VIEW"
+	viewBtn.TextColor3 = theme.TextPrimary
+	viewBtn.TextSize = 10
+	viewBtn.Font = Enum.Font.GothamBold
+	viewBtn.ZIndex = 5
+	viewBtn.Parent = card
+	AddCorner(viewBtn, 6)
+	local tpBtn = Instance.new("TextButton")
+	tpBtn.Size = UDim2.new(0, 36, 0, 24)
+	tpBtn.Position = UDim2.new(1, -86, 0, 11)
+	tpBtn.BackgroundColor3 = theme.AccentDark
+	tpBtn.BorderSizePixel = 0
+	tpBtn.Text = "TP"
+	tpBtn.TextColor3 = theme.TextPrimary
+	tpBtn.TextSize = 10
+	tpBtn.Font = Enum.Font.GothamBold
+	tpBtn.ZIndex = 5
+	tpBtn.Parent = card
+	AddCorner(tpBtn, 6)
+	local copyBtn = Instance.new("TextButton")
+	copyBtn.Size = UDim2.new(0, 42, 0, 24)
+	copyBtn.Position = UDim2.new(1, -46, 0, 11)
+	copyBtn.BackgroundColor3 = theme.PanelBg
+	copyBtn.BorderSizePixel = 0
+	copyBtn.Text = "COPY"
+	copyBtn.TextColor3 = theme.TextPrimary
+	copyBtn.TextSize = 10
+	copyBtn.Font = Enum.Font.GothamBold
+	copyBtn.ZIndex = 5
+	copyBtn.Parent = card
+	AddCorner(copyBtn, 6)
+	local divider = Instance.new("Frame")
+	divider.Size = UDim2.new(1, -20, 0, 1)
+	divider.Position = UDim2.new(0, 12, 0, 50)
+	divider.BackgroundColor3 = theme.Stroke
+	divider.BackgroundTransparency = 0.65
+	divider.BorderSizePixel = 0
+	divider.ZIndex = 2
+	divider.Parent = card
+	local studLbl = Instance.new("TextLabel")
+	studLbl.Size = UDim2.new(0.45, -16, 0, 16)
+	studLbl.Position = UDim2.new(0, 16, 0, 56)
+	studLbl.BackgroundTransparency = 1
+	studLbl.Text = "Speed: --"
+	studLbl.TextColor3 = theme.TextSecondary
+	studLbl.TextSize = 11
+	studLbl.Font = Enum.Font.GothamSemibold
+	studLbl.TextXAlignment = Enum.TextXAlignment.Left
+	studLbl.ZIndex = 3
+	studLbl.Parent = card
+	local wsLbl = Instance.new("TextLabel")
+	wsLbl.Size = UDim2.new(0.55, -16, 0, 16)
+	wsLbl.Position = UDim2.new(0.45, 0, 0, 56)
+	wsLbl.BackgroundTransparency = 1
+	wsLbl.Text = "WalkSpeed: --"
+	wsLbl.TextColor3 = theme.TextSecondary
+	wsLbl.TextSize = 11
+	wsLbl.Font = Enum.Font.GothamSemibold
+	wsLbl.TextXAlignment = Enum.TextXAlignment.Right
+	wsLbl.ZIndex = 3
+	wsLbl.Parent = card
+	local groundLbl = Instance.new("TextLabel")
+	groundLbl.Size = UDim2.new(1, -24, 0, 14)
+	groundLbl.Position = UDim2.new(0, 16, 0, 73)
+	groundLbl.BackgroundTransparency = 1
+	groundLbl.Text = "Grounded"
+	groundLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Clean
+	groundLbl.TextSize = 10
+	groundLbl.Font = Enum.Font.GothamBold
+	groundLbl.TextXAlignment = Enum.TextXAlignment.Left
+	groundLbl.ZIndex = 3
+	groundLbl.Parent = card
+	local statusIcon = Instance.new("ImageLabel")
+	statusIcon.Size = UDim2.new(0, 16, 0, 16)
+	statusIcon.Position = UDim2.new(0, 16, 0, 90)
+	statusIcon.BackgroundTransparency = 1
+	statusIcon.Image = DETECTOR_ICONS.analyzing
+	statusIcon.ScaleType = Enum.ScaleType.Fit
+	statusIcon.ZIndex = 3
+	statusIcon.Parent = card
+	local statusLbl = Instance.new("TextLabel")
+	statusLbl.Size = UDim2.new(1, -44, 0, 16)
+	statusLbl.Position = UDim2.new(0, 36, 0, 90)
+	statusLbl.BackgroundTransparency = 1
+	statusLbl.Text = "Analyzing..."
+	statusLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Analyzing
+	statusLbl.TextSize = 12
+	statusLbl.Font = Enum.Font.GothamBold
+	statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+	statusLbl.ZIndex = 3
+	statusLbl.Parent = card
+	local flagsLbl = Instance.new("TextLabel")
+	flagsLbl.Size = UDim2.new(1, -24, 0, 15)
+	flagsLbl.Position = UDim2.new(0, 16, 0, 107)
+	flagsLbl.BackgroundTransparency = 1
+	flagsLbl.Text = ""
+	flagsLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Cheat
+	flagsLbl.TextSize = 10
+	flagsLbl.Font = Enum.Font.GothamBold
+	flagsLbl.TextXAlignment = Enum.TextXAlignment.Left
+	flagsLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	flagsLbl.ZIndex = 3
+	flagsLbl.Parent = card
+	local cData = {
+		playerName = plr.Name,
+		card = card, cardStroke = cardStroke, statusBar = statusBar,
+		avatarFrame = avatarFrame, divider = divider,
+		whitelistBtn = whitelistBtn, viewBtn = viewBtn, tpBtn = tpBtn, copyBtn = copyBtn,
+		statusIcon = statusIcon, statusLbl = statusLbl, userLbl = userLbl,
+		dispLbl = dispLbl, studLbl = studLbl, wsLbl = wsLbl,
+		flagsLbl = flagsLbl, groundLbl = groundLbl, hoverOverlay = hoverOverlay,
+		stateTier = 0, lastSpeed = 0
+	}
+	playerCards[plr.Name] = cData
+	copyBtn.MouseButton1Click:Connect(function()
+		SafeClipboard(plr.Name)
+		copyBtn.Text = E.Check
+		tweenDetectorObj(copyBtn, { BackgroundColor3 = GetTheme().Accent, TextColor3 = Color3.new(1, 1, 1) }):Play()
+		task.delay(0.6, function()
+			if copyBtn and copyBtn.Parent then
+				copyBtn.Text = "COPY"
+				ApplyCardThemeAndStatus(cData)
+			end
+		end)
+	end)
+	viewBtn.MouseButton1Click:Connect(function()
+		viewPlayer(plr.Name)
+		tweenDetectorObj(viewBtn, { BackgroundColor3 = GetTheme().Accent, TextColor3 = Color3.new(1, 1, 1) }):Play()
+		task.delay(0.4, function()
+			if viewBtn and viewBtn.Parent then ApplyCardThemeAndStatus(cData) end
+		end)
+	end)
+	tpBtn.MouseButton1Click:Connect(function()
+		local tRoot = GetRootPart(plr.Character)
+		if tRoot then
+			local pos = tRoot.Position
+			SafeTeleportToCoords(pos.X, pos.Y + 3, pos.Z)
+		end
+	end)
+	whitelistBtn.MouseButton1Click:Connect(function()
+		whitelistedPlayers[plr.Name] = not whitelistedPlayers[plr.Name]
+		if whitelistedPlayers[plr.Name] then
+			detectedPlayers[plr.Name] = nil
+			speedPlayers[plr.Name] = nil
+		else
+			playerData[plr.Name] = nil
+			cData.stateTier = 0
+		end
+		ApplyCardThemeAndStatus(cData)
+		ReorderDetectorCards()
+	end)
+	ApplyCardThemeAndStatus(cData)
+	ReorderDetectorCards()
+end
+
+local function removePlayerDetectorCard(plr)
+	if playerCards[plr.Name] then
+		pcall(function() playerCards[plr.Name].card:Destroy() end)
+		playerCards[plr.Name] = nil
+	end
+	playerData[plr.Name] = nil
+	detectedPlayers[plr.Name] = nil
+	speedPlayers[plr.Name] = nil
+	whitelistedPlayers[plr.Name] = nil
+end
+
+local function isGrounded(hrp, character)
+	local params = RaycastParams.new()
+	params.FilterDescendantsInstances = { character }
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	return workspace:Raycast(hrp.Position, Vector3.new(0, -4.5, 0), params) ~= nil
+end
+
+local function checkCollisions(hrp, character)
+	local params = RaycastParams.new()
+	params.FilterDescendantsInstances = { character }
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local hits = 0
+	local dirs = {
+		Vector3.new(0, -3, 0),
+		Vector3.new(3, 0, 0),
+		Vector3.new(-3, 0, 0),
+		Vector3.new(0, 0, 3),
+		Vector3.new(0, 0, -3)
+	}
+	for _, dir in ipairs(dirs) do
+		if workspace:Raycast(hrp.Position, dir, params) then hits = hits + 1 end
+	end
+	return hits
+end
+
+local function checkServerTeleport()
+	local totalPlayers = 0
+	local teleportingPlayers = 0
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and playerData[plr.Name] then
+			local character = plr.Character
+			if character then
+				local hrp = character:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					totalPlayers = totalPlayers + 1
+					local data = playerData[plr.Name]
+					local now = tick()
+					local dt = now - (data.lastCheck or now)
+					local distance = (hrp.Position - data.lastPosition).Magnitude
+					if dt < 0.5 and distance > DETECTOR_CONFIG.TELEPORT_DISTANCE then
+						teleportingPlayers = teleportingPlayers + 1
+					end
+				end
+			end
+		end
+	end
+	return totalPlayers >= 3 and (teleportingPlayers / totalPlayers) > 0.5
+end
+
+local function checkPlayer(plr)
+	if plr == LocalPlayer then return end
+	local character = plr.Character
+	if not character then return end
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not hrp or not humanoid then return end
+	local card = playerCards[plr.Name]
+	if not card then return end
+	if not playerData[plr.Name] then
+		playerData[plr.Name] = {
+			airTime = 0, lastPosition = hrp.Position, lastCheck = tick(),
+			speedSamples = {}, collisionSamples = {}, wasDetected = false
+		}
+	end
+	local data = playerData[plr.Name]
+	local vel = hrp.AssemblyLinearVelocity
+	local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+	local totalSpeed = vel.Magnitude
+	local walkSpeed = math.max(humanoid.WalkSpeed, 1)
+	local jumpPower = humanoid.JumpPower
+	local grounded = isGrounded(hrp, character)
+	data.airTime = grounded and 0 or (data.airTime + DETECTOR_CONFIG.CHECK_INTERVAL)
+	local now = tick()
+	local dt = now - (data.lastCheck or now)
+	local distance = (hrp.Position - data.lastPosition).Magnitude
+	data.lastPosition = hrp.Position
+	data.lastCheck = now
+	table.insert(data.speedSamples, hSpeed)
+	if #data.speedSamples > DETECTOR_CONFIG.SAMPLE_COUNT then table.remove(data.speedSamples, 1) end
+	local avgSpeed = 0
+	for _, s in ipairs(data.speedSamples) do avgSpeed = avgSpeed + s end
+	avgSpeed = avgSpeed / #data.speedSamples
+	card.lastSpeed = math.max(hSpeed, avgSpeed)
+	local collisions = checkCollisions(hrp, character)
+	table.insert(data.collisionSamples, collisions)
+	if #data.collisionSamples > 3 then table.remove(data.collisionSamples, 1) end
+	local avgCollision = 0
+	for _, c in ipairs(data.collisionSamples) do avgCollision = avgCollision + c end
+	avgCollision = avgCollision / #data.collisionSamples
+	local teleported = false
+	if dt < 0.5 and distance > DETECTOR_CONFIG.TELEPORT_DISTANCE and hSpeed < DETECTOR_CONFIG.TELEPORT_DISTANCE then
+		if not serverTeleporting then teleported = true end
+	end
+	card.studLbl.Text = string.format("Speed: %.1f s/s", hSpeed)
+	card.wsLbl.Text = string.format("WalkSpeed: %d", walkSpeed)
+	card.groundLbl.Text = grounded and "Grounded" or "Airborne"
+	card.groundLbl.TextColor3 = grounded and DETECTOR_CONFIG.COLORS.Clean or DETECTOR_CONFIG.COLORS.Warning
+	if whitelistedPlayers[plr.Name] then
+		card.stateTier = 4
+		detectedPlayers[plr.Name] = nil
+		speedPlayers[plr.Name] = nil
+		data.wasDetected = false
+		ApplyCardThemeAndStatus(card)
+		return
+	end
+	local hardFlags = {}
+	local speedFlags = {}
+	if avgSpeed > walkSpeed * DETECTOR_CONFIG.SPEED_MULTIPLIER and avgSpeed > 16 then
+		table.insert(speedFlags, "Speed Hack")
+	elseif (avgSpeed > walkSpeed * DETECTOR_CONFIG.ABNORMAL_SPEED_MULT and avgSpeed > 20) or walkSpeed >= DETECTOR_CONFIG.ABNORMAL_RAW_SPEED or avgSpeed >= 28 then
+		table.insert(speedFlags, "Abnormal Speed")
+	end
+	if data.airTime > DETECTOR_CONFIG.MAX_AIR_TIME and hSpeed > 5 and vel.Y > -5 and vel.Y < 5 then table.insert(hardFlags, "Fly") end
+	if totalSpeed > DETECTOR_CONFIG.FLING_THRESHOLD then table.insert(hardFlags, "Fling") end
+	if vel.Y > jumpPower * DETECTOR_CONFIG.JUMP_MULTIPLIER and vel.Y > 18 then table.insert(hardFlags, "Abnormal Jump") end
+	if teleported then table.insert(hardFlags, "Teleport") end
+	if avgCollision == 0 and not grounded and hSpeed > 16 and data.airTime > 1.0 and math.abs(vel.Y) < 10 then table.insert(hardFlags, "NoClip") end
+
+	local allFlags = {}
+	for _, f in ipairs(hardFlags) do table.insert(allFlags, f) end
+	for _, f in ipairs(speedFlags) do table.insert(allFlags, f) end
+
+	if #hardFlags > 0 then
+		-- Tier 1: Confirmed Hacker (shown at the very top of the list)
+		card.stateTier = 1
+		card.flagsLbl.Text = table.concat(allFlags, " | ")
+		detectedPlayers[plr.Name] = true
+		speedPlayers[plr.Name] = nil
+		ApplyCardThemeAndStatus(card)
+		if not data.wasDetected then
+			if not notifCooldowns[plr.Name] or (tick() - notifCooldowns[plr.Name] > notifCooldown) then
+				notifications:show("Hacker Detected!", plr.Name .. " flagged: " .. table.concat(allFlags, ", "), DETECTOR_CONFIG.COLORS.Cheat, DETECTOR_ICONS.scripter, plr.Name)
+				notifCooldowns[plr.Name] = tick()
+			end
+			tweenDetectorObj(card.hoverOverlay, { BackgroundTransparency = 0.78, BackgroundColor3 = DETECTOR_CONFIG.COLORS.Cheat }):Play()
+			task.delay(0.6, function()
+				pcall(function() tweenDetectorObj(card.hoverOverlay, { BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(255, 255, 255) }):Play() end)
+			end)
+		end
+		data.wasDetected = true
+	elseif #speedFlags > 0 then
+		-- Tier 2: Hacker with Abnormal Speed (shown second on the list)
+		card.stateTier = 2
+		card.flagsLbl.Text = table.concat(speedFlags, " | ")
+		detectedPlayers[plr.Name] = nil
+		speedPlayers[plr.Name] = true
+		ApplyCardThemeAndStatus(card)
+		if not data.wasDetected then
+			if not notifCooldowns[plr.Name] or (tick() - notifCooldowns[plr.Name] > notifCooldown) then
+				notifications:show("Abnormal Speed!", plr.Name .. " flagged: " .. table.concat(speedFlags, ", "), DETECTOR_CONFIG.COLORS.Speed, DETECTOR_ICONS.scripter, plr.Name)
+				notifCooldowns[plr.Name] = tick()
+			end
+			tweenDetectorObj(card.hoverOverlay, { BackgroundTransparency = 0.8, BackgroundColor3 = DETECTOR_CONFIG.COLORS.Speed }):Play()
+			task.delay(0.6, function()
+				pcall(function() tweenDetectorObj(card.hoverOverlay, { BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(255, 255, 255) }):Play() end)
+			end)
+		end
+		data.wasDetected = true
+	else
+		-- Tier 3: Normal Player (shown third on the list)
+		card.stateTier = 3
+		card.flagsLbl.Text = ""
+		detectedPlayers[plr.Name] = nil
+		speedPlayers[plr.Name] = nil
+		data.wasDetected = false
+		ApplyCardThemeAndStatus(card)
+	end
+end
+
+local function setupDetectorPlayer(plr)
+	if plr == LocalPlayer then return end
+	createPlayerDetectorCard(plr)
+	table.insert(Connections, plr.CharacterAdded:Connect(function()
+		playerData[plr.Name] = nil
+	end))
+end
+for _, plr in ipairs(Players:GetPlayers()) do setupDetectorPlayer(plr) end
+table.insert(Connections, Players.PlayerAdded:Connect(setupDetectorPlayer))
+table.insert(Connections, Players.PlayerRemoving:Connect(removePlayerDetectorCard))
+
+table.insert(Connections, LocalPlayer.CharacterAdded:Connect(function()
+	if not currentViewTarget then return end
+	task.wait(0.5)
+	local targetPlr = Players:FindFirstChild(currentViewTarget)
+	if targetPlr and targetPlr.Character then
+		local hum = targetPlr.Character:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 and workspace.CurrentCamera then
+			workspace.CurrentCamera.CameraSubject = hum
+			UnviewBtn.Visible = true
+		end
+	end
+end))
+
+local detectorElapsed = 0
+table.insert(Connections, RunService.Heartbeat:Connect(function(dt)
+	local count, hackersCount, speedCount = 0, 0, 0
+	for name in pairs(playerCards) do
+		count = count + 1
+		if detectedPlayers[name] then hackersCount = hackersCount + 1
+		elseif speedPlayers[name] then speedCount = speedCount + 1 end
+	end
+	PlayerCountLabel.Text = string.format("Players: %d", count)
+	DetectedCountLabel.Text = string.format("Hackers: %d  |  Abnormal Speed: %d", hackersCount, speedCount)
+	if hackersCount > 0 then
+		DetectedCountLabel.TextColor3 = DETECTOR_CONFIG.COLORS.Cheat
+	elseif speedCount > 0 then
+		DetectedCountLabel.TextColor3 = DETECTOR_CONFIG.COLORS.Speed
+	else
+		DetectedCountLabel.TextColor3 = GetTheme().TextSecondary
+	end
+	if not detectorEnabled then return end
+	detectorElapsed = detectorElapsed + dt
+	if detectorElapsed < DETECTOR_CONFIG.CHECK_INTERVAL then return end
+	detectorElapsed = 0
+	serverTeleporting = checkServerTeleport()
+	for _, plr in ipairs(Players:GetPlayers()) do pcall(checkPlayer, plr) end
+	ReorderDetectorCards()
+end))
+
+table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe or ActiveKeybindCaptureCallback or UserInputService:GetFocusedTextBox() ~= nil then return end
+	if input.KeyCode == Enum.KeyCode.F4 then ToggleDetectorState() end
+end))
+
+RefreshAllDetectorThemes()
+end
 --==============================================================================
 -- 15. CORE HEARTBEAT, STEPPED, PLAYER LIST & INPUT ENGINES
 --==============================================================================
