@@ -2355,29 +2355,14 @@ local function ReorderDetectorCards()
 	end
 end
 
-local function isGrounded(hrp, character)
-	local params = RaycastParams.new()
-	params.FilterDescendantsInstances = { character }
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	return workspace:Raycast(hrp.Position, Vector3.new(0, -4.5, 0), params) ~= nil
-end
-
-local function checkCollisions(hrp, character)
-	local params = RaycastParams.new()
-	params.FilterDescendantsInstances = { character }
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	local hits = 0
-	local dirs = {
-		Vector3.new(0, -3, 0),
-		Vector3.new(3, 0, 0),
-		Vector3.new(-3, 0, 0),
-		Vector3.new(0, 0, 3),
-		Vector3.new(0, 0, -3)
-	}
-	for _, dir in ipairs(dirs) do
-		if workspace:Raycast(hrp.Position, dir, params) then hits = hits + 1 end
+local function isGrounded(hrp, character, humanoid)
+	if humanoid and humanoid.FloorMaterial ~= nil and humanoid.FloorMaterial ~= Enum.Material.Air then
+		return true
 	end
-	return hits
+	local params = RaycastParams.new()
+	params.FilterDescendantsInstances = { character }
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	return workspace:Raycast(hrp.Position, Vector3.new(0, -5.5, 0), params) ~= nil
 end
 
 local function checkServerTeleport()
@@ -2415,26 +2400,78 @@ local function samplePlayerPhysics(plr)
 	local now = tick()
 	if not playerData[plr.Name] then
 		playerData[plr.Name] = {
+			spawnTime = now,
 			airTime = 0, lastPosition = hrp.Position, lastCheck = now,
-			speedSamples = {}, collisionSamples = {}, wasDetected = false,
+			speedSamples = {}, wasDetected = false,
 			lastHSpeed = 0, lastTotalSpeed = 0, lastVelY = 0,
 			lastWalkSpeed = 16, lastJumpPower = 50, lastGrounded = true,
-			recentTeleport = false
+			recentTeleport = false, recentNoClip = false,
+			speedStreak = 0, flyStreak = 0, flingStreak = 0, jumpStreak = 0,
+			teleportStreak = 0, noclipStreak = 0
 		}
 	end
 	local data = playerData[plr.Name]
 	local dt = math.max(now - (data.lastCheck or now), 0.01)
+
+	local isDead = (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
+	local isSeated = humanoid.Sit or (humanoid.SeatPart ~= nil) or (humanoid:GetState() == Enum.HumanoidStateType.Seated)
+	local isClimbing = (humanoid:GetState() == Enum.HumanoidStateType.Climbing)
+	local isSwimming = (humanoid:GetState() == Enum.HumanoidStateType.Swimming) or (humanoid.FloorMaterial == Enum.Material.Water)
+	local isJustSpawned = (now - (data.spawnTime or now) < 3.5)
+
+	if isDead or isSeated then
+		data.airTime = 0
+		data.speedStreak = 0
+		data.flyStreak = 0
+		data.flingStreak = 0
+		data.jumpStreak = 0
+		data.teleportStreak = 0
+		data.noclipStreak = 0
+		data.lastPosition = hrp.Position
+		data.lastCheck = now
+		data.lastHSpeed = 0
+		data.lastTotalSpeed = 0
+		data.lastVelY = 0
+		data.lastWalkSpeed = math.max(humanoid.WalkSpeed, 1)
+		data.lastGrounded = true
+		data.recentTeleport = false
+		data.recentNoClip = false
+		return
+	end
+
 	local vel = hrp.AssemblyLinearVelocity
 	local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
 	local totalSpeed = vel.Magnitude
 	local walkSpeed = math.max(humanoid.WalkSpeed, 1)
 	local jumpPower = humanoid.JumpPower
-	local grounded = isGrounded(hrp, character)
-	data.airTime = grounded and 0 or (data.airTime + dt)
-	local distance = (hrp.Position - data.lastPosition).Magnitude
-	if dt < 0.5 and distance > DETECTOR_CONFIG.TELEPORT_DISTANCE and hSpeed < DETECTOR_CONFIG.TELEPORT_DISTANCE then
-		if not serverTeleporting then data.recentTeleport = true end
+	local grounded = isGrounded(hrp, character, humanoid)
+
+	if grounded or isClimbing or isSwimming then
+		data.airTime = 0
+	else
+		data.airTime = data.airTime + dt
 	end
+
+	local distance = (hrp.Position - data.lastPosition).Magnitude
+	if not isJustSpawned and dt < 0.4 and distance > DETECTOR_CONFIG.TELEPORT_DISTANCE and hSpeed < 80 then
+		if not serverTeleporting then
+			data.recentTeleport = true
+		end
+	end
+
+	if not isJustSpawned and distance > 2.5 and distance < 65 and not grounded then
+		local rayP = RaycastParams.new()
+		rayP.FilterDescendantsInstances = { character }
+		rayP.FilterType = Enum.RaycastFilterType.Exclude
+		local hit = workspace:Raycast(data.lastPosition, (hrp.Position - data.lastPosition).Unit * (distance + 0.5), rayP)
+		if hit and hit.Instance and hit.Instance.CanCollide and not hit.Instance:IsA("Accessory") and not hit.Instance.Parent:IsA("Accessory") then
+			local sz = hit.Instance.Size
+			if math.min(sz.X, sz.Y, sz.Z) > 0.8 then
+				data.recentNoClip = true
+			end
+		end
+	end
+
 	data.lastPosition = hrp.Position
 	data.lastCheck = now
 	data.lastHSpeed = hSpeed
@@ -2443,11 +2480,9 @@ local function samplePlayerPhysics(plr)
 	data.lastWalkSpeed = walkSpeed
 	data.lastJumpPower = jumpPower
 	data.lastGrounded = grounded
+
 	table.insert(data.speedSamples, hSpeed)
 	if #data.speedSamples > DETECTOR_CONFIG.SAMPLE_COUNT then table.remove(data.speedSamples, 1) end
-	local collisions = checkCollisions(hrp, character)
-	table.insert(data.collisionSamples, collisions)
-	if #data.collisionSamples > 3 then table.remove(data.collisionSamples, 1) end
 end
 
 -- Evaluates player & updates UI card (called strictly according to listUpdateDelay!)
@@ -2458,12 +2493,40 @@ local function checkPlayer(plr)
 	samplePlayerPhysics(plr)
 	local data = playerData[plr.Name]
 	if not data then return end
+
+	local character = GetCharacterFromPlayer(plr)
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local hrp = GetRootPart(character)
+	local isDead = not humanoid or (humanoid.Health <= 0) or (humanoid:GetState() == Enum.HumanoidStateType.Dead)
+	local isSeated = humanoid and (humanoid.Sit or (humanoid.SeatPart ~= nil))
+
+	if isDead or isSeated then
+		card.studLbl.Text = "Speed: 0.0 s/s"
+		card.wsLbl.Text = string.format("WalkSpeed: %d", (humanoid and humanoid.WalkSpeed) or 16)
+		card.groundLbl.Text = isDead and "Dead" or "Seated"
+		card.groundLbl.TextColor3 = DETECTOR_CONFIG.COLORS.Clean
+		card.stateTier = 3
+		card.flagsLbl.Text = ""
+		detectedPlayers[plr.Name] = nil
+		speedPlayers[plr.Name] = nil
+		data.wasDetected = false
+		data.speedStreak = 0
+		data.flyStreak = 0
+		data.flingStreak = 0
+		data.jumpStreak = 0
+		data.teleportStreak = 0
+		data.noclipStreak = 0
+		ApplyCardThemeAndStatus(card)
+		return
+	end
+
 	local hSpeed = data.lastHSpeed or 0
 	local totalSpeed = data.lastTotalSpeed or 0
 	local velY = data.lastVelY or 0
 	local walkSpeed = data.lastWalkSpeed or 16
 	local jumpPower = data.lastJumpPower or 50
 	local grounded = (data.lastGrounded ~= false)
+
 	local avgSpeed = 0
 	if #data.speedSamples > 0 then
 		for _, s in ipairs(data.speedSamples) do avgSpeed = avgSpeed + s end
@@ -2471,18 +2534,12 @@ local function checkPlayer(plr)
 	end
 	local peakSpeed = math.max(hSpeed, avgSpeed)
 	card.lastSpeed = peakSpeed
-	local avgCollision = 1
-	if #data.collisionSamples > 0 then
-		local cSum = 0
-		for _, c in ipairs(data.collisionSamples) do cSum = cSum + c end
-		avgCollision = cSum / #data.collisionSamples
-	end
-	local teleported = data.recentTeleport
-	data.recentTeleport = false
+
 	card.studLbl.Text = string.format("Speed: %.1f s/s", hSpeed)
 	card.wsLbl.Text = string.format("WalkSpeed: %d", walkSpeed)
 	card.groundLbl.Text = grounded and "Grounded" or "Airborne"
 	card.groundLbl.TextColor3 = grounded and DETECTOR_CONFIG.COLORS.Clean or DETECTOR_CONFIG.COLORS.Warning
+
 	if whitelistedPlayers[plr.Name] then
 		card.stateTier = 4
 		detectedPlayers[plr.Name] = nil
@@ -2491,33 +2548,79 @@ local function checkPlayer(plr)
 		ApplyCardThemeAndStatus(card)
 		return
 	end
+
 	local hardFlags = {}
 	local speedFlags = {}
 	local minSpeed = DETECTOR_CONFIG.MIN_DETECT_SPEED -- 100 studs/sec minimum
-	-- Minimum 100 studs/sec required to flag Abnormal Speed or Speed Hack
+
+	-- 1. SPEED HACK / ABNORMAL SPEED (Requires sustained >= 100 s/s or WalkSpeed property >= 100)
 	if peakSpeed >= minSpeed or walkSpeed >= minSpeed then
-		if peakSpeed >= DETECTOR_CONFIG.EXTREME_HACK_SPEED and peakSpeed > walkSpeed * DETECTOR_CONFIG.SPEED_MULTIPLIER then
-			table.insert(hardFlags, "Extreme Speed (" .. math.floor(peakSpeed) .. " s/s)")
-		elseif peakSpeed > walkSpeed * DETECTOR_CONFIG.SPEED_MULTIPLIER then
-			table.insert(speedFlags, "Speed Hack (100+ s/s)")
-		else
-			table.insert(speedFlags, "Abnormal Speed (100+ s/s)")
+		data.speedStreak = (data.speedStreak or 0) + 1
+		if data.speedStreak >= 2 or walkSpeed >= minSpeed then
+			if peakSpeed >= DETECTOR_CONFIG.EXTREME_HACK_SPEED and peakSpeed > walkSpeed * DETECTOR_CONFIG.SPEED_MULTIPLIER then
+				table.insert(hardFlags, "Extreme Speed (" .. math.floor(peakSpeed) .. " s/s)")
+			elseif peakSpeed > walkSpeed * DETECTOR_CONFIG.SPEED_MULTIPLIER then
+				table.insert(speedFlags, "Speed Hack (100+ s/s)")
+			else
+				table.insert(speedFlags, "Abnormal Speed (100+ s/s)")
+			end
 		end
+	else
+		data.speedStreak = math.max(0, (data.speedStreak or 0) - 1)
 	end
-	if data.airTime > DETECTOR_CONFIG.MAX_AIR_TIME and hSpeed > 5 and velY > -5 and velY < 5 then
-		table.insert(hardFlags, "Fly")
+
+	-- 2. FLY HACK (Requires hovering horizontally without falling velY between -3.5 and 3.5, OR continuously rising velY > 6, while in mid-air > 3.5s)
+	local isHoveringOrRising = (math.abs(velY) < 3.5 and hSpeed > 8) or (velY > 6 and hSpeed > 5)
+	if not grounded and data.airTime > DETECTOR_CONFIG.MAX_AIR_TIME and isHoveringOrRising then
+		data.flyStreak = (data.flyStreak or 0) + 1
+		if data.flyStreak >= 2 then
+			table.insert(hardFlags, "Fly")
+		end
+	else
+		data.flyStreak = math.max(0, (data.flyStreak or 0) - 1)
 	end
-	if totalSpeed > DETECTOR_CONFIG.FLING_THRESHOLD then
-		table.insert(hardFlags, "Fling")
+
+	-- 3. FLING HACK (Requires massive total velocity 350+ AND extreme rotational angular velocity 45+ while alive and standing)
+	local isSpinFlinging = (totalSpeed > 350) and (hrp and (hrp.AssemblyAngularVelocity.Magnitude > 45 or hrp.RotVelocity.Magnitude > 45))
+	if isSpinFlinging and not grounded then
+		data.flingStreak = (data.flingStreak or 0) + 1
+		if data.flingStreak >= 2 then
+			table.insert(hardFlags, "Fling")
+		end
+	else
+		data.flingStreak = math.max(0, (data.flingStreak or 0) - 1)
 	end
-	if velY >= minSpeed and velY > jumpPower * DETECTOR_CONFIG.JUMP_MULTIPLIER then
-		table.insert(hardFlags, "Abnormal Jump")
+
+	-- 4. ABNORMAL JUMP (Requires sustained extreme vertical velocity >= 100 s/s exceeding 1.8x JumpPower in mid-air)
+	if velY >= minSpeed and velY > jumpPower * DETECTOR_CONFIG.JUMP_MULTIPLIER and not grounded and data.airTime > 0.4 then
+		data.jumpStreak = (data.jumpStreak or 0) + 1
+		if data.jumpStreak >= 2 then
+			table.insert(hardFlags, "Abnormal Jump")
+		end
+	else
+		data.jumpStreak = math.max(0, (data.jumpStreak or 0) - 1)
 	end
-	if teleported then
-		table.insert(hardFlags, "Teleport")
+
+	-- 5. TELEPORT HACK (Requires 2 confirmed in-combat teleports > 100 studs without respawning)
+	if data.recentTeleport then
+		data.recentTeleport = false
+		data.teleportStreak = (data.teleportStreak or 0) + 1
+		if data.teleportStreak >= 2 then
+			table.insert(hardFlags, "Teleport")
+		end
+	else
+		data.teleportStreak = math.max(0, (data.teleportStreak or 0) - 1)
 	end
-	if avgCollision == 0 and not grounded and peakSpeed >= minSpeed and data.airTime > 1.5 and math.abs(velY) < 10 then
-		table.insert(hardFlags, "NoClip")
+
+	-- 6. NOCLIP HACK (Requires crossing through a solid non-passable wall)
+	if data.recentNoClip then
+		data.recentNoClip = false
+		data.noclipStreak = (data.noclipStreak or 0) + 1
+		if data.noclipStreak >= 2 then
+			table.insert(hardFlags, "NoClip")
+		end
+	else
+		data.noclipStreak = math.max(0, (data.noclipStreak or 0) - 1)
 	end
 
 	local allFlags = {}
@@ -2559,6 +2662,7 @@ local function checkPlayer(plr)
 		end
 		data.wasDetected = true
 	else
+		-- Fully reset and clear back to Normal if no sustained flags exist!
 		card.stateTier = 3
 		card.flagsLbl.Text = ""
 		detectedPlayers[plr.Name] = nil
