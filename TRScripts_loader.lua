@@ -1581,34 +1581,93 @@ UpdateStatus = function() local count = CountSelectedTargets() local theme = Get
 		statusLabel.Text = count .. " target(s) selected (Friends excluded)"
 		statusLabel.TextColor3 = theme.TextSecondary end end
 table.insert(ThemeObjects.CustomCallbacks, UpdateStatus) RefreshFlingPlayerList = function()
-	for _, child in pairs(playerScrollFrame:GetChildren()) do if child:IsA("Frame") then child:Destroy() end
-	end PlayerCheckboxes = {} local playerList = Players:GetPlayers()
-	table.sort(playerList, function(a, b) return a.Name:lower() < b.Name:lower() end) local yPos = 0
-	for _, target in ipairs(playerList) do if target ~= player then
+	for _, child in pairs(playerScrollFrame:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	PlayerCheckboxes = {}
+	local playerList = Players:GetPlayers()
+	table.sort(playerList, function(a, b) return a.Name:lower() < b.Name:lower() end)
+	local yPos = 0
+	for _, target in ipairs(playerList) do
+		if target ~= player then
 			if SelectedTargets[target.Name] == nil and Config.AutoSelectFling == true then
-				if not IsFriend(target) then SelectedTargets[target.Name] = target end end
-			local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 36)
-			row.Position = UDim2.new(0, 0, 0, yPos) row.BackgroundTransparency = 0.2
-			row.Parent = playerScrollFrame RegisterThemeObject(row, "BackgroundColor3", "CardBg")
-			AddCorner(row, 8) local checkBox = Instance.new("Frame") checkBox.Size = UDim2.new(0, 22, 0, 22)
-			checkBox.Position = UDim2.new(0, 10, 0.5, -11) checkBox.BorderSizePixel = 0 checkBox.Parent = row
-			RegisterThemeObject(checkBox, "BackgroundColor3", "PanelBg") AddCorner(checkBox, 5)
-			local checkMark = Instance.new("TextLabel") checkMark.Size = UDim2.new(1, 0, 1, 0)
-			checkMark.BackgroundTransparency = 1 checkMark.Text = E.Tick checkMark.TextSize = 14
-			checkMark.Font = Enum.Font.GothamBold checkMark.Visible = SelectedTargets[target.Name] ~= nil
-			checkMark.Parent = checkBox RegisterThemeObject(checkMark, "TextColor3", "Accent")
-			local nameLbl = Instance.new("TextLabel") nameLbl.Size = UDim2.new(1, -45, 1, 0)
-			nameLbl.Position = UDim2.new(0, 40, 0, 0) nameLbl.BackgroundTransparency = 1
-			nameLbl.Text = IsFriend(target) and (target.Name .. " " .. E.Star) or target.Name
-			nameLbl.TextSize = 12 nameLbl.Font = Enum.Font.GothamMedium
-			nameLbl.TextXAlignment = Enum.TextXAlignment.Left nameLbl.Parent = row
-			RegisterThemeObject(nameLbl, "TextColor3", "TextPrimary") local clickBtn = Instance.new("TextButton")
-			clickBtn.Size = UDim2.new(1, 0, 1, 0) clickBtn.BackgroundTransparency = 1 clickBtn.Text = ""
-			clickBtn.Parent = row clickBtn.MouseButton1Click:Connect(function()
-				if SelectedTargets[target.Name] then SelectedTargets[target.Name] = nil checkMark.Visible = false
-				else SelectedTargets[target.Name] = target checkMark.Visible = true end UpdateStatus() end)
-			PlayerCheckboxes[target.Name] = { Row = row, Check = checkMark } yPos = yPos + 42 end end
-	playerScrollFrame.CanvasSize = UDim2.new(0, 0, 0, yPos) UpdateStatus() end
+				if not IsFriend(target) then SelectedTargets[target.Name] = target end
+			end
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1, -4, 0, 36)
+			row.Position = UDim2.new(0, 2, 0, yPos)
+			row.BackgroundTransparency = 0.2
+			row.Parent = playerScrollFrame
+			RegisterThemeObject(row, "BackgroundColor3", "CardBg")
+			AddCorner(row, 8)
+
+			local checkBox = Instance.new("Frame")
+			checkBox.Size = UDim2.new(0, 20, 0, 20)
+			checkBox.Position = UDim2.new(0, 8, 0.5, -10)
+			checkBox.BorderSizePixel = 0
+			checkBox.Parent = row
+			RegisterThemeObject(checkBox, "BackgroundColor3", "PanelBg")
+			AddCorner(checkBox, 5)
+
+			local checkMark = Instance.new("TextLabel")
+			checkMark.Size = UDim2.new(1, 0, 1, 0)
+			checkMark.BackgroundTransparency = 1
+			checkMark.Text = E.Tick
+			checkMark.TextSize = 14
+			checkMark.Font = Enum.Font.GothamBold
+			checkMark.Visible = (SelectedTargets[target.Name] ~= nil)
+			checkMark.Parent = checkBox
+			RegisterThemeObject(checkMark, "TextColor3", "Accent")
+
+			local AvatarImg = Instance.new("ImageLabel")
+			AvatarImg.Size = UDim2.new(0, 26, 0, 26)
+			AvatarImg.Position = UDim2.new(0, 34, 0.5, -13)
+			AvatarImg.BackgroundTransparency = 0.4
+			AvatarImg.BorderSizePixel = 0
+			AvatarImg.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(target.UserId) .. "&w=48&h=48"
+			AvatarImg.Parent = row
+			RegisterThemeObject(AvatarImg, "BackgroundColor3", "PanelBg")
+			AddCorner(AvatarImg, 5)
+
+			local nameLbl = Instance.new("TextLabel")
+			nameLbl.Size = UDim2.new(1, -70, 1, 0)
+			nameLbl.Position = UDim2.new(0, 68, 0, 0)
+			nameLbl.BackgroundTransparency = 1
+			local dName = tostring(target.DisplayName)
+			local uName = tostring(target.Name)
+			local labelText = (dName ~= uName) and (dName .. " (@" .. uName .. ")") or uName
+			if IsFriend(target) then labelText = labelText .. " " .. E.Star end
+			nameLbl.Text = labelText
+			nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+			nameLbl.TextSize = 12
+			nameLbl.Font = Enum.Font.GothamMedium
+			nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+			nameLbl.Parent = row
+			RegisterThemeObject(nameLbl, "TextColor3", "TextPrimary")
+
+			local clickBtn = Instance.new("TextButton")
+			clickBtn.Size = UDim2.new(1, 0, 1, 0)
+			clickBtn.BackgroundTransparency = 1
+			clickBtn.Text = ""
+			clickBtn.Parent = row
+			clickBtn.MouseButton1Click:Connect(function()
+				if SelectedTargets[target.Name] then
+					SelectedTargets[target.Name] = nil
+					checkMark.Visible = false
+				else
+					SelectedTargets[target.Name] = target
+					checkMark.Visible = true
+				end
+				UpdateStatus()
+			end)
+
+			PlayerCheckboxes[target.Name] = { Row = row, Check = checkMark }
+			yPos = yPos + 42
+		end
+	end
+	playerScrollFrame.CanvasSize = UDim2.new(0, 0, 0, yPos)
+	UpdateStatus()
+end
 local function ToggleAllPlayers(select) for _, target in ipairs(Players:GetPlayers()) do
 		if target ~= player then local boxData = PlayerCheckboxes[target.Name] if boxData then if select then
 					SelectedTargets[target.Name] = target boxData.Check.Visible = true else
