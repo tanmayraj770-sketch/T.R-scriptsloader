@@ -197,7 +197,8 @@ MainStroke.Parent = MainFrame RegisterThemeObject(MainStroke, "Color", "Stroke")
 local TopBar = Instance.new("Frame") TopBar.Name = "TopBar" TopBar.Size = UDim2.new(1, 0, 0, 44)
 TopBar.BackgroundTransparency = 0.1 TopBar.BorderSizePixel = 0 TopBar.Parent = MainFrame
 RegisterThemeObject(TopBar, "BackgroundColor3", "PanelBg") AddCorner(TopBar, 12)
-local TitleLabel = MakeLabel(TopBar, UDim2.new(0, 420, 1, 0), UDim2.new(0, 16, 0, 0), E.Bolt .. " T.R Scripts - Master Script Hub (V95)", Enum.Font.GothamBold, 15, "TextPrimary", Enum.TextXAlignment.Left)
+local TitleLabel = MakeLabel(TopBar, UDim2.new(1, -260, 1, 0), UDim2.new(0, 16, 0, 0), E.Bolt .. " T.R Scripts - Master Script Hub (V95)", Enum.Font.GothamBold, 15, "TextPrimary", Enum.TextXAlignment.Left)
+TitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 local SubBadge = Instance.new("TextLabel") SubBadge.Size = UDim2.new(0, 125, 0, 24)
 SubBadge.Position = UDim2.new(1, -242, 0.5, -12) SubBadge.BackgroundTransparency = 0.15
 SubBadge.Font = Enum.Font.GothamSemibold SubBadge.TextSize = 11 SubBadge.Text = "Toggle UI: [X]"
@@ -411,7 +412,7 @@ local function CreateSectionHeader(parent, title, order) local Header = Instance
 	Header.Text = "  " .. title Header.Parent = parent RegisterThemeObject(Header, "TextColor3", "Accent")
 	return Header end local function CreateCard(parent, height, order) local Card = Instance.new("Frame")
 	Card.LayoutOrder = order Card.Size = UDim2.new(1, 0, 0, height) Card.BackgroundTransparency = 0.12
-	Card.BorderSizePixel = 0 Card.Parent = parent RegisterThemeObject(Card, "BackgroundColor3", "CardBg")
+	Card.BorderSizePixel = 0 Card.ClipsDescendants = true Card.Parent = parent RegisterThemeObject(Card, "BackgroundColor3", "CardBg")
 	AddCorner(Card, 8) local Stroke = Instance.new("UIStroke") Stroke.Thickness = 1
 	Stroke.Transparency = 0.6 Stroke.Parent = Card RegisterThemeObject(Stroke, "Color", "Stroke")
 	return Card end local function CreateToggle(parent, labelText, initialValue, order, callback)
@@ -543,22 +544,41 @@ TryAssignUniqueKeybind = function(keyName, slotId, applyFn, refreshFn, btnObj)
 	return true
 end
 CreateSectionHeader(Tab1_Dashboard, "UI Theme Customizer (6 Dark Themes)", 1)
-local ThemeCard = CreateCard(Tab1_Dashboard, 88, 2) local ThemeGrid = Instance.new("UIGridLayout")
-ThemeGrid.CellSize = UDim2.new(0, 160, 0, 32) ThemeGrid.CellPadding = UDim2.new(0, 10, 0, 8)
+local ThemeCard = CreateCard(Tab1_Dashboard, 0, 2)
+ThemeCard.AutomaticSize = Enum.AutomaticSize.Y
+local ThemePad = Instance.new("UIPadding")
+ThemePad.PaddingTop = UDim.new(0, 8) ThemePad.PaddingBottom = UDim.new(0, 8)
+ThemePad.PaddingLeft = UDim.new(0, 8) ThemePad.PaddingRight = UDim.new(0, 8)
+ThemePad.Parent = ThemeCard
+local ThemeGrid = Instance.new("UIGridLayout")
+ThemeGrid.CellSize = UDim2.new(0.5, -5, 0, 32)
+ThemeGrid.CellPadding = UDim2.new(0, 10, 0, 8)
 ThemeGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
 ThemeGrid.VerticalAlignment = Enum.VerticalAlignment.Center
-ThemeGrid.SortOrder = Enum.SortOrder.LayoutOrder ThemeGrid.Parent = ThemeCard
-for idx, themeName in ipairs(ThemeOrder) do local TBtn = Instance.new("TextButton")
-	TBtn.LayoutOrder = idx TBtn.BackgroundColor3 = Themes[themeName].Accent TBtn.Font = Enum.Font.GothamBold
-	TBtn.TextSize = 12 TBtn.TextColor3 = Color3.fromRGB(245, 245, 250) TBtn.Text = themeName
+ThemeGrid.SortOrder = Enum.SortOrder.LayoutOrder
+ThemeGrid.Parent = ThemeCard
+for idx, themeName in ipairs(ThemeOrder) do
+	local TBtn = Instance.new("TextButton")
+	TBtn.LayoutOrder = idx TBtn.BackgroundColor3 = Themes[themeName].Accent
+	TBtn.Font = Enum.Font.GothamBold TBtn.TextSize = 12
+	TBtn.TextColor3 = Color3.fromRGB(245, 245, 250) TBtn.Text = themeName
 	TBtn.Parent = ThemeCard AddCorner(TBtn, 6)
-	TBtn.MouseButton1Click:Connect(function() ApplyTheme(themeName) end) end
+	TBtn.MouseButton1Click:Connect(function() ApplyTheme(themeName) end)
+end
 CreateSectionHeader(Tab1_Dashboard, "UI Open & Close Animation (3 Styles)", 3)
-local AnimCard = CreateCard(Tab1_Dashboard, 50, 4) local AnimGrid = Instance.new("UIGridLayout")
-AnimGrid.CellSize = UDim2.new(0, 160, 0, 32) AnimGrid.CellPadding = UDim2.new(0, 10, 0, 8)
+local AnimCard = CreateCard(Tab1_Dashboard, 0, 4)
+AnimCard.AutomaticSize = Enum.AutomaticSize.Y
+local AnimPad = Instance.new("UIPadding")
+AnimPad.PaddingTop = UDim.new(0, 8) AnimPad.PaddingBottom = UDim.new(0, 8)
+AnimPad.PaddingLeft = UDim.new(0, 8) AnimPad.PaddingRight = UDim.new(0, 8)
+AnimPad.Parent = AnimCard
+local AnimGrid = Instance.new("UIGridLayout")
+AnimGrid.CellSize = UDim2.new(0.333, -4, 0, 32)
+AnimGrid.CellPadding = UDim2.new(0, 6, 0, 8)
 AnimGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
 AnimGrid.VerticalAlignment = Enum.VerticalAlignment.Center
-AnimGrid.SortOrder = Enum.SortOrder.LayoutOrder AnimGrid.Parent = AnimCard
+AnimGrid.SortOrder = Enum.SortOrder.LayoutOrder
+AnimGrid.Parent = AnimCard
 local AnimButtons = {}
 local AnimOptions = {
 	{ Id = "Default", Label = "Default" },
@@ -595,27 +615,28 @@ PerfLabel.BackgroundTransparency = 1 PerfLabel.Font = Enum.Font.GothamSemibold P
 PerfLabel.TextXAlignment = Enum.TextXAlignment.Left
 PerfLabel.Text = "FPS: --  |  Ping: -- ms  |  Mouse Lock [M]: OFF" PerfLabel.Parent = PerfCard
 RegisterThemeObject(PerfLabel, "TextColor3", "TextPrimary") CursorUnlockedOverride = false
-local MouseLockCard = CreateCard(Tab1_Dashboard, 92, 7)
+local MouseLockCard = CreateCard(Tab1_Dashboard, 94, 7)
 local mouseLockToggleBtn = Instance.new("TextButton", MouseLockCard)
-mouseLockToggleBtn.Size = UDim2.new(0.48, -12, 0, 34)
+mouseLockToggleBtn.Size = UDim2.new(0.5, -14, 0, 34)
 mouseLockToggleBtn.Position = UDim2.new(0, 10, 0, 10) mouseLockToggleBtn.Font = Enum.Font.GothamBold
 mouseLockToggleBtn.TextSize = 12 mouseLockToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 AddCorner(mouseLockToggleBtn, 6) local mouseLockStatusLbl = Instance.new("TextLabel", MouseLockCard)
-mouseLockStatusLbl.Size = UDim2.new(0.52, -14, 0, 34)
-mouseLockStatusLbl.Position = UDim2.new(0.48, 4, 0, 10) mouseLockStatusLbl.BackgroundTransparency = 0.15
+mouseLockStatusLbl.Size = UDim2.new(0.5, -14, 0, 34)
+mouseLockStatusLbl.Position = UDim2.new(0.5, 4, 0, 10) mouseLockStatusLbl.BackgroundTransparency = 0.15
 mouseLockStatusLbl.Font = Enum.Font.GothamSemibold mouseLockStatusLbl.TextSize = 12
 mouseLockStatusLbl.Text = "Shift Lock: INACTIVE"
 RegisterThemeObject(mouseLockStatusLbl, "BackgroundColor3", "PanelBg")
 RegisterThemeObject(mouseLockStatusLbl, "TextColor3", "TextPrimary") AddCorner(mouseLockStatusLbl, 6)
-local mlKeyBindLabel = MakeLabel(MouseLockCard, UDim2.new(0, 210, 0, 30), UDim2.new(0, 12, 0, 52), "Mouse Lock Shortcut Keybind:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
-local mouseLockKeyAssignBtn = MakeButton(MouseLockCard, UDim2.new(0, 130, 0, 30), UDim2.new(1, -240, 0, 52), "Bind Key: [M]", "PanelBg", 11)
+local mlKeyBindLabel = MakeLabel(MouseLockCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 52), "Shortcut Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+mlKeyBindLabel.TextTruncate = Enum.TextTruncate.AtEnd
+local mouseLockKeyAssignBtn = MakeButton(MouseLockCard, UDim2.new(0.36, -6, 0, 30), UDim2.new(0.38, 4, 0, 52), "Bind Key: [M]", "PanelBg", 11)
 local mouseLockKeyDeleteBtn = Instance.new("TextButton", MouseLockCard)
-mouseLockKeyDeleteBtn.Size = UDim2.new(0, 92, 0, 30)
-mouseLockKeyDeleteBtn.Position = UDim2.new(1, -102, 0, 52)
+mouseLockKeyDeleteBtn.Size = UDim2.new(0.26, -14, 0, 30)
+mouseLockKeyDeleteBtn.Position = UDim2.new(0.74, 4, 0, 52)
 mouseLockKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
 mouseLockKeyDeleteBtn.Font = Enum.Font.GothamBold mouseLockKeyDeleteBtn.TextSize = 11
 mouseLockKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-mouseLockKeyDeleteBtn.Text = E.Trash .. " Delete Key" AddCorner(mouseLockKeyDeleteBtn, 6)
+mouseLockKeyDeleteBtn.Text = E.Trash .. " Delete" AddCorner(mouseLockKeyDeleteBtn, 6)
 RefreshMouseLockUI = function() local k = Config.MouseLockKeybind or "None"
 	mouseLockKeyAssignBtn.Text = "Bind Key: [" .. k .. "]"
 	mouseLockToggleBtn.Text = "Mouse Lock [" .. k .. "]: " .. (CursorUnlockedOverride and "ON" or "OFF")
@@ -665,15 +686,15 @@ local GetRootPart, GetCharacterFromPlayer, freezePosition, lastSafeAntiFlingCF, 
 local teleportBypassLockUntil, teleportBypassTargetCF = 0, nil
 local function SetupTab2() CreateSectionHeader(Tab2_Waypoints, "Coordinates & Direct Teleport", 1)
 local CoordsTopCard = CreateCard(Tab2_Waypoints, 88, 2)
-local CopyCoordsBtn = MakeButton(CoordsTopCard, UDim2.new(0, 160, 0, 32), UDim2.new(0, 12, 0, 10), E.Clip .. " Copy Coords", "Accent", 12)
-local AddWaypointBtn = MakeButton(CoordsTopCard, UDim2.new(0, 180, 0, 32), UDim2.new(0, 182, 0, 10), E.Plus .. " Save Current Pos", "AccentDark", 12)
-local CoordsInput = Instance.new("TextBox") CoordsInput.Size = UDim2.new(1, -155, 0, 32)
-CoordsInput.Position = UDim2.new(0, 12, 0, 48)
+local CopyCoordsBtn = MakeButton(CoordsTopCard, UDim2.new(0.5, -14, 0, 32), UDim2.new(0, 10, 0, 10), E.Clip .. " Copy Coords", "Accent", 12)
+local AddWaypointBtn = MakeButton(CoordsTopCard, UDim2.new(0.5, -14, 0, 32), UDim2.new(0.5, 4, 0, 10), E.Plus .. " Save Pos", "AccentDark", 12)
+local CoordsInput = Instance.new("TextBox") CoordsInput.Size = UDim2.new(1, -125, 0, 32)
+CoordsInput.Position = UDim2.new(0, 10, 0, 48)
 CoordsInput.PlaceholderText = "Enter X, Y, Z coordinates (e.g. 120, 50, -340)..." CoordsInput.Text = ""
 CoordsInput.ClearTextOnFocus = false CoordsInput.Font = Enum.Font.Gotham CoordsInput.TextSize = 12
 CoordsInput.Parent = CoordsTopCard RegisterThemeObject(CoordsInput, "BackgroundColor3", "PanelBg")
 RegisterThemeObject(CoordsInput, "TextColor3", "TextPrimary") AddCorner(CoordsInput, 6)
-local DirectTpBtn = MakeButton(CoordsTopCard, UDim2.new(0, 125, 0, 32), UDim2.new(1, -137, 0, 48), E.Bolt .. " Teleport", "Accent", 12)
+local DirectTpBtn = MakeButton(CoordsTopCard, UDim2.new(0, 105, 0, 32), UDim2.new(1, -115, 0, 48), E.Bolt .. " Teleport", "Accent", 12)
 GetCharacterFromPlayer = function(plr)
 	if not plr then return nil end
 	local c = plr.Character
@@ -1011,21 +1032,22 @@ local RecordNaturalHumanoidDefaults, RestoreNaturalHumanoidDefaults, RestoreChar
 local toggleFreecamState, GetFreecamAnchorCF
 local function SetupTab5()
 CreateSectionHeader(Tab5_Flight, "Flight Engine & Keybind Controls", 1)
-local FlightEngineCard = CreateCard(Tab5_Flight, 92, 2)
+local FlightEngineCard = CreateCard(Tab5_Flight, 94, 2)
 local masterFlightToggleBtn = Instance.new("TextButton")
-masterFlightToggleBtn.Size = UDim2.new(0.48, -12, 0, 34)
+masterFlightToggleBtn.Size = UDim2.new(0.5, -14, 0, 34)
 masterFlightToggleBtn.Position = UDim2.new(0, 10, 0, 10)
 masterFlightToggleBtn.Font = Enum.Font.GothamBold masterFlightToggleBtn.TextSize = 12
 masterFlightToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 masterFlightToggleBtn.Parent = FlightEngineCard AddCorner(masterFlightToggleBtn, 6)
 local keyFlyToggleBtn = Instance.new("TextButton") keyFlyToggleBtn.Size = UDim2.new(0.52, -12, 0, 34)
-keyFlyToggleBtn.Position = UDim2.new(0.48, 2, 0, 10) keyFlyToggleBtn.Font = Enum.Font.GothamBold
+keyFlyToggleBtn.Position = UDim2.new(0.5, 4, 0, 10) keyFlyToggleBtn.Font = Enum.Font.GothamBold
 keyFlyToggleBtn.TextSize = 12 keyFlyToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 keyFlyToggleBtn.Parent = FlightEngineCard AddCorner(keyFlyToggleBtn, 6)
-local flyKeyBindLabel = MakeLabel(FlightEngineCard, UDim2.new(0, 210, 0, 30), UDim2.new(0, 12, 0, 52), "Flight Shortcut Keybind:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
-local flyKeyAssignBtn = MakeButton(FlightEngineCard, UDim2.new(0, 130, 0, 30), UDim2.new(1, -240, 0, 52), "Bind Key: [E]", "PanelBg", 11)
-local flyKeyDeleteBtn = Instance.new("TextButton") flyKeyDeleteBtn.Size = UDim2.new(0, 92, 0, 30)
-flyKeyDeleteBtn.Position = UDim2.new(1, -102, 0, 52)
+local flyKeyBindLabel = MakeLabel(FlightEngineCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 52), "Shortcut Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+flyKeyBindLabel.TextTruncate = Enum.TextTruncate.AtEnd
+local flyKeyAssignBtn = MakeButton(FlightEngineCard, UDim2.new(0.36, -6, 0, 30), UDim2.new(0.38, 4, 0, 52), "Bind Key: [E]", "PanelBg", 11)
+local flyKeyDeleteBtn = Instance.new("TextButton") flyKeyDeleteBtn.Size = UDim2.new(0.26, -14, 0, 30)
+flyKeyDeleteBtn.Position = UDim2.new(0.74, 4, 0, 52)
 flyKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
 flyKeyDeleteBtn.Font = Enum.Font.GothamBold flyKeyDeleteBtn.TextSize = 11
 flyKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1150,31 +1172,32 @@ ResetSpeedBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 CreateSectionHeader(Tab5_Flight, "Freecam Engine & Keybind Controls", 15)
-local FreecamCard = CreateCard(Tab5_Flight, 92, 16)
+local FreecamCard = CreateCard(Tab5_Flight, 94, 16)
 local freecamToggleBtn = Instance.new("TextButton", FreecamCard)
-freecamToggleBtn.Size = UDim2.new(0.48, -12, 0, 34)
+freecamToggleBtn.Size = UDim2.new(0.5, -14, 0, 34)
 freecamToggleBtn.Position = UDim2.new(0, 10, 0, 10)
 freecamToggleBtn.Font = Enum.Font.GothamBold freecamToggleBtn.TextSize = 12
 freecamToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 AddCorner(freecamToggleBtn, 6)
 local freecamStatusLbl = Instance.new("TextLabel", FreecamCard)
-freecamStatusLbl.Size = UDim2.new(0.52, -14, 0, 34)
-freecamStatusLbl.Position = UDim2.new(0.48, 4, 0, 10)
+freecamStatusLbl.Size = UDim2.new(0.5, -14, 0, 34)
+freecamStatusLbl.Position = UDim2.new(0.5, 4, 0, 10)
 freecamStatusLbl.BackgroundTransparency = 0.15
 freecamStatusLbl.Font = Enum.Font.GothamSemibold freecamStatusLbl.TextSize = 12
 freecamStatusLbl.Text = "Freecam: INACTIVE"
 RegisterThemeObject(freecamStatusLbl, "BackgroundColor3", "PanelBg")
 RegisterThemeObject(freecamStatusLbl, "TextColor3", "TextPrimary")
 AddCorner(freecamStatusLbl, 6)
-MakeLabel(FreecamCard, UDim2.new(0, 210, 0, 30), UDim2.new(0, 12, 0, 52), "Freecam Shortcut Keybind:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
-local freecamKeyAssignBtn = MakeButton(FreecamCard, UDim2.new(0, 130, 0, 30), UDim2.new(1, -240, 0, 52), "Bind Key: [C]", "PanelBg", 11)
+local fcKeyBindLabel = MakeLabel(FreecamCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 52), "Shortcut Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+fcKeyBindLabel.TextTruncate = Enum.TextTruncate.AtEnd
+local freecamKeyAssignBtn = MakeButton(FreecamCard, UDim2.new(0.36, -6, 0, 30), UDim2.new(0.38, 4, 0, 52), "Bind Key: [C]", "PanelBg", 11)
 local freecamKeyDeleteBtn = Instance.new("TextButton", FreecamCard)
-freecamKeyDeleteBtn.Size = UDim2.new(0, 92, 0, 30)
-freecamKeyDeleteBtn.Position = UDim2.new(1, -102, 0, 52)
+freecamKeyDeleteBtn.Size = UDim2.new(0.26, -14, 0, 30)
+freecamKeyDeleteBtn.Position = UDim2.new(0.74, 4, 0, 52)
 freecamKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
 freecamKeyDeleteBtn.Font = Enum.Font.GothamBold freecamKeyDeleteBtn.TextSize = 11
 freecamKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-freecamKeyDeleteBtn.Text = E.Trash .. " Delete Key"
+freecamKeyDeleteBtn.Text = E.Trash .. " Delete"
 AddCorner(freecamKeyDeleteBtn, 6)
 CreateSlider(Tab5_Flight, "Freecam Speed", 1, 500, math.clamp(tonumber(Config.FreecamSpeed) or 60, 1, 500), 17, function(val)
 	Config.FreecamSpeed = val savedConfig.Settings.FreecamSpeed = val SaveConfig(false)
@@ -1640,27 +1663,28 @@ local function SetupTab7()
 							bestDist, bestPlr = sDist, plr end end end end end return bestPlr end
 	-- Section 1: Aimbot Engine & Keybind Controls (Silent Aim Completely Removed)
 	CreateSectionHeader(Tab7_Visuals, "Aimbot Engine & Keybind Controls", 1)
-	local AimbotEngineCard = CreateCard(Tab7_Visuals, 92, 2)
+	local AimbotEngineCard = CreateCard(Tab7_Visuals, 94, 2)
 	local aimbotToggleBtn = Instance.new("TextButton", AimbotEngineCard)
-	aimbotToggleBtn.Size = UDim2.new(0.48, -12, 0, 34) aimbotToggleBtn.Position = UDim2.new(0, 10, 0, 10)
+	aimbotToggleBtn.Size = UDim2.new(0.5, -14, 0, 34) aimbotToggleBtn.Position = UDim2.new(0, 10, 0, 10)
 	aimbotToggleBtn.Font = Enum.Font.GothamBold aimbotToggleBtn.TextSize = 12
 	aimbotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255) AddCorner(aimbotToggleBtn, 6)
 	aimbotStatusLabel = Instance.new("TextLabel", AimbotEngineCard)
-	aimbotStatusLabel.Size = UDim2.new(0.52, -14, 0, 34)
-	aimbotStatusLabel.Position = UDim2.new(0.48, 4, 0, 10) aimbotStatusLabel.BackgroundTransparency = 0.15
+	aimbotStatusLabel.Size = UDim2.new(0.5, -14, 0, 34)
+	aimbotStatusLabel.Position = UDim2.new(0.5, 4, 0, 10) aimbotStatusLabel.BackgroundTransparency = 0.15
 	aimbotStatusLabel.Font = Enum.Font.GothamSemibold aimbotStatusLabel.TextSize = 12
 	aimbotStatusLabel.Text = "Status: Idle"
 	RegisterThemeObject(aimbotStatusLabel, "BackgroundColor3", "PanelBg")
 	RegisterThemeObject(aimbotStatusLabel, "TextColor3", "TextPrimary") AddCorner(aimbotStatusLabel, 6)
-	local aimKeyBindLabel = MakeLabel(AimbotEngineCard, UDim2.new(0, 210, 0, 30), UDim2.new(0, 12, 0, 52), "Aimbot Shortcut Keybind:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
-	local aimbotKeyAssignBtn = MakeButton(AimbotEngineCard, UDim2.new(0, 130, 0, 30), UDim2.new(1, -240, 0, 52), "Bind Key: [Q]", "PanelBg", 11)
+	local aimKeyBindLabel = MakeLabel(AimbotEngineCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 52), "Shortcut Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+	aimKeyBindLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	local aimbotKeyAssignBtn = MakeButton(AimbotEngineCard, UDim2.new(0.36, -6, 0, 30), UDim2.new(0.38, 4, 0, 52), "Bind Key: [Q]", "PanelBg", 11)
 	local aimbotKeyDeleteBtn = Instance.new("TextButton", AimbotEngineCard)
-	aimbotKeyDeleteBtn.Size = UDim2.new(0, 92, 0, 30)
-	aimbotKeyDeleteBtn.Position = UDim2.new(1, -102, 0, 52)
+	aimbotKeyDeleteBtn.Size = UDim2.new(0.26, -14, 0, 30)
+	aimbotKeyDeleteBtn.Position = UDim2.new(0.74, 4, 0, 52)
 	aimbotKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
 	aimbotKeyDeleteBtn.Font = Enum.Font.GothamBold aimbotKeyDeleteBtn.TextSize = 11
 	aimbotKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	aimbotKeyDeleteBtn.Text = E.Trash .. " Delete Key" AddCorner(aimbotKeyDeleteBtn, 6)
+	aimbotKeyDeleteBtn.Text = E.Trash .. " Delete" AddCorner(aimbotKeyDeleteBtn, 6)
 	CreateToggle(Tab7_Visuals, "Strong Lock Mode (Instant Camera Snap vs Smooth Lerp)", strongLock, 3, function(state)
 		strongLock = state Config.StrongLock = state if not strongLock then currentTarget = nil end
 		SaveConfig(false) end)
@@ -1966,29 +1990,56 @@ GetPlayerDetectionState = function(plrName)
 end
 
 CreateSectionHeader(Tab9_Detector, "Hacker & Abnormal Speed Detector (Min Speed: 100 s/s | 1. Hackers | 2. Speed | 3. Normal)", 1)
-local ControlsCard = CreateCard(Tab9_Detector, 82, 2)
-local PlayerCountLabel = MakeLabel(ControlsCard, UDim2.new(0, 120, 0, 28), UDim2.new(0, 12, 0, 8), "Players: 0", Enum.Font.GothamBold, 12, "TextPrimary", Enum.TextXAlignment.Left)
-local DetectedCountLabel = MakeLabel(ControlsCard, UDim2.new(1, -145, 0, 28), UDim2.new(0, 130, 0, 8), "Hackers: 0  |  Abnormal Speed (100+ s/s): 0", Enum.Font.GothamBold, 12, "TextSecondary", Enum.TextXAlignment.Left)
+local ControlsCard = CreateCard(Tab9_Detector, 0, 2)
+ControlsCard.AutomaticSize = Enum.AutomaticSize.Y
+local CtrlPad = Instance.new("UIPadding")
+CtrlPad.PaddingTop = UDim.new(0, 8) CtrlPad.PaddingBottom = UDim.new(0, 8)
+CtrlPad.PaddingLeft = UDim.new(0, 10) CtrlPad.PaddingRight = UDim.new(0, 10)
+CtrlPad.Parent = ControlsCard
+local CtrlLayout = Instance.new("UIListLayout")
+CtrlLayout.Padding = UDim.new(0, 8)
+CtrlLayout.SortOrder = Enum.SortOrder.LayoutOrder
+CtrlLayout.Parent = ControlsCard
 
-local DetectorToggleBtn = MakeButton(ControlsCard, UDim2.new(0, 124, 0, 28), UDim2.new(0, 12, 0, 44), "Detector [F4]: ON", nil, 11)
-MakeLabel(ControlsCard, UDim2.new(0, 44, 0, 28), UDim2.new(0, 144, 0, 44), "Alerts:", Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
-local NotifToggleBtn = MakeButton(ControlsCard, UDim2.new(0, 48, 0, 26), UDim2.new(0, 190, 0, 45), "ON", nil, 11)
+local TopStatsRow = Instance.new("Frame")
+TopStatsRow.Size = UDim2.new(1, 0, 0, 24)
+TopStatsRow.BackgroundTransparency = 1
+TopStatsRow.LayoutOrder = 1
+TopStatsRow.Parent = ControlsCard
+local PlayerCountLabel = MakeLabel(TopStatsRow, UDim2.new(0.32, 0, 1, 0), UDim2.new(0, 0, 0, 0), "Players: 0", Enum.Font.GothamBold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+local DetectedCountLabel = MakeLabel(TopStatsRow, UDim2.new(0.68, 0, 1, 0), UDim2.new(0.32, 0, 0, 0), "Hackers: 0  |  Speed: 0", Enum.Font.GothamBold, 12, "TextSecondary", Enum.TextXAlignment.Right)
 
-MakeLabel(ControlsCard, UDim2.new(0, 84, 0, 28), UDim2.new(0, 248, 0, 44), "Update Delay:", Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
-local DelayMinus = MakeButton(ControlsCard, UDim2.new(0, 26, 0, 26), UDim2.new(0, 334, 0, 45), "-", "PanelBg", 13)
-local DelayText = MakeLabel(ControlsCard, UDim2.new(0, 40, 0, 28), UDim2.new(0, 362, 0, 44), listUpdateDelay .. "s", Enum.Font.GothamBold, 11, "TextPrimary", Enum.TextXAlignment.Center)
-local DelayPlus = MakeButton(ControlsCard, UDim2.new(0, 26, 0, 26), UDim2.new(0, 404, 0, 45), "+", "PanelBg", 13)
+local BottomControlsRow = Instance.new("Frame")
+BottomControlsRow.Size = UDim2.new(1, 0, 0, 30)
+BottomControlsRow.BackgroundTransparency = 1
+BottomControlsRow.LayoutOrder = 2
+BottomControlsRow.Parent = ControlsCard
+local BotListLayout = Instance.new("UIListLayout")
+BotListLayout.FillDirection = Enum.FillDirection.Horizontal
+BotListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+BotListLayout.Padding = UDim.new(0, 6)
+BotListLayout.Parent = BottomControlsRow
+
+local DetectorToggleBtn = MakeButton(BottomControlsRow, UDim2.new(0.32, -6, 0, 28), nil, "Detector [F4]: ON", nil, 11)
+local NotifToggleBtn = MakeButton(BottomControlsRow, UDim2.new(0.20, -6, 0, 28), nil, "Alerts: ON", nil, 11)
+
+local DelayFrame = Instance.new("Frame")
+DelayFrame.Size = UDim2.new(0.28, -6, 0, 28)
+DelayFrame.BackgroundTransparency = 1
+DelayFrame.Parent = BottomControlsRow
+local DelayMinus = MakeButton(DelayFrame, UDim2.new(0, 24, 1, 0), UDim2.new(0, 0, 0, 0), "-", "PanelBg", 13)
+local DelayText = MakeLabel(DelayFrame, UDim2.new(1, -52, 1, 0), UDim2.new(0, 26, 0, 0), listUpdateDelay .. "s", Enum.Font.GothamBold, 11, "TextPrimary", Enum.TextXAlignment.Center)
+local DelayPlus = MakeButton(DelayFrame, UDim2.new(0, 24, 1, 0), UDim2.new(1, -24, 0, 0), "+", "PanelBg", 13)
 
 local UnviewBtn = Instance.new("TextButton")
-UnviewBtn.Size = UDim2.new(0, 84, 0, 26)
-UnviewBtn.Position = UDim2.new(1, -96, 0, 45)
+UnviewBtn.Size = UDim2.new(0.20, 0, 0, 28)
 UnviewBtn.BackgroundColor3 = Color3.fromRGB(185, 38, 58)
 UnviewBtn.Font = Enum.Font.GothamBold
-UnviewBtn.TextSize = 11
+UnviewBtn.TextSize = 10
 UnviewBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-UnviewBtn.Text = "UNSPECTATE"
+UnviewBtn.Text = "UNVIEW"
 UnviewBtn.Visible = false
-UnviewBtn.Parent = ControlsCard
+UnviewBtn.Parent = BottomControlsRow
 AddCorner(UnviewBtn, 6)
 
 local ScannerContainer = Instance.new("Frame")
