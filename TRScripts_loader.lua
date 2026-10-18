@@ -1130,41 +1130,171 @@ flyKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
 flyKeyDeleteBtn.Font = Enum.Font.GothamBold flyKeyDeleteBtn.TextSize = 11
 flyKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 flyKeyDeleteBtn.Text = E.Trash .. " Delete Key" flyKeyDeleteBtn.Parent = FlightEngineCard
-AddCorner(flyKeyDeleteBtn, 6) local function GetFlyKeyText()
-	return savedConfig.Settings.FlyKeybind or "None" end local function RefreshFlyKeyTexts()
-	local k = GetFlyKeyText() flyKeyAssignBtn.Text = "Bind Key: [" .. k .. "]"
-	keyFlyToggleBtn.Text = "Keybind [" .. k .. "] Flight: " .. (keyFlying and "ON" or "OFF")
-	keyFlyToggleBtn.BackgroundColor3 = keyFlying and Color3.fromRGB(38, 168, 92) or Color3.fromRGB(185, 52, 52)
-	masterFlightToggleBtn.BackgroundColor3 = masterFlightEnabled and Color3.fromRGB(38, 168, 92) or Color3.fromRGB(185, 52, 52)
-	masterFlightToggleBtn.Text = masterFlightEnabled and "Master Flight Switch: ON" or "Master Flight Switch: OFF"
-end isFlightActive = function() return masterFlightEnabled and keyFlying end stopFlight = function()
-	keyFlying = false freezePosition = nil RefreshFlyKeyTexts() if fakeGroundPart then
-		fakeGroundPart:Destroy() fakeGroundPart = nil end local char = player.Character if char then
-		local hum = char:FindFirstChildOfClass("Humanoid") local root = char:FindFirstChild("HumanoidRootPart")
-		if hum then hum.PlatformStand = false hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+AddCorner(flyKeyDeleteBtn, 6) masterFlightToggleBtn.BackgroundColor3 = masterFlightEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+masterFlightToggleBtn.Text = masterFlightEnabled and "Master Flight Switch: ON" or "Master Flight Switch: OFF"
+keyFlyToggleBtn.BackgroundColor3 = keyFlying and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+keyFlyToggleBtn.Text = keyFlying and "Keybind [E] Flight: ON" or "Keybind [E] Flight: OFF"
+
+isFlightActive = function()
+	return masterFlightEnabled and keyFlying
+end
+
+stopFlight = function()
+	keyFlying = false
+	freezePosition = nil
+	keyFlyToggleBtn.Text = "Keybind [E] Flight: OFF"
+	keyFlyToggleBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+
+	if fakeGroundPart then
+		fakeGroundPart:Destroy()
+		fakeGroundPart = nil
+	end
+
+	local char = player.Character
+	if char then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if hum then
+			hum.PlatformStand = false
+			hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 			hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
-			hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true) end if root then
-			root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-		end end end startFlight = function() if not masterFlightEnabled then return end
-	local char = player.Character if not char then return end
-	local root = char:FindFirstChild("HumanoidRootPart") local hum = char:FindFirstChildOfClass("Humanoid")
-	if not root or not hum then return end keyFlying = true freezePosition = root.Position
-	RefreshFlyKeyTexts() hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-	hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) hum.PlatformStand = false
-	if not fakeGroundPart then fakeGroundPart = Instance.new("Part") fakeGroundPart.Name = "TR_FakeFloor"
-		fakeGroundPart.Size = Vector3.new(4, 0.2, 4) fakeGroundPart.Transparency = 1
-		fakeGroundPart.Anchored = true fakeGroundPart.CanCollide = true fakeGroundPart.Parent = workspace end
-end toggleFlightState = function() if not masterFlightEnabled then return end if keyFlying then
-		stopFlight() else startFlight() end end masterFlightToggleBtn.MouseButton1Click:Connect(function()
+			hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+		end
+		if root then
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
+startFlight = function()
+	if not masterFlightEnabled then return end
+	local char = player.Character
+	if not char then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not root or not hum then return end
+
+	keyFlying = true
+	freezePosition = root.Position
+	keyFlyToggleBtn.Text = "Keybind [E] Flight: ON"
+	keyFlyToggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+
+	hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+	hum.PlatformStand = false
+
+	if not fakeGroundPart then
+		fakeGroundPart = Instance.new("Part")
+		fakeGroundPart.Name = "TR_FakeFloor"
+		fakeGroundPart.Size = Vector3.new(4, 0.2, 4)
+		fakeGroundPart.Transparency = 1
+		fakeGroundPart.Anchored = true
+		fakeGroundPart.CanCollide = true
+		fakeGroundPart.Parent = workspace
+	end
+end
+
+toggleFlightState = function()
+	if not masterFlightEnabled then return end
+	if keyFlying then
+		stopFlight()
+	else
+		startFlight()
+	end
+end
+
+masterFlightToggleBtn.MouseButton1Click:Connect(function()
 	masterFlightEnabled = not masterFlightEnabled
 	savedConfig.Settings.MasterFlightEnabled = masterFlightEnabled
-	if syncAllSystems then syncAllSystems() end RefreshFlyKeyTexts() if not masterFlightEnabled then
-		stopFlight() end end) keyFlyToggleBtn.MouseButton1Click:Connect(toggleFlightState)
-flyKeyAssignBtn.MouseButton1Click:Connect(function() flyKeyAssignBtn.Text = "[Key / Del]"
+	if syncAllSystems then syncAllSystems() end
+	masterFlightToggleBtn.BackgroundColor3 = masterFlightEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+	masterFlightToggleBtn.Text = masterFlightEnabled and "Master Flight Switch: ON" or "Master Flight Switch: OFF"
+	if not masterFlightEnabled then
+		stopFlight()
+	end
+end)
+
+keyFlyToggleBtn.MouseButton1Click:Connect(toggleFlightState)
+
+flyKeyAssignBtn.MouseButton1Click:Connect(function()
+	flyKeyAssignBtn.Text = "[Key / Del]"
 	ActiveKeybindCaptureCallback = function(keyName)
-		TryAssignUniqueKeybind(keyName, "Flight", function(val) savedConfig.Settings.FlyKeybind = val end, RefreshFlyKeyTexts, flyKeyAssignBtn) end end) flyKeyDeleteBtn.MouseButton1Click:Connect(function()
-	savedConfig.Settings.FlyKeybind = "None" ActiveKeybindCaptureCallback = nil RefreshFlyKeyTexts()
-	SaveConfig(false) end) RefreshFlyKeyTexts()
+		TryAssignUniqueKeybind(keyName, "Flight", function(val) savedConfig.Settings.FlyKeybind = val end, function()
+			flyKeyAssignBtn.Text = "Bind Key: [" .. (savedConfig.Settings.FlyKeybind or "E") .. "]"
+		end, flyKeyAssignBtn)
+	end
+end)
+flyKeyDeleteBtn.MouseButton1Click:Connect(function()
+	savedConfig.Settings.FlyKeybind = "None"
+	ActiveKeybindCaptureCallback = nil
+	flyKeyAssignBtn.Text = "Bind Key: [None]"
+	SaveConfig(false)
+end)
+
+table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp)
+	if gp or UserInputService:GetFocusedTextBox() ~= nil then return end
+	if input.KeyCode == Enum.KeyCode.E and masterFlightEnabled then
+		toggleFlightState()
+	end
+end))
+
+table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
+	if not isFlightActive() then return end
+	local char = player.Character
+	if not char then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not root or not hum then return end
+
+	hum:ChangeState(Enum.HumanoidStateType.Running)
+
+	if UserInputService:GetFocusedTextBox() then
+		if freezePosition then
+			root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camera.CFrame:ToEulerAnglesXYZ())
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end
+		return
+	end
+
+	local moveVector = Vector3.zero
+	local camCF = camera.CFrame
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVector = moveVector + camCF.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVector = moveVector - camCF.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVector = moveVector - camCF.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVector = moveVector + camCF.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveVector = moveVector + Vector3.new(0, 1, 0) end
+
+	if savedConfig.Settings.ShiftDownEnabled ~= false then
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
+			moveVector = moveVector - Vector3.new(0, 1, 0)
+		end
+	end
+
+	local currentFlySpeed = savedConfig.Settings.FlySpeed or 50
+
+	if moveVector.Magnitude > 0 then
+		local step = moveVector.Unit * (currentFlySpeed * deltaTime)
+		local newPos = root.Position + step
+		freezePosition = newPos
+		root.CFrame = CFrame.new(newPos) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
+		root.AssemblyLinearVelocity = moveVector.Unit * math.min(currentFlySpeed, 45)
+		root.AssemblyAngularVelocity = Vector3.zero
+	else
+		if not freezePosition then
+			freezePosition = root.Position
+		end
+		root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	if fakeGroundPart then
+		fakeGroundPart.CFrame = root.CFrame * CFrame.new(0, -3.1, 0)
+	end
+end))
 RecordNaturalHumanoidDefaults = function(hum)
 	if hum and hum ~= lastRecordedHum then
 		lastRecordedHum = hum
@@ -3344,40 +3474,6 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 		root.AssemblyAngularVelocity = V3_ZERO
 		if hum.WalkSpeed ~= 0 then hum.WalkSpeed = 0 end
 	end
-	-- 1. Flight Subsystem (Isolated from WalkSpeed/JumpPower so FlySpeed never shoots to 1000)
-	if isFlightActive() and not (isFreecamActive and isFreecamActive()) and char and root and hum and camera then
-		hum:ChangeState(Enum.HumanoidStateType.Running)
-		if hum.WalkSpeed ~= 16 then hum.WalkSpeed = 16 end
-		if not freezePosition then freezePosition = root.Position end
-		if UserInputService:GetFocusedTextBox() then
-			root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camera.CFrame:ToEulerAnglesXYZ())
-			root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO else
-			local camCF = camera.CFrame local mvX, mvY, mvZ = 0, 0, 0
-			if UserInputService:IsKeyDown(Enum.KeyCode.W) then local lv = camCF.LookVector
-				mvX, mvY, mvZ = mvX + lv.X, mvY + lv.Y, mvZ + lv.Z end
-			if UserInputService:IsKeyDown(Enum.KeyCode.S) then local lv = camCF.LookVector
-				mvX, mvY, mvZ = mvX - lv.X, mvY - lv.Y, mvZ - lv.Z end
-			if UserInputService:IsKeyDown(Enum.KeyCode.A) then local rv = camCF.RightVector
-				mvX, mvY, mvZ = mvX - rv.X, mvY - rv.Y, mvZ - rv.Z end
-			if UserInputService:IsKeyDown(Enum.KeyCode.D) then local rv = camCF.RightVector
-				mvX, mvY, mvZ = mvX + rv.X, mvY + rv.Y, mvZ + rv.Z end
-			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then mvY = mvY + 1 end
-			if savedConfig.Settings.ShiftDownEnabled ~= false then
-				if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
-					mvY = mvY - 1 end end local currentFlySpeed = math.clamp(tonumber(Config.FlySpeed) or 50, 1, 1000)
-			local magSq = mvX * mvX + mvY * mvY + mvZ * mvZ if magSq > 0.0001 then
-				local invMag = 1 / math.sqrt(magSq) local uX, uY, uZ = mvX * invMag, mvY * invMag, mvZ * invMag
-				local dtClamped = math.min(deltaTime or 0.016, 0.1)
-				local stepX = uX * (currentFlySpeed * dtClamped) local stepY = uY * (currentFlySpeed * dtClamped)
-				local stepZ = uZ * (currentFlySpeed * dtClamped)
-				local newPos = Vector3.new(freezePosition.X + stepX, freezePosition.Y + stepY, freezePosition.Z + stepZ)
-				freezePosition = newPos root.CFrame = CFrame.new(newPos) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
-				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO else
-				root.CFrame = CFrame.new(freezePosition) * CFrame.Angles(camCF:ToEulerAnglesXYZ())
-				root.AssemblyLinearVelocity = V3_ZERO root.AssemblyAngularVelocity = V3_ZERO end
-			if fakeGroundPart then
-				local footOffset = math.max((hum.HipHeight or 0) + (root.Size.Y * 0.5) + 0.1, 3.05)
-				fakeGroundPart.CFrame = root.CFrame * CFrame.new(0, -footOffset, 0) end end end
 	-- 2. Performance HUD (FPS / Ping / Mouse Lock status)
 	frameCount = frameCount + 1 local now = os.clock() if now - lastFpsTime >= 0.5 then
 		currentFps = math.floor(frameCount / (now - lastFpsTime) + 0.5) frameCount = 0 lastFpsTime = now
@@ -3476,8 +3572,6 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 			if pullNearbyItems then pullNearbyItems() end return end
 		local fcKey = Config.FreecamKeybind or "C"
 		if fcKey ~= "None" and keyName == fcKey and toggleFreecamState then toggleFreecamState() return end
-		local flyKey = savedConfig.Settings.FlyKeybind or "E"
-		if flyKey ~= "None" and keyName == flyKey and masterFlightEnabled then toggleFlightState() return end
 		for _, wp in ipairs(savedConfig.Waypoints) do
 			if wp.Keybind and wp.Keybind ~= "None" and wp.Keybind == keyName then
 				SafeTeleportToCoords(wp.X, wp.Y, wp.Z) end end
