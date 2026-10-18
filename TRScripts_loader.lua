@@ -150,6 +150,7 @@ if genv.TRScripts_ScreenGui then pcall(function() genv.TRScripts_ScreenGui:Destr
 	pcall(genv.TRScripts_ActiveShutdown, true) genv.TRScripts_ActiveShutdown = nil end
 local function DeepCleanup() pcall(function() RunService:UnbindFromRenderStep("Aimbot_v2") end)
 	pcall(function() RunService:UnbindFromRenderStep("TR_ShiftLock_Pre") end)
+	pcall(function() RunService:UnbindFromRenderStep("TR_Freecam_Step") end)
 	pcall(function() if cleardrawcache then cleardrawcache() end end)
 	local oldGui = genv._TR_GUI_INSTANCE or genv.TRScripts_ScreenGui if oldGui then
 		pcall(function() oldGui:Destroy() end) genv._TR_GUI_INSTANCE = nil genv.TRScripts_ScreenGui = nil end
@@ -187,8 +188,8 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V99.json", "TRScripts_Config_V98.json", "TRScripts_Config_V97.json",
 	"TRScripts_Config_V96.json", "TRScripts_Config_V95.json", "TRScripts_Config_V94.json",
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
-		Theme = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 16, JumpPower = 50, FOV = 70,
-		FlySpeed = 50, FlyKeybind = "E", MouseLockKeybind = "M", AimbotKeybind = "Q", SilentAimKeybind = "T", AimbotFOVRadius = 200,
+		Theme = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
+		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", SilentAimKeybind = "T", AimbotFOVRadius = 200,
 		AimbotFOVCircleEnabled = true, AimbotEnabled = false, SilentAimEnabled = false, StrongLock = false, WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
@@ -220,6 +221,8 @@ local function syncAllSystems() SaveConfig(false) end local function LoadConfig(
 					if type(decoded.ActiveExecutorTab) == "number" then savedConfig.ActiveExecutorTab = decoded.ActiveExecutorTab end
 				end end end end)
 	if not savedConfig.Settings.SilentAimKeybind then savedConfig.Settings.SilentAimKeybind = "T" end
+	if not savedConfig.Settings.FreecamKeybind then savedConfig.Settings.FreecamKeybind = "C" end
+	if not savedConfig.Settings.FreecamSpeed then savedConfig.Settings.FreecamSpeed = 60 end
 	if savedConfig.Settings.Animation ~= "Default" and savedConfig.Settings.Animation ~= "Windows" and savedConfig.Settings.Animation ~= "macOS" then
 		savedConfig.Settings.Animation = "Default"
 	end
@@ -388,18 +391,20 @@ local draggingGui, resizingMode = false, nil do local dragStartPos, startFramePo
 				if st == Enum.PlaybackState.Completed and onComplete then onComplete() end end)
 		elseif animStyle == "macOS" then
 			if not wasVisible or MainScale.Scale < 0.2 or MainFrame.Size.Y.Offset < 20 then
-				MainScale.Scale = 0.15
-				MainFrame.Size = UDim2.new(0, math.floor(CurrentWidth * 0.45), 0, math.floor(CurrentHeight * 0.25))
-				MainFrame.Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 180)
-				MainFrame.BackgroundTransparency = 0.65 MainStroke.Transparency = 0.8
+				MainScale.Scale = 0.06
+				MainFrame.Size = UDim2.new(0, math.floor(CurrentWidth * 0.20), 0, math.floor(CurrentHeight * 0.06))
+				MainFrame.Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, 1, -22)
+				MainFrame.BackgroundTransparency = 0.78 MainStroke.Transparency = 0.92
 			end
-			local infoScale = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local infoFrame = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local infoStroke = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local infoScale = TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local infoPos = TweenInfo.new(0.36, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local infoSize = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+			local infoStroke = TweenInfo.new(0.28, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 			local t1 = TweenService:Create(MainScale, infoScale, { Scale = 1 })
-			local t2 = TweenService:Create(MainFrame, infoFrame, { Size = UDim2.new(0, CurrentWidth, 0, CurrentHeight), Position = RestingPosition, BackgroundTransparency = 0.06 })
-			local t3 = TweenService:Create(MainStroke, infoStroke, { Transparency = 0.25 })
-			activeWindowTweens = { t1, t2, t3 } t1:Play() t2:Play() t3:Play() t1.Completed:Connect(function(st)
+			local t2 = TweenService:Create(MainFrame, infoPos, { Position = RestingPosition, BackgroundTransparency = 0.06 })
+			local t3 = TweenService:Create(MainFrame, infoSize, { Size = UDim2.new(0, CurrentWidth, 0, CurrentHeight) })
+			local t4 = TweenService:Create(MainStroke, infoStroke, { Transparency = 0.25 })
+			activeWindowTweens = { t1, t2, t3, t4 } t1:Play() t2:Play() t3:Play() t4:Play() t1.Completed:Connect(function(st)
 				if st == Enum.PlaybackState.Completed and onComplete then onComplete() end end)
 		else
 			if not wasVisible then
@@ -425,13 +430,15 @@ local draggingGui, resizingMode = false, nil do local dragStartPos, startFramePo
 				if st == Enum.PlaybackState.Completed then if not isMenuVisible then MainFrame.Visible = false end
 					if onComplete then onComplete() end end end)
 		elseif animStyle == "macOS" then
-			local infoScale = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-			local infoFrame = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+			local infoScale = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+			local infoPos = TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+			local infoSize = TweenInfo.new(0.30, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 			local infoStroke = TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 			local t1 = TweenService:Create(MainScale, infoScale, { Scale = 0 })
-			local t2 = TweenService:Create(MainFrame, infoFrame, { Size = UDim2.new(0, math.floor(CurrentWidth * 0.28), 0, math.floor(CurrentHeight * 0.06)), Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 185), BackgroundTransparency = 1 })
-			local t3 = TweenService:Create(MainStroke, infoStroke, { Transparency = 1 })
-			activeWindowTweens = { t1, t2, t3 } t1:Play() t2:Play() t3:Play() t1.Completed:Connect(function(st)
+			local t2 = TweenService:Create(MainFrame, infoPos, { Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, 1, -22), BackgroundTransparency = 1 })
+			local t3 = TweenService:Create(MainFrame, infoSize, { Size = UDim2.new(0, math.floor(CurrentWidth * 0.16), 0, math.floor(CurrentHeight * 0.04)) })
+			local t4 = TweenService:Create(MainStroke, infoStroke, { Transparency = 1 })
+			activeWindowTweens = { t1, t2, t3, t4 } t1:Play() t2:Play() t3:Play() t4:Play() t1.Completed:Connect(function(st)
 				if st == Enum.PlaybackState.Completed then if not isMenuVisible then MainFrame.Visible = false end
 					if onComplete then onComplete() end end end)
 		else
@@ -559,7 +566,7 @@ local Tab9_Detector  = CreateTab("Hacker Detector", E.Search, 9)
 -- 7. TAB 1: THEMES, PERFORMANCE & PROTECTION
 --==============================================================================
 local PerfLabel, CursorUnlockedOverride, SetMouseLockState, ActiveKeybindCaptureCallback, TryAssignUniqueKeybind
-do
+;(function()
 local RefreshMouseLockUI
 local function FindKeybindConflict(keyName, ignoreSlot)
 	if not keyName or keyName == "" or keyName == "None" then return nil end
@@ -577,6 +584,9 @@ local function FindKeybindConflict(keyName, ignoreSlot)
 	end
 	if ignoreSlot ~= "SilentAim" and (Config.SilentAimKeybind or "T") == keyName then
 		return "Silent Aim"
+	end
+	if ignoreSlot ~= "Freecam" and (Config.FreecamKeybind or "C") == keyName then
+		return "Freecam"
 	end
 	if type(savedConfig.Waypoints) == "table" then
 		for idx, wp in ipairs(savedConfig.Waypoints) do
@@ -645,8 +655,8 @@ AnimGrid.SortOrder = Enum.SortOrder.LayoutOrder AnimGrid.Parent = AnimCard
 local AnimButtons = {}
 local AnimOptions = {
 	{ Id = "Default", Label = "Default" },
-	{ Id = "Windows", Label = "Windows Tab" },
-	{ Id = "macOS", Label = "macOS Latest" }
+	{ Id = "Windows", Label = "Windows" },
+	{ Id = "macOS", Label = "Mac" }
 }
 local function RefreshAnimButtons()
 	local theme = GetTheme() local curAnim = Config.Animation or "Default"
@@ -737,12 +747,13 @@ table.insert(Connections, player.CharacterAdded:Connect(function(newChar) task.w
 	if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(newChar) end end))
 -- Anti-Cheat Protection Engine active globally from Line 1
 table.insert(Connections, player.Idled:Connect(function() if Config.AntiAFK then pcall(function()
-			VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end) end end)) end
+			VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end) end end)) end)()
 --==============================================================================
 -- 8. TAB 2: WAYPOINTS & TELEPORT
 --==============================================================================
 local GetRootPart, freezePosition, lastSafeAntiFlingCF, SafeTeleportToCoords
-do CreateSectionHeader(Tab2_Waypoints, "Coordinates & Direct Teleport", 1)
+local teleportBypassLockUntil, teleportBypassTargetCF = 0, nil
+;(function() CreateSectionHeader(Tab2_Waypoints, "Coordinates & Direct Teleport", 1)
 local CoordsTopCard = CreateCard(Tab2_Waypoints, 88, 2)
 local CopyCoordsBtn = MakeButton(CoordsTopCard, UDim2.new(0, 160, 0, 32), UDim2.new(0, 12, 0, 10), E.Clip .. " Copy Coords", "Accent", 12)
 local AddWaypointBtn = MakeButton(CoordsTopCard, UDim2.new(0, 180, 0, 32), UDim2.new(0, 182, 0, 10), E.Plus .. " Save Current Pos", "AccentDark", 12)
@@ -756,7 +767,7 @@ local DirectTpBtn = MakeButton(CoordsTopCard, UDim2.new(0, 125, 0, 32), UDim2.ne
 GetRootPart = function(character) local char = character or player.Character
 	if not char then return nil end
 	return char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart or char:FindFirstChildWhichIsA("BasePart")
-end freezePosition = nil local teleportBypassLockUntil = 0 local teleportBypassTargetCF = nil
+end freezePosition = nil
 SafeTeleportToCoords = function(x, y, z) pcall(function() local char = player.Character
 		local root = GetRootPart(char) local hum = char and char:FindFirstChildOfClass("Humanoid") if root then
 			pcall(function() CoreGui.RobloxGui["CoreScripts/NetworkPause"]:Destroy() end)
@@ -820,11 +831,12 @@ AddWaypointBtn.MouseButton1Click:Connect(function() local root = GetRootPart() i
 		local pos = root.Position table.insert(savedConfig.Waypoints, {
 			Name = "Waypoint " .. (#savedConfig.Waypoints + 1), X = math.floor(pos.X + 0.5),
 			Y = math.floor(pos.Y + 0.5), Z = math.floor(pos.Z + 0.5), Keybind = "None" }) SaveConfig(false)
-		RebuildWaypointsUI() end end) RebuildWaypointsUI() end
+		RebuildWaypointsUI() end end) RebuildWaypointsUI() end)()
 --==============================================================================
 -- 9. TAB 3: REAL-TIME PLAYER RADAR & TELEPORT KEYBINDS
 --==============================================================================
-local SpectatingTarget, IsFriend, RefreshRadarCards, GetPlayerDetectionState do
+local SpectatingTarget, IsFriend, RefreshRadarCards, GetPlayerDetectionState
+;(function()
 CreateSectionHeader(Tab3_Radar, "Live Player Radar (Hackers & Speeders Top | Friends " .. E.Star .. " | Delete Unassigns)", 1)
 local RadarContainer = Instance.new("Frame") RadarContainer.LayoutOrder = 2
 RadarContainer.Size = UDim2.new(1, 0, 0, 0) RadarContainer.AutomaticSize = Enum.AutomaticSize.Y
@@ -877,11 +889,12 @@ RefreshRadarCards = function() for _, child in ipairs(RadarContainer:GetChildren
 					if hum then workspace.CurrentCamera.CameraSubject = hum end else SpectatingTarget = plr
 					local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
 					if hum then workspace.CurrentCamera.CameraSubject = hum end end RefreshRadarCards() end) end) end
-end end
+end end)()
 --==============================================================================
 -- 10. TAB 4: ITEMS & INSTANT PROXIMITY PROMPTS (ITEM VACUUM / MAGNET)
 --==============================================================================
-local pullNearbyItems do
+local pullNearbyItems
+;(function()
 CreateSectionHeader(Tab4_Items, "Proximity Prompt Instant Interaction Engine", 1)
 local function ApplyInstantPrompts() if not Config.InstantPrompt then return end pcall(function()
 		for _, desc in ipairs(workspace:GetDescendants()) do
@@ -931,16 +944,19 @@ CreateToggle(Tab4_Items, "Item Vacuum / Magnet (Pulls Nearby Items & Drops to Ch
 CreateSlider(Tab4_Items, "Item Vacuum Radius (studs)", 15, 1000, Config.ItemMagnetRadius or 60, 5, function(val)
 	Config.ItemMagnetRadius = val SaveConfig(false) end) local MagnetCard = CreateCard(Tab4_Items, 46, 6)
 local PulseBtn = MakeButton(MagnetCard, UDim2.new(1, -20, 0, 30), UDim2.new(0, 10, 0.5, -15), E.Magnet .. " Instant Vacuum Pulse (Pull All Items Now [E])", "Accent", 11)
-PulseBtn.MouseButton1Click:Connect(pullNearbyItems) end
+PulseBtn.MouseButton1Click:Connect(pullNearbyItems) end)()
 --==============================================================================
 -- 11. TAB 5: FLIGHT & MOVEMENT
 --==============================================================================
 local masterFlightEnabled = (savedConfig.Settings.MasterFlightEnabled == true)
 local keyFlying, fakeGroundPart = false, nil
+;(function()
 local isFlightActive, stopFlight, startFlight, toggleFlightState
 local naturalWalkSpeed, naturalJumpPower, naturalJumpHeight, naturalUseJumpPower = 16, 50, 7.2, true
 local lastRecordedHum = nil
-local RecordNaturalHumanoidDefaults, RestoreNaturalHumanoidDefaults do
+local RecordNaturalHumanoidDefaults, RestoreNaturalHumanoidDefaults, RestoreCharacterCollision
+local isFreecamActive, stopFreecam, toggleFreecamState, GetFreecamAnchorCF
+;(function()
 CreateSectionHeader(Tab5_Flight, "Flight Engine & Keybind Controls", 1)
 local FlightEngineCard = CreateCard(Tab5_Flight, 92, 2)
 local masterFlightToggleBtn = Instance.new("TextButton")
@@ -1027,8 +1043,25 @@ CreateToggle(Tab5_Flight, "Master Utility Switch (Enable WalkSpeed & JumpPower)"
 	Config.MasterUtilityEnabled = state
 	if not state then RestoreNaturalHumanoidDefaults() end
 	SaveConfig(false) end)
+RestoreCharacterCollision = function(targetChar)
+	local c = targetChar or player.Character
+	if not c then return end
+	pcall(function()
+		for _, part in ipairs(c:GetDescendants()) do
+			if part:IsA("BasePart") and (part.Name == "HumanoidRootPart" or part.Name == "Torso" or part.Name == "UpperTorso" or part.Name == "LowerTorso" or part.Name == "Head") then
+				part.CanCollide = true
+			end
+		end
+		local hum = c:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 and not (isFlightActive and isFlightActive()) then
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+		end
+	end)
+end
 CreateToggle(Tab5_Flight, "Noclip Mode (Disable Character CanCollide)", Config.NoclipEnabled, 5, function(state)
-	Config.NoclipEnabled = state SaveConfig(false) end)
+	Config.NoclipEnabled = state
+	if not state then RestoreCharacterCollision(player.Character) end
+	SaveConfig(false) end)
 CreateToggle(Tab5_Flight, "Infinite Jump (Jump Continuously Mid-Air Without Ground Touch)", Config.InfiniteJump == true, 6, function(state)
 	Config.InfiniteJump = state SaveConfig(false) end)
 CreateToggle(Tab5_Flight, "Speed-Synced Spider Climb (Climb Walls at Character WalkSpeed)", Config.SpiderClimb == true, 7, function(state)
@@ -1038,14 +1071,196 @@ CreateToggle(Tab5_Flight, "Shift-Down Flight Descent (Hold LeftShift to Descend)
 CreateToggle(Tab5_Flight, "Countdown / Spawn Freeze Bypass (Unanchor & Clear Freeze Tags)", Config.CountdownBypass, 9, function(state)
 	Config.CountdownBypass = state SaveConfig(false) end)
 CreateSectionHeader(Tab5_Flight, "Speed & Movement Sliders", 10)
-CreateSlider(Tab5_Flight, "Fly Speed", 1, 1000, math.clamp(tonumber(Config.FlySpeed) or 50, 1, 1000), 11, function(val) Config.FlySpeed = val; savedConfig.Settings.FlySpeed = val; SaveConfig(false) end)
-CreateSlider(Tab5_Flight, "WalkSpeed", 1, 500, math.clamp(tonumber(Config.WalkSpeed) or 16, 1, 500), 12, function(val) Config.WalkSpeed = val; savedConfig.Settings.WalkSpeed = val; SaveConfig(false) end)
-CreateSlider(Tab5_Flight, "JumpPower (1-500 | Low = Normal in Rivals / Steal an Egg)", 1, 500, math.clamp(tonumber(Config.JumpPower) or 50, 1, 500), 13, function(val) Config.JumpPower = val; savedConfig.Settings.JumpPower = val; SaveConfig(false) end)
+local FlySpeedSlider = CreateSlider(Tab5_Flight, "Fly Speed", 1, 1000, math.clamp(tonumber(Config.FlySpeed) or 100, 1, 1000), 11, function(val) Config.FlySpeed = val; savedConfig.Settings.FlySpeed = val; SaveConfig(false) end)
+local WalkSpeedSlider = CreateSlider(Tab5_Flight, "WalkSpeed", 1, 500, math.clamp(tonumber(Config.WalkSpeed) or 18, 1, 500), 12, function(val) Config.WalkSpeed = val; savedConfig.Settings.WalkSpeed = val; SaveConfig(false) end)
+local JumpPowerSlider = CreateSlider(Tab5_Flight, "JumpPower (1-500 | Low = Normal in Rivals / Steal an Egg)", 1, 500, math.clamp(tonumber(Config.JumpPower) or 50, 1, 500), 13, function(val) Config.JumpPower = val; savedConfig.Settings.JumpPower = val; SaveConfig(false) end)
+local ResetSpeedCard = CreateCard(Tab5_Flight, 46, 14)
+local ResetSpeedBtn = MakeButton(ResetSpeedCard, UDim2.new(1, -20, 0, 30), UDim2.new(0, 10, 0.5, -15), E.Refresh .. " Reset to Default (WalkSpeed: 18 | Jump: 50 | Fly Speed: 100)", "Accent", 12)
+ResetSpeedBtn.MouseButton1Click:Connect(function()
+	Config.WalkSpeed = 18 savedConfig.Settings.WalkSpeed = 18
+	Config.JumpPower = 50 savedConfig.Settings.JumpPower = 50
+	Config.FlySpeed = 100 savedConfig.Settings.FlySpeed = 100
+	WalkSpeedSlider.SetValue(18)
+	JumpPowerSlider.SetValue(50)
+	FlySpeedSlider.SetValue(100)
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum and Config.MasterUtilityEnabled then
+		pcall(function() hum.WalkSpeed = 18 hum.JumpPower = 50 end)
+	end
+	SaveConfig(false)
+	ResetSpeedBtn.Text = E.Check .. " Defaults Applied (WalkSpeed: 18 | Jump: 50 | Fly Speed: 100)!"
+	task.delay(1.1, function()
+		if ResetSpeedBtn and ResetSpeedBtn.Parent then
+			ResetSpeedBtn.Text = E.Refresh .. " Reset to Default (WalkSpeed: 18 | Jump: 50 | Fly Speed: 100)"
+		end
+	end)
+end)
+CreateSectionHeader(Tab5_Flight, "Freecam Engine & Keybind Controls", 15)
+local FreecamCard = CreateCard(Tab5_Flight, 92, 16)
+local freecamToggleBtn = Instance.new("TextButton", FreecamCard)
+freecamToggleBtn.Size = UDim2.new(0.48, -12, 0, 34)
+freecamToggleBtn.Position = UDim2.new(0, 10, 0, 10)
+freecamToggleBtn.Font = Enum.Font.GothamBold freecamToggleBtn.TextSize = 12
+freecamToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AddCorner(freecamToggleBtn, 6)
+local freecamStatusLbl = Instance.new("TextLabel", FreecamCard)
+freecamStatusLbl.Size = UDim2.new(0.52, -14, 0, 34)
+freecamStatusLbl.Position = UDim2.new(0.48, 4, 0, 10)
+freecamStatusLbl.BackgroundTransparency = 0.15
+freecamStatusLbl.Font = Enum.Font.GothamSemibold freecamStatusLbl.TextSize = 12
+freecamStatusLbl.Text = "Freecam: INACTIVE"
+RegisterThemeObject(freecamStatusLbl, "BackgroundColor3", "PanelBg")
+RegisterThemeObject(freecamStatusLbl, "TextColor3", "TextPrimary")
+AddCorner(freecamStatusLbl, 6)
+MakeLabel(FreecamCard, UDim2.new(0, 210, 0, 30), UDim2.new(0, 12, 0, 52), "Freecam Shortcut Keybind:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+local freecamKeyAssignBtn = MakeButton(FreecamCard, UDim2.new(0, 130, 0, 30), UDim2.new(1, -240, 0, 52), "Bind Key: [C]", "PanelBg", 11)
+local freecamKeyDeleteBtn = Instance.new("TextButton", FreecamCard)
+freecamKeyDeleteBtn.Size = UDim2.new(0, 92, 0, 30)
+freecamKeyDeleteBtn.Position = UDim2.new(1, -102, 0, 52)
+freecamKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
+freecamKeyDeleteBtn.Font = Enum.Font.GothamBold freecamKeyDeleteBtn.TextSize = 11
+freecamKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+freecamKeyDeleteBtn.Text = E.Trash .. " Delete Key"
+AddCorner(freecamKeyDeleteBtn, 6)
+CreateSlider(Tab5_Flight, "Freecam Speed", 1, 500, math.clamp(tonumber(Config.FreecamSpeed) or 60, 1, 500), 17, function(val)
+	Config.FreecamSpeed = val savedConfig.Settings.FreecamSpeed = val SaveConfig(false)
+end)
+local freecamEnabled, freecamAnchorCF = false, nil
+local freecamPos = Vector3.new(0, 50, 0)
+local freecamPitch, freecamYaw = 0, 0
+local function RefreshFreecamUI()
+	local k = Config.FreecamKeybind or "None"
+	freecamKeyAssignBtn.Text = "Bind Key: [" .. k .. "]"
+	freecamToggleBtn.Text = "Freecam [" .. k .. "]: " .. (freecamEnabled and "ON" or "OFF")
+	freecamToggleBtn.BackgroundColor3 = freecamEnabled and Color3.fromRGB(38, 168, 92) or Color3.fromRGB(185, 52, 52)
+	freecamStatusLbl.Text = freecamEnabled and "Freecam: ACTIVE (WASD + Mouse)" or "Freecam: INACTIVE"
 end
+isFreecamActive = function() return freecamEnabled end
+GetFreecamAnchorCF = function(defaultCF)
+	if not freecamAnchorCF and defaultCF then freecamAnchorCF = defaultCF end
+	return freecamAnchorCF
+end
+stopFreecam = function()
+	if not freecamEnabled then return end
+	freecamEnabled = false
+	freecamAnchorCF = nil
+	pcall(function() RunService:UnbindFromRenderStep("TR_Freecam_Step") end)
+	RefreshFreecamUI()
+	pcall(function()
+		local cam = workspace.CurrentCamera
+		if cam then
+			cam.CameraType = Enum.CameraType.Custom
+			local char = player.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if SpectatingTarget and SpectatingTarget.Character then
+				local sHum = SpectatingTarget.Character:FindFirstChildOfClass("Humanoid")
+				if sHum then cam.CameraSubject = sHum end
+			elseif hum then
+				cam.CameraSubject = hum
+			end
+		end
+		if not CursorUnlockedOverride then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		end
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			if Config.MasterUtilityEnabled then
+				hum.WalkSpeed = math.clamp(tonumber(Config.WalkSpeed) or 18, 1, 500)
+			else
+				hum.WalkSpeed = naturalWalkSpeed or 16
+			end
+		end
+	end)
+end
+local function startFreecam()
+	if freecamEnabled then return end
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	freecamEnabled = true
+	freecamPos = cam.CFrame.Position
+	local rx, ry, _ = cam.CFrame:ToOrientation()
+	freecamPitch, freecamYaw = rx, ry
+	local char = player.Character
+	local root = GetRootPart(char)
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if root then
+		freecamAnchorCF = root.CFrame
+		root.AssemblyLinearVelocity = V3_ZERO
+		root.AssemblyAngularVelocity = V3_ZERO
+	end
+	if hum then hum.WalkSpeed = 0 end
+	RefreshFreecamUI()
+	RunService:BindToRenderStep("TR_Freecam_Step", Enum.RenderPriority.Camera.Value + 2, function(dt)
+		if not freecamEnabled or isClosingPermanently then return end
+		local curCam = workspace.CurrentCamera
+		if not curCam then return end
+		local dtClamped = math.min(dt or 0.016, 0.1)
+		local rmbDown = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+		if rmbDown or CursorUnlockedOverride then
+			UserInputService.MouseBehavior = rmbDown and Enum.MouseBehavior.LockCurrentPosition or Enum.MouseBehavior.LockCenter
+			local delta = UserInputService:GetMouseDelta()
+			freecamYaw = freecamYaw - math.rad(delta.X * 0.28)
+			freecamPitch = math.clamp(freecamPitch - math.rad(delta.Y * 0.28), -math.rad(88), math.rad(88))
+		elseif not CursorUnlockedOverride then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		end
+		if UserInputService:GetFocusedTextBox() == nil then
+			if UserInputService:IsKeyDown(Enum.KeyCode.Left) then freecamYaw = freecamYaw + (1.8 * dtClamped) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Right) then freecamYaw = freecamYaw - (1.8 * dtClamped) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Up) then freecamPitch = math.clamp(freecamPitch + (1.5 * dtClamped), -math.rad(88), math.rad(88)) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Down) then freecamPitch = math.clamp(freecamPitch - (1.5 * dtClamped), -math.rad(88), math.rad(88)) end
+		end
+		local rotCF = CFrame.fromOrientation(freecamPitch, freecamYaw, 0)
+		local moveVec = V3_ZERO
+		if UserInputService:GetFocusedTextBox() == nil then
+			local look = rotCF.LookVector
+			local right = rotCF.RightVector
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVec = moveVec + look end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVec = moveVec - look end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVec = moveVec + right end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVec = moveVec - right end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) or UserInputService:IsKeyDown(Enum.KeyCode.E) then
+				moveVec = moveVec + Vector3.new(0, 1, 0)
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+				moveVec = moveVec - Vector3.new(0, 1, 0)
+			end
+		end
+		local fcSpeed = math.clamp(tonumber(Config.FreecamSpeed) or 60, 1, 500)
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then fcSpeed = fcSpeed * 0.35 end
+		if moveVec.Magnitude > 0.001 then
+			freecamPos = freecamPos + (moveVec.Unit * (fcSpeed * dtClamped))
+		end
+		curCam.CameraType = Enum.CameraType.Scriptable
+		curCam.CFrame = CFrame.new(freecamPos) * rotCF
+	end)
+end
+toggleFreecamState = function()
+	if freecamEnabled then stopFreecam() else startFreecam() end
+end
+freecamToggleBtn.MouseButton1Click:Connect(toggleFreecamState)
+freecamKeyAssignBtn.MouseButton1Click:Connect(function()
+	freecamKeyAssignBtn.Text = "[Key / Del]"
+	ActiveKeybindCaptureCallback = function(keyName)
+		TryAssignUniqueKeybind(keyName, "Freecam", function(val) Config.FreecamKeybind = val; savedConfig.Settings.FreecamKeybind = val end, RefreshFreecamUI, freecamKeyAssignBtn)
+	end
+end)
+freecamKeyDeleteBtn.MouseButton1Click:Connect(function()
+	Config.FreecamKeybind = "None"
+	savedConfig.Settings.FreecamKeybind = "None"
+	ActiveKeybindCaptureCallback = nil
+	RefreshFreecamUI()
+	SaveConfig(false)
+end)
+RefreshFreecamUI()
+end)()
 --==============================================================================
 -- 12. TAB 6: MULTI-TARGET FLING HUB (WITH NETWORK PAUSE BYPASS)
 --==============================================================================
-local SelectedTargets, FlingActive = {}, false local RefreshFlingPlayerList, StopFling do
+local SelectedTargets, FlingActive = {}, false local RefreshFlingPlayerList, StopFling
+;(function()
 CreateSectionHeader(Tab6_Instant, E.Bolt .. " Multi-Target Fling Hub (With Auto Network Pause Bypass)", 1)
 CreateToggle(Tab6_Instant, "Auto-Select Players When New Player Joins (Friends Excluded)", Config.AutoSelectFling == true, 2, function(state)
 	Config.AutoSelectFling = state SaveConfig(false) end)
@@ -1162,7 +1377,7 @@ local function Message(title, text, timeLen) pcall(function() StarterGui:SetCore
 	Message("T.R Fling", "Fling engine stopped.", 2) end startButton.MouseButton1Click:Connect(StartFling)
 stopButton.MouseButton1Click:Connect(StopFling)
 selectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(true) end)
-deselectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(false) end) end
+deselectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(false) end) end)()
 --==============================================================================
 -- 13. TAB 7: AIMBOT, ESP, CAMERA & LIGHTING VISUALS
 --==============================================================================
@@ -1254,22 +1469,91 @@ local aimbotStatusLabel, silentAimStatusLabel, excludeFrame, updateExcludeCount,
 		local vp, onScreen = cam:WorldToViewportPoint(worldPos)
 		if not onScreen or vp.Z <= 0 then return nil, false, math.huge end local vs = cam.ViewportSize
 		local dx = vp.X - (vs.X * 0.5) local dy = vp.Y - (vs.Y * 0.5)
-		return vp, true, math.sqrt(dx * dx + dy * dy) end removePlayerAdornments = function(plr)
+		return vp, true, math.sqrt(dx * dx + dy * dy) end local highlightsCache = {}
+	local function removePlayerHighlight(plr)
+		local hl = highlightsCache[plr]
+		if hl then
+			pcall(function() hl.Adornee = nil hl:Destroy() end)
+			highlightsCache[plr] = nil
+		end
+		if plr and plr.Character then
+			for _, ch in ipairs(plr.Character:GetChildren()) do
+				if ch:IsA("Highlight") and (ch.Name == "AssetHighlight" or ch.Name == "TR_ESP_Highlight") then
+					pcall(function() ch.Adornee = nil ch:Destroy() end)
+				end
+			end
+		end
+	end
+	local function clearAllHighlights()
+		for plr, hl in pairs(highlightsCache) do
+			pcall(function() hl.Adornee = nil hl:Destroy() end)
+			highlightsCache[plr] = nil
+		end
+		if ScreenGui then
+			for _, ch in ipairs(ScreenGui:GetChildren()) do
+				if ch:IsA("Highlight") or ch.Name == "AssetHighlight" or ch.Name == "TR_ESP_Highlight" or ch.Name:find("^HL_") then
+					pcall(function() ch.Adornee = nil ch:Destroy() end)
+				end
+			end
+		end
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr.Character then
+				for _, ch in ipairs(plr.Character:GetChildren()) do
+					if ch:IsA("Highlight") and (ch.Name == "AssetHighlight" or ch.Name == "TR_ESP_Highlight") then
+						pcall(function() ch.Adornee = nil ch:Destroy() end)
+					end
+				end
+			end
+		end
+	end
+	removePlayerAdornments = function(plr)
 		local pair = adornmentsCache[plr] if pair then
 			if pair.inner then pcall(function() pair.inner:Destroy() end) end
 			if pair.outline then pcall(function() pair.outline:Destroy() end) end adornmentsCache[plr] = nil end
+		removePlayerHighlight(plr)
 		characterCache[plr] = nil end clearAllAdornments = function()
-		for plr in pairs(adornmentsCache) do removePlayerAdornments(plr) end end
-	RefreshESPHighlights = function() local themeAccent = GetTheme().Accent
-		for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
-				local existing = ScreenGui:FindFirstChild("HL_" .. plr.Name) or plr.Character:FindFirstChild("TR_ESP_Highlight")
+		for plr in pairs(adornmentsCache) do removePlayerAdornments(plr) end
+		clearAllHighlights() end
+	RefreshESPHighlights = function()
+		if not Config.ESPEnabled then
+			clearAllHighlights()
+			return
+		end
+		local themeAccent = GetTheme().Accent
+		for plr in pairs(highlightsCache) do
+			if not plr or not plr.Parent or not plr.Character or excludedPlayers[plr] or (not espShowTeammates and IsTeammate(plr)) then
+				removePlayerHighlight(plr)
+			end
+		end
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= player and plr.Character then
 				local allowTeam = espShowTeammates or not IsTeammate(plr)
-				if Config.ESPEnabled and not excludedPlayers[plr] and allowTeam then if not existing then
-						pcall(function() local hl = Instance.new("Highlight") hl.Name = "AssetHighlight"
-							hl.FillColor = themeAccent hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-							hl.FillTransparency = 0.45 hl.OutlineTransparency = 0.1 hl.Adornee = plr.Character
-							hl.Parent = ScreenGui end) else if existing.FillColor ~= themeAccent then
-							existing.FillColor = themeAccent end end elseif existing then existing:Destroy() end end end end
+				if not excludedPlayers[plr] and allowTeam then
+					local existing = highlightsCache[plr]
+					if not existing or not existing.Parent then
+						pcall(function()
+							local hl = Instance.new("Highlight")
+							hl.Name = "AssetHighlight"
+							hl.FillColor = themeAccent
+							hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+							hl.FillTransparency = 0.45
+							hl.OutlineTransparency = 0.1
+							hl.Adornee = plr.Character
+							hl.Parent = ScreenGui
+							highlightsCache[plr] = hl
+						end)
+					else
+						if existing.Adornee ~= plr.Character then existing.Adornee = plr.Character end
+						if existing.FillColor ~= themeAccent then existing.FillColor = themeAccent end
+					end
+				else
+					removePlayerHighlight(plr)
+				end
+			else
+				removePlayerHighlight(plr)
+			end
+		end
+	end
 	updateAllAdornments = function() if not Config.ESPEnabled then
 			if next(adornmentsCache) ~= nil then clearAllAdornments() end return end
 		local accentCol = GetTheme().Accent for plr in pairs(adornmentsCache) do
@@ -1608,7 +1892,8 @@ end)()
 --==============================================================================
 -- 14. TAB 8: MULTI-TAB SCRIPT EXECUTOR
 --==============================================================================
-do CreateSectionHeader(Tab8_Executor, "Multi-Tab Luau Script Executor", 1)
+local RunningExecutorThreads = {}
+;(function() CreateSectionHeader(Tab8_Executor, "Multi-Tab Luau Script Executor", 1)
 local ExecHeaderCard = CreateCard(Tab8_Executor, 42, 2)
 local ScrollLeftBtn = MakeButton(ExecHeaderCard, UDim2.new(0, 28, 0, 28), UDim2.new(0, 8, 0.5, -14), "<", "PanelBg", 13)
 local ScrollRightBtn = MakeButton(ExecHeaderCard, UDim2.new(0, 28, 0, 28), UDim2.new(1, -70, 0.5, -14), ">", "PanelBg", 13)
@@ -1654,7 +1939,7 @@ local TerminateBtn = Instance.new("TextButton") TerminateBtn.Size = UDim2.new(0,
 TerminateBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55) TerminateBtn.Font = Enum.Font.GothamBold
 TerminateBtn.TextSize = 12 TerminateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 TerminateBtn.Text = E.Stop .. " Terminate" TerminateBtn.Parent = ExecActionCard
-AddCorner(TerminateBtn, 6) local RunningExecutorThreads = {} local UpdatingCodeBox = false
+AddCorner(TerminateBtn, 6) local UpdatingCodeBox = false
 local function RebuildExecutorTabs() if #savedConfig.ExecutorTabs == 0 then
 		table.insert(savedConfig.ExecutorTabs, { Name = "Script 1", Code = "" }) end
 	savedConfig.ActiveExecutorTab = math.clamp(savedConfig.ActiveExecutorTab or 1, 1, #savedConfig.ExecutorTabs)
@@ -1705,12 +1990,12 @@ ExecuteBtn.MouseButton1Click:Connect(function() local source = CodeBox.Text
 ClearBtn.MouseButton1Click:Connect(function() CodeBox.Text = "" end)
 TerminateBtn.MouseButton1Click:Connect(function()
 	for _, thread in ipairs(RunningExecutorThreads) do pcall(function() task.cancel(thread) end) end
-	RunningExecutorThreads = {} end) RebuildExecutorTabs() end
+	RunningExecutorThreads = {} end) RebuildExecutorTabs() end)()
 --==============================================================================
 -- 14B. TAB 9: HACKER DETECTOR (THEME-SYNCED & 3-TIER PRIORITY SORTED)
 -- Tier 1: Hackers (Top) | Tier 2: Abnormal Speed Hackers (2nd) | Tier 3: Normal Players (3rd)
 --==============================================================================
-do
+;(function()
 local notifCooldown = 10
 local notificationsEnabled = true
 local detectorEnabled = true
@@ -1780,10 +2065,10 @@ local SubPlayersBtn = MakeButton(ControlsCard, UDim2.new(0, 102, 0, 26), UDim2.n
 local SubCreditsBtn = MakeButton(ControlsCard, UDim2.new(0, 98, 0, 26), UDim2.new(1, -108, 0, 9), "Info & Credits", "PanelBg", 11)
 
 local DetectorToggleBtn = MakeButton(ControlsCard, UDim2.new(0, 118, 0, 28), UDim2.new(0, 12, 0, 44), "Detector [F4]: ON", nil, 11)
-local AlertLbl = MakeLabel(ControlsCard, UDim2.new(0, 44, 0, 28), UDim2.new(0, 138, 0, 44), "Alerts:", Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
+MakeLabel(ControlsCard, UDim2.new(0, 44, 0, 28), UDim2.new(0, 138, 0, 44), "Alerts:", Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
 local NotifToggleBtn = MakeButton(ControlsCard, UDim2.new(0, 48, 0, 26), UDim2.new(0, 184, 0, 45), "ON", nil, 11)
 
-local DelayLbl = MakeLabel(ControlsCard, UDim2.new(0, 42, 0, 28), UDim2.new(0, 240, 0, 44), "Delay:", Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
+MakeLabel(ControlsCard, UDim2.new(0, 42, 0, 28), UDim2.new(0, 240, 0, 44), "Delay:", Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
 local DelayMinus = MakeButton(ControlsCard, UDim2.new(0, 24, 0, 24), UDim2.new(0, 284, 0, 46), "-", "PanelBg", 13)
 local DelayText = MakeLabel(ControlsCard, UDim2.new(0, 36, 0, 28), UDim2.new(0, 310, 0, 44), notifCooldown .. "s", Enum.Font.GothamBold, 11, "TextPrimary", Enum.TextXAlignment.Center)
 local DelayPlus = MakeButton(ControlsCard, UDim2.new(0, 24, 0, 24), UDim2.new(0, 348, 0, 46), "+", "PanelBg", 13)
@@ -1823,83 +2108,78 @@ creditsLayout.Padding = UDim.new(0, 8)
 creditsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 creditsLayout.Parent = CreditsContainer
 
-local function createCreditsSection(title, order)
-	CreateSectionHeader(CreditsContainer, title, order)
-	local sec = Instance.new("Frame")
-	sec.LayoutOrder = order + 1
-	sec.Size = UDim2.new(1, 0, 0, 0)
-	sec.AutomaticSize = Enum.AutomaticSize.Y
-	sec.BackgroundTransparency = 1
-	sec.Parent = CreditsContainer
-	local lay = Instance.new("UIListLayout")
-	lay.Padding = UDim.new(0, 6)
-	lay.SortOrder = Enum.SortOrder.LayoutOrder
-	lay.Parent = sec
-	return sec
-end
-
-local function createCreditEntry(name, role, desc, order, parent)
-	local entry = CreateCard(parent, (desc and desc ~= "") and 54 or 42, order)
-	MakeLabel(entry, UDim2.new(1, -24, 0, 18), UDim2.new(0, 12, 0, 5), name, Enum.Font.GothamBold, 13, "TextPrimary", Enum.TextXAlignment.Left)
-	MakeLabel(entry, UDim2.new(1, -24, 0, 14), UDim2.new(0, 12, 0, 22), role, Enum.Font.GothamBold, 11, "Accent", Enum.TextXAlignment.Left)
-	if desc and desc ~= "" then
-		MakeLabel(entry, UDim2.new(1, -24, 0, 13), UDim2.new(0, 12, 0, 36), desc, Enum.Font.Gotham, 10, "TextSecondary", Enum.TextXAlignment.Left)
+;(function()
+	local function createCreditsSection(title, order)
+		CreateSectionHeader(CreditsContainer, title, order)
+		local sec = Instance.new("Frame")
+		sec.LayoutOrder = order + 1
+		sec.Size = UDim2.new(1, 0, 0, 0)
+		sec.AutomaticSize = Enum.AutomaticSize.Y
+		sec.BackgroundTransparency = 1
+		sec.Parent = CreditsContainer
+		local lay = Instance.new("UIListLayout")
+		lay.Padding = UDim.new(0, 6)
+		lay.SortOrder = Enum.SortOrder.LayoutOrder
+		lay.Parent = sec
+		return sec
 	end
-	return entry
-end
-
-local LogoSection = CreateCard(CreditsContainer, 106, 1)
-local logoHeader = Instance.new("ImageLabel")
-logoHeader.Size = UDim2.new(0, 50, 0, 50)
-logoHeader.Position = UDim2.new(0.5, -25, 0, 10)
-logoHeader.BackgroundTransparency = 1
-logoHeader.Image = DETECTOR_ICONS.logo
-logoHeader.ScaleType = Enum.ScaleType.Fit
-logoHeader.Parent = LogoSection
-MakeLabel(LogoSection, UDim2.new(1, 0, 0, 20), UDim2.new(0, 0, 0, 64), "SCRIPTER & HACKER DETECTOR V2.1", Enum.Font.GothamBold, 14, "TextPrimary", Enum.TextXAlignment.Center)
-MakeLabel(LogoSection, UDim2.new(1, 0, 0, 16), UDim2.new(0, 0, 0, 84), "Integrated into T.R Scripts V95 - Theme-Synced Visual Engine", Enum.Font.Gotham, 11, "TextSecondary", Enum.TextXAlignment.Center)
-
-local devSection = createCreditsSection("DEVELOPMENT TEAM", 2)
-createCreditEntry("Claude (Anthropic)", "Lead Scripter", "Original architecture & core detection systems", 1, devSection)
-createCreditEntry("Bah", "Developer", "Modifications, UI improvements & enhancements", 2, devSection)
-createCreditEntry("ZERETET", "Developer", "Made Improvements", 3, devSection)
-
-local detectSection = createCreditsSection("DETECTION SYSTEMS", 4)
-local detections = {
-	{"Speed Hack Detection", "Velocity & WalkSpeed abnormal analysis"},
-	{"Fly Hack Detection", "Air time & Y-axis monitoring"},
-	{"Noclip Detection", "Collision raycast verification"},
-	{"Teleport Detection", "Position delta analysis"},
-	{"Fling Detection", "Total velocity threshold"},
-	{"Abnormal Jump Detection", "Jump power multiplier check"},
-	{"Sample Averaging", "Reduces false positives"}
-}
-for i, det in ipairs(detections) do
-	local entry = CreateCard(detectSection, 30, i)
-	local dot = Instance.new("Frame")
-	dot.Size = UDim2.new(0, 6, 0, 6)
-	dot.Position = UDim2.new(0, 12, 0.5, -3)
-	dot.BackgroundColor3 = DETECTOR_CONFIG.COLORS.Clean
-	dot.BorderSizePixel = 0
-	dot.Parent = entry
-	AddCorner(dot, 3)
-	MakeLabel(entry, UDim2.new(0.55, 0, 1, 0), UDim2.new(0, 26, 0, 0), det[1], Enum.Font.GothamBold, 11, "TextPrimary", Enum.TextXAlignment.Left)
-	MakeLabel(entry, UDim2.new(0.45, -12, 1, 0), UDim2.new(0.55, 0, 0, 0), det[2], Enum.Font.Gotham, 10, "TextSecondary", Enum.TextXAlignment.Right)
-end
-
-local versionSection = createCreditsSection("VERSION & PRIORITY SORTING INFO", 6)
-local versionInfo = {
-	{"Version", "V95 Integrated (Detector 2.1.0)"},
-	{"Priority 1 (Top)", "Confirmed Hackers (Fly, Fling, TP, NoClip, Jump)"},
-	{"Priority 2 (Second)", "Hackers with Abnormal Speeds"},
-	{"Priority 3 (Third)", "Normal & Whitelisted Players"},
-	{"Shortcut Keybind", "F4 (Toggle Detector Scanner)"}
-}
-for i, info in ipairs(versionInfo) do
-	local entry = CreateCard(versionSection, 28, i)
-	MakeLabel(entry, UDim2.new(0.45, 0, 1, 0), UDim2.new(0, 12, 0, 0), info[1], Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
-	MakeLabel(entry, UDim2.new(0.55, -12, 1, 0), UDim2.new(0.45, 0, 0, 0), info[2], Enum.Font.GothamSemibold, 11, "TextPrimary", Enum.TextXAlignment.Right)
-end
+	local function createCreditEntry(name, role, desc, order, parent)
+		local entry = CreateCard(parent, (desc and desc ~= "") and 54 or 42, order)
+		MakeLabel(entry, UDim2.new(1, -24, 0, 18), UDim2.new(0, 12, 0, 5), name, Enum.Font.GothamBold, 13, "TextPrimary", Enum.TextXAlignment.Left)
+		MakeLabel(entry, UDim2.new(1, -24, 0, 14), UDim2.new(0, 12, 0, 22), role, Enum.Font.GothamBold, 11, "Accent", Enum.TextXAlignment.Left)
+		if desc and desc ~= "" then
+			MakeLabel(entry, UDim2.new(1, -24, 0, 13), UDim2.new(0, 12, 0, 36), desc, Enum.Font.Gotham, 10, "TextSecondary", Enum.TextXAlignment.Left)
+		end
+		return entry
+	end
+	local LogoSection = CreateCard(CreditsContainer, 106, 1)
+	local logoHeader = Instance.new("ImageLabel")
+	logoHeader.Size = UDim2.new(0, 50, 0, 50)
+	logoHeader.Position = UDim2.new(0.5, -25, 0, 10)
+	logoHeader.BackgroundTransparency = 1
+	logoHeader.Image = DETECTOR_ICONS.logo
+	logoHeader.ScaleType = Enum.ScaleType.Fit
+	logoHeader.Parent = LogoSection
+	MakeLabel(LogoSection, UDim2.new(1, 0, 0, 20), UDim2.new(0, 0, 0, 64), "SCRIPTER & HACKER DETECTOR V2.1", Enum.Font.GothamBold, 14, "TextPrimary", Enum.TextXAlignment.Center)
+	MakeLabel(LogoSection, UDim2.new(1, 0, 0, 16), UDim2.new(0, 0, 0, 84), "Integrated into T.R Scripts V95 - Theme-Synced Visual Engine", Enum.Font.Gotham, 11, "TextSecondary", Enum.TextXAlignment.Center)
+	local devSection = createCreditsSection("DEVELOPMENT TEAM", 2)
+	createCreditEntry("Claude (Anthropic)", "Lead Scripter", "Original architecture & core detection systems", 1, devSection)
+	createCreditEntry("Bah", "Developer", "Modifications, UI improvements & enhancements", 2, devSection)
+	createCreditEntry("ZERETET", "Developer", "Made Improvements", 3, devSection)
+	local detectSection = createCreditsSection("DETECTION SYSTEMS", 4)
+	for i, det in ipairs({
+		{"Speed Hack Detection", "Velocity & WalkSpeed abnormal analysis"},
+		{"Fly Hack Detection", "Air time & Y-axis monitoring"},
+		{"Noclip Detection", "Collision raycast verification"},
+		{"Teleport Detection", "Position delta analysis"},
+		{"Fling Detection", "Total velocity threshold"},
+		{"Abnormal Jump Detection", "Jump power multiplier check"},
+		{"Sample Averaging", "Reduces false positives"}
+	}) do
+		local entry = CreateCard(detectSection, 30, i)
+		local dot = Instance.new("Frame")
+		dot.Size = UDim2.new(0, 6, 0, 6)
+		dot.Position = UDim2.new(0, 12, 0.5, -3)
+		dot.BackgroundColor3 = DETECTOR_CONFIG.COLORS.Clean
+		dot.BorderSizePixel = 0
+		dot.Parent = entry
+		AddCorner(dot, 3)
+		MakeLabel(entry, UDim2.new(0.55, 0, 1, 0), UDim2.new(0, 26, 0, 0), det[1], Enum.Font.GothamBold, 11, "TextPrimary", Enum.TextXAlignment.Left)
+		MakeLabel(entry, UDim2.new(0.45, -12, 1, 0), UDim2.new(0.55, 0, 0, 0), det[2], Enum.Font.Gotham, 10, "TextSecondary", Enum.TextXAlignment.Right)
+	end
+	local versionSection = createCreditsSection("VERSION & PRIORITY SORTING INFO", 6)
+	for i, info in ipairs({
+		{"Version", "V95 Integrated (Detector 2.1.0)"},
+		{"Priority 1 (Top)", "Confirmed Hackers (Fly, Fling, TP, NoClip, Jump)"},
+		{"Priority 2 (Second)", "Hackers with Abnormal Speeds"},
+		{"Priority 3 (Third)", "Normal & Whitelisted Players"},
+		{"Shortcut Keybind", "F4 (Toggle Detector Scanner)"}
+	}) do
+		local entry = CreateCard(versionSection, 28, i)
+		MakeLabel(entry, UDim2.new(0.45, 0, 1, 0), UDim2.new(0, 12, 0, 0), info[1], Enum.Font.GothamBold, 11, "TextSecondary", Enum.TextXAlignment.Left)
+		MakeLabel(entry, UDim2.new(0.55, -12, 1, 0), UDim2.new(0.45, 0, 0, 0), info[2], Enum.Font.GothamSemibold, 11, "TextPrimary", Enum.TextXAlignment.Right)
+	end
+end)()
 
 local function RefreshDetectorControlVisuals()
 	local theme = GetTheme()
@@ -2035,6 +2315,7 @@ local function viewPlayer(playerName)
 		if notifications then notifications:show("View Failed", "Humanoid not found.", DETECTOR_CONFIG.COLORS.Warning, DETECTOR_ICONS.off) end
 		return
 	end
+	if isFreecamActive and isFreecamActive() then stopFreecam() end
 	currentViewTarget = playerName
 	SpectatingTarget = targetPlr
 	if workspace.CurrentCamera then workspace.CurrentCamera.CameraSubject = hum end
@@ -2700,7 +2981,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 end))
 
 RefreshAllDetectorThemes()
-end
+end)()
 --==============================================================================
 -- 15. CORE HEARTBEAT, STEPPED, PLAYER LIST & INPUT ENGINES
 --==============================================================================
@@ -2817,18 +3098,41 @@ table.insert(Connections, RunService.Stepped:Connect(function() local char = pla
 			myRoot.AssemblyAngularVelocity = V3_ZERO myRoot.AssemblyLinearVelocity = V3_ZERO
 			myRoot.RotVelocity = V3_ZERO myRoot.Velocity = V3_ZERO if lastSafeAntiFlingCF then
 				myRoot.CFrame = lastSafeAntiFlingCF end else lastSafeAntiFlingCF = myRoot.CFrame end end
-	if Config.NoclipEnabled or Config.CountdownBypass then for _, child in ipairs(char:GetChildren()) do
-			if Config.NoclipEnabled and child:IsA("BasePart") and child.CanCollide then child.CanCollide = false
-			end if Config.CountdownBypass then if child:IsA("BasePart") and child.Anchored then
-					child.Anchored = false elseif FREEZE_TAG_NAMES[child.Name] then pcall(child.Destroy, child) end end
-		end end end))
+	if Config.NoclipEnabled then
+		genv._TR_WasNoclip = true
+		for _, child in ipairs(char:GetDescendants()) do
+			if child:IsA("BasePart") and child.CanCollide and child.Name ~= "TR_FakeFloor" then
+				child.CanCollide = false
+			end
+		end
+	elseif genv._TR_WasNoclip then
+		genv._TR_WasNoclip = false
+		if RestoreCharacterCollision then RestoreCharacterCollision(char) end
+	end
+	if Config.CountdownBypass then
+		for _, child in ipairs(char:GetChildren()) do
+			if child:IsA("BasePart") and child.Anchored then
+				child.Anchored = false
+			elseif FREEZE_TAG_NAMES[child.Name] then
+				pcall(child.Destroy, child)
+			end
+		end
+	end end))
 -- Consolidated Master Heartbeat Loop (Flight + Anti-Fling Recovery + Systems Monitor)
 table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 	camera = workspace.CurrentCamera local char = player.Character
 	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	-- 0. Freecam Character Anchor (Keeps character stationary while moving Freecam with WASD)
+	if isFreecamActive and isFreecamActive() and char and root and hum then
+		local fcCF = GetFreecamAnchorCF and GetFreecamAnchorCF(root.CFrame)
+		if fcCF then root.CFrame = fcCF end
+		root.AssemblyLinearVelocity = V3_ZERO
+		root.AssemblyAngularVelocity = V3_ZERO
+		if hum.WalkSpeed ~= 0 then hum.WalkSpeed = 0 end
+	end
 	-- 1. Flight Subsystem (Isolated from WalkSpeed/JumpPower so FlySpeed never shoots to 1000)
-	if isFlightActive() and char and root and hum and camera then
+	if isFlightActive() and not (isFreecamActive and isFreecamActive()) and char and root and hum and camera then
 		hum:ChangeState(Enum.HumanoidStateType.Running)
 		if hum.WalkSpeed ~= 16 then hum.WalkSpeed = 16 end
 		if not freezePosition then freezePosition = root.Position end
@@ -2899,8 +3203,8 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 			root.CFrame = teleportBypassTargetCF lastSafeAntiFlingCF = teleportBypassTargetCF end end
 	-- 8. Master Utility WalkSpeed & JumpPower (Paused while flying so it never interferes with Flight)
 	if RecordNaturalHumanoidDefaults then RecordNaturalHumanoidDefaults(hum) end
-	if Config.MasterUtilityEnabled and not FlingActive and not isFlightActive() then
-		local targetWS = math.clamp(tonumber(Config.WalkSpeed) or 16, 1, 500)
+	if Config.MasterUtilityEnabled and not FlingActive and not isFlightActive() and not (isFreecamActive and isFreecamActive()) then
+		local targetWS = math.clamp(tonumber(Config.WalkSpeed) or 18, 1, 500)
 		local targetJP = math.clamp(tonumber(Config.JumpPower) or 50, 1, 500)
 		local g = workspace.Gravity or 196.2
 		local targetJH = (targetJP * targetJP) / (2 * g)
@@ -2909,9 +3213,18 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 			if naturalUseJumpPower then hum.JumpPower = math.min(targetJP, naturalJumpPower) else hum.JumpHeight = math.min(targetJH, naturalJumpHeight) end
 			local extraSpeed = math.max(0, targetWS - naturalWalkSpeed)
 			if extraSpeed > 0 and hum.MoveDirection.Magnitude > 0 then
-				local nextPos = root.Position + (hum.MoveDirection.Unit * (extraSpeed * 0.016))
-				root.CFrame = CFrame.new(nextPos) * (root.CFrame - root.CFrame.Position)
-				lastSafeAntiFlingCF = root.CFrame end
+				local stepDist = extraSpeed * 0.016
+				local dirUnit = hum.MoveDirection.Unit
+				local blocked = false
+				if not Config.NoclipEnabled and reusableWallcheckParams then
+					local wallHit = workspace:Raycast(root.Position, dirUnit * (stepDist + 2.0), reusableWallcheckParams)
+					if wallHit and wallHit.Instance and wallHit.Instance.CanCollide then blocked = true end
+				end
+				if not blocked then
+					local nextPos = root.Position + (dirUnit * stepDist)
+					root.CFrame = CFrame.new(nextPos) * (root.CFrame - root.CFrame.Position)
+					lastSafeAntiFlingCF = root.CFrame
+				end end
 			if targetJP > naturalJumpPower and UserInputService:IsKeyDown(Enum.KeyCode.Space) and hum.FloorMaterial ~= Enum.Material.Air then
 				local v = root.AssemblyLinearVelocity
 				root.AssemblyLinearVelocity = Vector3.new(v.X, targetJP, v.Z) end else
@@ -2950,6 +3263,8 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 		if silentKey ~= "None" and keyName == silentKey then toggleSilentAim() return end
 		if input.KeyCode == Enum.KeyCode.E and ActiveTabName == "Items & Prompts" then
 			if pullNearbyItems then pullNearbyItems() end return end
+		local fcKey = Config.FreecamKeybind or "C"
+		if fcKey ~= "None" and keyName == fcKey and toggleFreecamState then toggleFreecamState() return end
 		local flyKey = savedConfig.Settings.FlyKeybind or "E"
 		if flyKey ~= "None" and keyName == flyKey and masterFlightEnabled then toggleFlightState() return end
 		for _, wp in ipairs(savedConfig.Waypoints) do
@@ -2963,7 +3278,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 -- Close, Re-Execution Cleanup & Full Shutdown Handler
 local function ShutdownInstance(immediate) if isClosingPermanently then return end
 	FlingActive, aimbotEnabled, silentAimEnabled, currentTarget, masterFlightEnabled = false, false, false, nil, false genv._TR_SilentAimActive = false
-	genv.TR_AntiCheatActive = false pcall(StopFling) pcall(stopFlight)
+	genv.TR_AntiCheatActive = false pcall(StopFling) pcall(stopFlight) if stopFreecam then pcall(stopFreecam) end
 	for _, thread in ipairs(RunningExecutorThreads) do pcall(function() task.cancel(thread) end) end
 	RunningExecutorThreads = {} pcall(function() SetMouseLockState(false) end)
 	SpectatingTarget, ActiveKeybindCaptureCallback = nil, nil
@@ -2993,7 +3308,7 @@ local function ShutdownInstance(immediate) if isClosingPermanently then return e
 		isClosingPermanently = true pcall(function() if ScreenGui then ScreenGui:Destroy() end end)
 		DeepCleanup() else SetMenuVisible(false, function()
 			pcall(function() if ScreenGui then ScreenGui:Destroy() end end) DeepCleanup() end)
-		isClosingPermanently = true task.delay(0.36, function()
+		isClosingPermanently = true task.delay(0.42, function()
 			pcall(function() if ScreenGui then ScreenGui:Destroy() end end) DeepCleanup() end) end end
 genv.TRScripts_ActiveShutdown = ShutdownInstance CloseBtn.MouseButton1Click:Connect(function()
 	if genv.TRScripts_ActiveShutdown == ShutdownInstance then genv.TRScripts_ActiveShutdown = nil end
@@ -3014,3 +3329,5 @@ genv.TRHub = { ScreenGui = ScreenGui, MainFrame = MainFrame, Tabs = Tabs, Config
 for _, addonFile in ipairs({ "TRScripts_Part2.lua", "TRScripts_Part3.lua", "TRScripts_Addons.lua" }) do
 	pcall(function() if SafeIsFile(addonFile) then local src = SafeReadFile(addonFile)
 			if src and #src > 0 then local fn = SafeLoadstring(src) if fn then task.spawn(fn) end end end end) end
+
+end)()
