@@ -144,7 +144,7 @@ local U = utf8.char local E = { Bolt    = U(0x26A1), Save    = U(0x1F4BE), Check
 --==============================================================================
 -- 1. ENVIRONMENT & DEEP CLEANUP ENGINE
 --==============================================================================
-local PlayerGui = player:WaitForChild("PlayerGui") local Connections = {}
+local PlayerGui = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 5) local Connections = {}
 if genv.TRScripts_ScreenGui then pcall(function() genv.TRScripts_ScreenGui:Destroy() end)
 	genv.TRScripts_ScreenGui = nil end if type(genv.TRScripts_ActiveShutdown) == "function" then
 	pcall(genv.TRScripts_ActiveShutdown, true) genv.TRScripts_ActiveShutdown = nil end
@@ -490,7 +490,9 @@ local Tabs = {} local ActiveTabName = nil local function CreateTab(tabName, icon
 			data.Button.BackgroundTransparency = (name == ActiveTabName) and 0.02 or 0.2 end end
 	table.insert(ThemeObjects.CustomCallbacks, RefreshTabVisuals)
 	TabBtn.MouseButton1Click:Connect(function() ActiveTabName = tabName
-		for name, data in pairs(Tabs) do data.Page.Visible = (name == tabName) end RefreshTabVisuals() end)
+		for name, data in pairs(Tabs) do data.Page.Visible = (name == tabName) end RefreshTabVisuals()
+		if tabName == "Player Radar" and genv._TR_RefreshRadar then pcall(genv._TR_RefreshRadar)
+		elseif tabName == "Target Fling" and genv._TR_RefreshFling then pcall(genv._TR_RefreshFling) end end)
 	if order == 1 then ActiveTabName = tabName Page.Visible = true RefreshTabVisuals() end return Page end
 local function CreateSectionHeader(parent, title, order) local Header = Instance.new("TextLabel")
 	Header.LayoutOrder = order Header.Size = UDim2.new(1, 0, 0, 24) Header.BackgroundTransparency = 1
@@ -840,8 +842,19 @@ RadarContainer.Size = UDim2.new(1, 0, 0, 0) RadarContainer.AutomaticSize = Enum.
 RadarContainer.BackgroundTransparency = 1 RadarContainer.Parent = Tab3_Radar
 local RadarLayout = Instance.new("UIListLayout") RadarLayout.Padding = UDim.new(0, 6)
 RadarLayout.SortOrder = Enum.SortOrder.LayoutOrder RadarLayout.Parent = RadarContainer
-SpectatingTarget = nil IsFriend = function(targetPlayer) local success, result = pcall(function()
-		return player:IsFriendsWith(targetPlayer.UserId) end) return success and result end
+local FriendCache = {}
+SpectatingTarget = nil IsFriend = function(targetPlayer)
+	if not targetPlayer then return false end
+	local uid = targetPlayer.UserId
+	if not uid or uid <= 0 then return false end
+	if FriendCache[uid] ~= nil then return FriendCache[uid] end
+	FriendCache[uid] = false
+	task.spawn(function()
+		local ok, res = pcall(function() return player:IsFriendsWith(uid) end)
+		if ok and res == true then FriendCache[uid] = true end
+	end)
+	return FriendCache[uid]
+end
 RefreshRadarCards = function() for _, child in ipairs(RadarContainer:GetChildren()) do
 		if child:IsA("Frame") then child:Destroy() end end local myRoot = GetRootPart()
 	local myPos = myRoot and myRoot.Position or Vector3.new(0, 0, 0) local entries = {}
@@ -886,12 +899,12 @@ RefreshRadarCards = function() for _, child in ipairs(RadarContainer:GetChildren
 					if hum then workspace.CurrentCamera.CameraSubject = hum end else SpectatingTarget = plr
 					local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
 					if hum then workspace.CurrentCamera.CameraSubject = hum end end RefreshRadarCards() end) end) end
-end end)()
+end genv._TR_RefreshRadar = RefreshRadarCards pcall(RefreshRadarCards) end)()
 --==============================================================================
 -- 10. TAB 4: ITEMS & INSTANT PROXIMITY PROMPTS (ITEM VACUUM / MAGNET)
 --==============================================================================
 local pullNearbyItems
-;(function()
+pcall(function()
 CreateSectionHeader(Tab4_Items, "Proximity Prompt Instant Interaction Engine", 1)
 local function ApplyInstantPrompts() if not Config.InstantPrompt then return end pcall(function()
 		for _, desc in ipairs(workspace:GetDescendants()) do
@@ -1257,7 +1270,7 @@ end)()
 -- 12. TAB 6: MULTI-TARGET FLING HUB (WITH NETWORK PAUSE BYPASS)
 --==============================================================================
 local SelectedTargets, FlingActive = {}, false local RefreshFlingPlayerList, StopFling
-;(function()
+pcall(function()
 CreateSectionHeader(Tab6_Instant, E.Bolt .. " Multi-Target Fling Hub (With Auto Network Pause Bypass)", 1)
 CreateToggle(Tab6_Instant, "Auto-Select Players When New Player Joins (Friends Excluded)", Config.AutoSelectFling == true, 2, function(state)
 	Config.AutoSelectFling = state SaveConfig(false) end)
@@ -1329,9 +1342,9 @@ local function Message(title, text, timeLen) pcall(function() StarterGui:SetCore
 			Title = title, Text = text, Duration = timeLen or 3 }) end) end local function SkidFling(TargetPlayer)
 	local Character = player.Character
 	local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
-	local RootPart = Humanoid and Humanoid.RootPart local TCharacter = TargetPlayer.Character
+	local RootPart = (Humanoid and Humanoid.RootPart) or GetRootPart(Character) local TCharacter = TargetPlayer.Character
 	if not TCharacter then return end local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
-	local TRootPart = THumanoid and THumanoid.RootPart local THead = TCharacter:FindFirstChild("Head")
+	local TRootPart = (THumanoid and THumanoid.RootPart) or GetRootPart(TCharacter) local THead = TCharacter:FindFirstChild("Head")
 	local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
 	local Handle = Accessory and Accessory:FindFirstChild("Handle")
 	if Character and Humanoid and RootPart then if RootPart.Velocity.Magnitude < 50 then
@@ -1374,7 +1387,7 @@ local function Message(title, text, timeLen) pcall(function() StarterGui:SetCore
 	Message("T.R Fling", "Fling engine stopped.", 2) end startButton.MouseButton1Click:Connect(StartFling)
 stopButton.MouseButton1Click:Connect(StopFling)
 selectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(true) end)
-deselectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(false) end) end)()
+deselectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(false) end) genv._TR_RefreshFling = RefreshFlingPlayerList pcall(RefreshFlingPlayerList) end)()
 --==============================================================================
 -- 13. TAB 7: AIMBOT, ESP, CAMERA & LIGHTING VISUALS
 --==============================================================================
@@ -1395,7 +1408,7 @@ local reusableWallcheckParams, updateWallcheckFilter
 local IsTeammate, getTargetPart, isTargetVisible, removePlayerAdornments, clearAllAdornments, worldToScreenDistance
 local RefreshESPHighlights, updateAllAdornments, findBestTarget, getSilentTargetPart
 local aimbotStatusLabel, silentAimStatusLabel, excludeFrame, updateExcludeCount, rebuildExcludeList, toggleAimbot, toggleSilentAim, ApplyCameraMode, triggerAutoShoot
-;(function()
+pcall(function()
 	local MAX_DISTANCE = 500
 	local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
 	local espShowTeammates = (Config.ESPShowTeammates == true)
@@ -1466,7 +1479,7 @@ local aimbotStatusLabel, silentAimStatusLabel, excludeFrame, updateExcludeCount,
 		local vp, onScreen = cam:WorldToViewportPoint(worldPos)
 		if not onScreen or vp.Z <= 0 then return nil, false, math.huge end local vs = cam.ViewportSize
 		local dx = vp.X - (vs.X * 0.5) local dy = vp.Y - (vs.Y * 0.5)
-		return vp, true, math.sqrt(dx * dx + dy * dy) end 	local highlightsCache = {}
+		return vp, true, math.sqrt(dx * dx + dy * dy) end local highlightsCache = {}
 	local function removePlayerHighlight(plr)
 		local hl = highlightsCache[plr]
 		if hl then
@@ -1652,33 +1665,35 @@ local aimbotStatusLabel, silentAimStatusLabel, excludeFrame, updateExcludeCount,
 	end
 	genv._TR_GetSilentTargetPart = getSilentTargetPart
 	HookRivalsUtilityRaycast = function()
-		pcall(function()
-			local rep = game:GetService("ReplicatedStorage")
-			local modules = rep and rep:FindFirstChild("Modules")
-			local utilMod = modules and modules:FindFirstChild("Utility")
-			if utilMod and utilMod:IsA("ModuleScript") then
-				local okReq, utilTbl = pcall(require, utilMod)
-				if okReq and type(utilTbl) == "table" and type(utilTbl.Raycast) == "function" and not utilTbl._TR_SilentHooked then
-					utilTbl._TR_SilentHooked = true
-					local oldUtilRaycast = utilTbl.Raycast
-					utilTbl.Raycast = function(...)
-						local args = { ... }
-						if genv._TR_SilentAimActive and genv._TR_GetSilentTargetPart then
-							local tPart = genv._TR_GetSilentTargetPart()
-							if tPart and tPart.Parent then
-								if typeof and typeof(args[3]) == "Vector3" then
-									args[3] = tPart.Position
+		if not hookmetamethod then return end
+		task.spawn(function()
+			pcall(function()
+				local rep = game:GetService("ReplicatedStorage")
+				local modules = rep and rep:FindFirstChild("Modules")
+				local utilMod = modules and modules:FindFirstChild("Utility")
+				if utilMod and utilMod:IsA("ModuleScript") then
+					local okReq, utilTbl = pcall(require, utilMod)
+					if okReq and type(utilTbl) == "table" and type(utilTbl.Raycast) == "function" and not utilTbl._TR_SilentHooked then
+						utilTbl._TR_SilentHooked = true
+						local oldUtilRaycast = utilTbl.Raycast
+						utilTbl.Raycast = function(...)
+							local args = { ... }
+							if genv._TR_SilentAimActive and genv._TR_GetSilentTargetPart then
+								local tPart = genv._TR_GetSilentTargetPart()
+								if tPart and tPart.Parent then
+									if typeof and typeof(args[3]) == "Vector3" then
+										args[3] = tPart.Position
+									end
 								end
 							end
+							return oldUtilRaycast(unpack(args))
 						end
-						return oldUtilRaycast(unpack(args))
 					end
 				end
-			end
+			end)
 		end)
 	end
-	HookRivalsUtilityRaycast()
-	task.delay(3, HookRivalsUtilityRaycast)
+	task.delay(1.5, HookRivalsUtilityRaycast)
 	-- Section 1: Aimbot Engine & Keybind Controls (matching Tab 5 FlightEngineCard layout!)
 	CreateSectionHeader(Tab7_Visuals, "Aimbot Engine & Keybind Controls", 1)
 	local AimbotEngineCard = CreateCard(Tab7_Visuals, 92, 2)
@@ -1885,7 +1900,7 @@ local aimbotStatusLabel, silentAimStatusLabel, excludeFrame, updateExcludeCount,
 		PBtn.MouseButton1Click:Connect(function() Config.LockedTime = preset.Value if preset.Value ~= nil then
 				pcall(function() Lighting.ClockTime = preset.Value end) else
 				pcall(function() Lighting.ClockTime = DefaultLighting.ClockTime end) end SaveConfig(false) end) end
-end)()
+end)
 --==============================================================================
 -- 14. TAB 8: MULTI-TAB SCRIPT EXECUTOR
 --==============================================================================
