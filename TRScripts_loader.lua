@@ -79,7 +79,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V96.json", "TRScripts_Config_V95.json", "TRScripts_Config_V94.json",
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
-		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
+		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotKeyMode = "Toggle", TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
 		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
@@ -1967,7 +1967,9 @@ deselectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(false) e
 local ESP_UPDATE_INTERVAL, LERP_ALPHA = 0.25, 0.72
 local FOV_RADIUS = tonumber(Config.AimbotFOVRadius) or 200
 local fovCircleEnabled = (Config.AimbotFOVCircleEnabled ~= false)
-local aimbotEnabled = (Config.AimbotEnabled == true)
+local aimbotKeyMode = (Config.AimbotKeyMode == "Burst1s") and "Burst1s" or "Toggle"
+local aimbotBurstEndTime = 0
+local aimbotEnabled = (aimbotKeyMode == "Toggle") and (Config.AimbotEnabled == true) or false
 local targetAimbotEnabled = (Config.TargetAimbotEnabled == true)
 if aimbotEnabled and targetAimbotEnabled then targetAimbotEnabled = false Config.TargetAimbotEnabled = false end
 local specificTargetPlayer = nil
@@ -1990,7 +1992,7 @@ local reusableWallcheckParams, updateWallcheckFilter
 local IsTeammate, getTargetPart, isTargetVisible, removePlayerAdornments, clearAllAdornments, worldToScreenDistance
 local RefreshESPHighlights, updateAllAdornments, findBestTarget
 local aimbotStatusLabel, autoShootStatusLbl, aimbotAutoShootStatusLbl, excludeFrame, updateExcludeCount, rebuildExcludeList
-local toggleAimbot, toggleTargetAimbot, toggleAutoShoot, toggleAimbotAutoShoot, triggerAutoShoot, StopAutoShootFiring
+local toggleAimbot, toggleTargetAimbot, toggleAutoShoot, toggleAimbotAutoShoot, triggerAutoShoot, StopAutoShootFiring, RefreshAimbotVisuals
 local function SetupTab7()
 	local guiFovStroke
 	guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
@@ -2466,7 +2468,7 @@ local function SetupTab7()
 							bestDist, bestPlr = sDist, plr end end end end end return bestPlr end
 	-- Section 1: Dual Aimbot Engines ([Q] vs [T]) & Dual Auto Shoot Modes ([Z] Normal vs [V] Aimbot-Lock)
 	CreateSectionHeader(Tab7_Visuals, "1. Normal Aimbot [Q] & 2. Target Player Aimbot [T] (Mutually Exclusive)", 1)
-	local AimbotEngineCard = CreateCard(Tab7_Visuals, 94, 2)
+	local AimbotEngineCard = CreateCard(Tab7_Visuals, 132, 2)
 	local aimbotToggleBtn = Instance.new("TextButton", AimbotEngineCard)
 	aimbotToggleBtn.Size = UDim2.new(0.5, -14, 0, 34) aimbotToggleBtn.Position = UDim2.new(0, 10, 0, 10)
 	aimbotToggleBtn.Font = Enum.Font.GothamBold aimbotToggleBtn.TextSize = 12
@@ -2478,16 +2480,26 @@ local function SetupTab7()
 	aimbotStatusLabel.Text = "Status: Idle"
 	RegisterThemeObject(aimbotStatusLabel, "BackgroundColor3", "PanelBg")
 	RegisterThemeObject(aimbotStatusLabel, "TextColor3", "TextPrimary") AddCorner(aimbotStatusLabel, 6)
-	local aimKeyBindLabel = MakeLabel(AimbotEngineCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 52), "Normal Aim Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+	local aimKeyBindLabel = MakeLabel(AimbotEngineCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 50), "Normal Aim Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
 	aimKeyBindLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	local aimbotKeyAssignBtn = MakeButton(AimbotEngineCard, UDim2.new(0.36, -6, 0, 30), UDim2.new(0.38, 4, 0, 52), "Bind Key: [Q]", "PanelBg", 11)
+	local aimbotKeyAssignBtn = MakeButton(AimbotEngineCard, UDim2.new(0.36, -6, 0, 30), UDim2.new(0.38, 4, 0, 50), "Bind Key: [Q]", "PanelBg", 11)
 	local aimbotKeyDeleteBtn = Instance.new("TextButton", AimbotEngineCard)
 	aimbotKeyDeleteBtn.Size = UDim2.new(0.26, -14, 0, 30)
-	aimbotKeyDeleteBtn.Position = UDim2.new(0.74, 4, 0, 52)
+	aimbotKeyDeleteBtn.Position = UDim2.new(0.74, 4, 0, 50)
 	aimbotKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
 	aimbotKeyDeleteBtn.Font = Enum.Font.GothamBold aimbotKeyDeleteBtn.TextSize = 11
 	aimbotKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	aimbotKeyDeleteBtn.Text = E.Trash .. " Delete" AddCorner(aimbotKeyDeleteBtn, 6)
+	local aimbotBurstModeBtn = Instance.new("TextButton", AimbotEngineCard)
+	aimbotBurstModeBtn.Size = UDim2.new(0.5, -14, 0, 32)
+	aimbotBurstModeBtn.Position = UDim2.new(0, 10, 0, 88)
+	aimbotBurstModeBtn.Font = Enum.Font.GothamBold aimbotBurstModeBtn.TextSize = 11
+	aimbotBurstModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255) AddCorner(aimbotBurstModeBtn, 6)
+	local aimbotToggleModeBtn = Instance.new("TextButton", AimbotEngineCard)
+	aimbotToggleModeBtn.Size = UDim2.new(0.5, -14, 0, 32)
+	aimbotToggleModeBtn.Position = UDim2.new(0.5, 4, 0, 88)
+	aimbotToggleModeBtn.Font = Enum.Font.GothamBold aimbotToggleModeBtn.TextSize = 11
+	aimbotToggleModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255) AddCorner(aimbotToggleModeBtn, 6)
 
 	-- Card 2: Target Specific Player Aimbot (Locks ONLY onto Selected Player)
 	local TargetAimbotCard = CreateCard(Tab7_Visuals, 94, 3)
@@ -2619,11 +2631,21 @@ local function SetupTab7()
 	RegisterThemeObject(excludeList, "ScrollBarImageColor3", "Accent")
 	Instance.new("UIListLayout", excludeList).Padding = UDim.new(0, 5)
 
-	local function RefreshAimbotVisuals()
+	RefreshAimbotVisuals = function()
+		local theme = GetTheme()
 		local k = Config.AimbotKeybind or "Q"
 		aimbotKeyAssignBtn.Text = "Bind Key: [" .. k .. "]"
-		aimbotToggleBtn.Text = "Normal Aimbot [" .. k .. "]: " .. (aimbotEnabled and "ON" or "OFF")
+		local isBurst = (aimbotKeyMode == "Burst1s")
+		if isBurst then
+			aimbotToggleBtn.Text = "1s Aimbot [" .. k .. "]: " .. (aimbotEnabled and "ON (1s)" or "OFF")
+		else
+			aimbotToggleBtn.Text = "Toggle Aimbot [" .. k .. "]: " .. (aimbotEnabled and "ON" or "OFF")
+		end
 		aimbotToggleBtn.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(185, 52, 52)
+		aimbotBurstModeBtn.Text = (isBurst and "[ON] " or "") .. "Option 1: 1s Button [" .. k .. "]"
+		aimbotBurstModeBtn.BackgroundColor3 = isBurst and theme.Accent or theme.PanelBg
+		aimbotToggleModeBtn.Text = (not isBurst and "[ON] " or "") .. "Option 2: Toggle [" .. k .. "]"
+		aimbotToggleModeBtn.BackgroundColor3 = (not isBurst) and theme.Accent or theme.PanelBg
 
 		local tk = Config.TargetAimbotKeybind or "T"
 		targetAimKeyAssignBtn.Text = "Bind Key: [" .. tk .. "]"
@@ -2743,24 +2765,76 @@ local function SetupTab7()
 		excludeList.CanvasSize = UDim2.new(0, 0, 0, totalH) updateExcludeCount() end
 	table.insert(ThemeObjects.CustomCallbacks, function() if excludeFrame.Visible then rebuildExcludeList() end end)
 
-	-- Mutual Exclusivity: Normal Aimbot [Q] vs Target Player Aimbot [T]
+	-- Mutual Exclusivity: Normal Aimbot [Q] (Option 1: 1s Button vs Option 2: Toggle) vs Target Player Aimbot [T]
 	toggleAimbot = function()
-		aimbotEnabled = not aimbotEnabled
-		Config.AimbotEnabled = aimbotEnabled
-		savedConfig.Settings.AimbotEnabled = aimbotEnabled
-		if aimbotEnabled and targetAimbotEnabled then
-			targetAimbotEnabled = false
-			Config.TargetAimbotEnabled = false
-			savedConfig.Settings.TargetAimbotEnabled = false
+		if aimbotKeyMode == "Burst1s" then
+			aimbotEnabled = true
+			Config.AimbotEnabled = true
+			savedConfig.Settings.AimbotEnabled = false
+			aimbotBurstEndTime = os.clock() + 1.0
+			if targetAimbotEnabled then
+				targetAimbotEnabled = false
+				Config.TargetAimbotEnabled = false
+				savedConfig.Settings.TargetAimbotEnabled = false
+			end
+			currentTarget = nil
+			RefreshAimbotVisuals()
+			task.delay(1.01, function()
+				if aimbotEnabled and aimbotKeyMode == "Burst1s" and aimbotBurstEndTime > 0 and os.clock() >= aimbotBurstEndTime then
+					aimbotEnabled = false
+					Config.AimbotEnabled = false
+					aimbotBurstEndTime = 0
+					currentTarget = nil
+					if aimbotAutoShootEnabled and StopAutoShootFiring then StopAutoShootFiring() end
+					if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle (1s Ended)" end
+					RefreshAimbotVisuals()
+				end
+			end)
+		else
+			aimbotBurstEndTime = 0
+			aimbotEnabled = not aimbotEnabled
+			Config.AimbotEnabled = aimbotEnabled
+			savedConfig.Settings.AimbotEnabled = aimbotEnabled
+			if aimbotEnabled and targetAimbotEnabled then
+				targetAimbotEnabled = false
+				Config.TargetAimbotEnabled = false
+				savedConfig.Settings.TargetAimbotEnabled = false
+			end
+			currentTarget = nil
+			if not (aimbotEnabled or targetAimbotEnabled) then
+				if aimbotAutoShootEnabled then StopAutoShootFiring() end
+				if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end
+			end
+			RefreshAimbotVisuals()
+			SaveConfig(false)
 		end
-		currentTarget = nil
-		if not (aimbotEnabled or targetAimbotEnabled) then
-			if aimbotAutoShootEnabled then StopAutoShootFiring() end
-			if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end
+	end
+
+	aimbotBurstModeBtn.MouseButton1Click:Connect(function()
+		aimbotKeyMode = "Burst1s"
+		Config.AimbotKeyMode = "Burst1s"
+		savedConfig.Settings.AimbotKeyMode = "Burst1s"
+		aimbotBurstEndTime = 0
+		if aimbotEnabled then
+			aimbotEnabled = false
+			Config.AimbotEnabled = false
+			savedConfig.Settings.AimbotEnabled = false
+			currentTarget = nil
+			if aimbotAutoShootEnabled and StopAutoShootFiring then StopAutoShootFiring() end
+			if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle (1s Mode)" end
 		end
 		RefreshAimbotVisuals()
 		SaveConfig(false)
-	end
+	end)
+
+	aimbotToggleModeBtn.MouseButton1Click:Connect(function()
+		aimbotKeyMode = "Toggle"
+		Config.AimbotKeyMode = "Toggle"
+		savedConfig.Settings.AimbotKeyMode = "Toggle"
+		aimbotBurstEndTime = 0
+		RefreshAimbotVisuals()
+		SaveConfig(false)
+	end)
 
 	toggleTargetAimbot = function()
 		targetAimbotEnabled = not targetAimbotEnabled
@@ -4399,6 +4473,15 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 	if not cam then
 		if StopAutoShootFiring then StopAutoShootFiring() end
 		return
+	end
+	if aimbotEnabled and aimbotKeyMode == "Burst1s" and aimbotBurstEndTime > 0 and os.clock() >= aimbotBurstEndTime then
+		aimbotEnabled = false
+		Config.AimbotEnabled = false
+		aimbotBurstEndTime = 0
+		currentTarget = nil
+		if aimbotAutoShootEnabled and StopAutoShootFiring then StopAutoShootFiring() end
+		setAimbotStatusText("Status: Idle (1s Ended)")
+		if RefreshAimbotVisuals then pcall(RefreshAimbotVisuals) end
 	end
 	local anyAimbotActive = (aimbotEnabled or targetAimbotEnabled) and not isClosingPermanently
 	local showFov = aimbotEnabled and fovCircleEnabled and not isClosingPermanently
