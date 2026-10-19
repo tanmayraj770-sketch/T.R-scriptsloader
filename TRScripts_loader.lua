@@ -2010,26 +2010,30 @@ local function SetupTab7()
 		end
 		local char = player.Character if not char then StopAutoShootFiring() return end
 		local hum = char:FindFirstChildOfClass("Humanoid") if not hum or hum.Health <= 0 then StopAutoShootFiring() return end
-		if not isAutoShootingActive then
-			isAutoShootingActive = true
-			if mouse1press then pcall(mouse1press) end
-		end
+
 		local nowT = os.clock()
 		local shootDelay = math.clamp((tonumber(Config.AutoShootDelayMs) or 45) / 1000, 0.02, 0.5)
-		if nowT - lastAutoShoot >= shootDelay then
-			lastAutoShoot = nowT
-			local tool = char:FindFirstChildOfClass("Tool")
-			if tool then pcall(function() tool:Activate() end) end
-			if mouse1click then
-				pcall(mouse1click)
-			elseif VirtualUser then
-				pcall(function()
-					if VirtualUser.CaptureController and VirtualUser.ClickButton1 then
-						VirtualUser:CaptureController()
-						VirtualUser:ClickButton1(Vector2.new(0, 0))
-					end
-				end)
-			end
+		if nowT - lastAutoShoot < shootDelay then return end
+		lastAutoShoot = nowT
+
+		local tool = char:FindFirstChildOfClass("Tool")
+		if tool then pcall(function() tool:Activate() end) end
+		if mouse1click then
+			pcall(mouse1click)
+		elseif mouse1press and mouse1release then
+			pcall(mouse1press)
+			task.delay(0.016, function() pcall(mouse1release) end)
+		elseif mouse1press then
+			pcall(mouse1press)
+			isAutoShootingActive = true
+		end
+		if VirtualUser then
+			pcall(function()
+				if VirtualUser.CaptureController and VirtualUser.ClickButton1 then
+					VirtualUser:CaptureController()
+					VirtualUser:ClickButton1(Vector2.zero)
+				end
+			end)
 		end
 	end
 	if false then
@@ -4251,29 +4255,30 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 			cam.CFrame = strongLock and goalCF or cam.CFrame:Lerp(goalCF, LERP_ALPHA)
 			setAimbotStatusText("Locked: " .. tostring(currentTarget.DisplayName))
 
-			-- Auto Shoot: Fires ONLY when locked onto visible Player Head, stops immediately behind wall!
-			if autoShootEnabled and headPart and isTargetVisible(headPart, tChar) then
-				local hp = headPart.Position
+			-- Auto Shoot: Fires when locked onto target (Head/Body), stops immediately behind walls!
+			local shootTargetPart = (aimPartName == "Head" and headPart) or targetPart
+			if autoShootEnabled and shootTargetPart and isTargetVisible(shootTargetPart, tChar) then
+				local sp = shootTargetPart.Position
 				local cp = cam.CFrame.Position
-				local dx, dy, dz = hp.X - cp.X, hp.Y - cp.Y, hp.Z - cp.Z
+				local dx, dy, dz = sp.X - cp.X, sp.Y - cp.Y, sp.Z - cp.Z
 				local distSq = dx * dx + dy * dy + dz * dz
-				local isHeadLocked = false
-				if distSq > 0.0001 then
+				local canAutoShoot = strongLock
+				if not canAutoShoot and distSq > 0.0001 then
 					local invDist = 1 / math.sqrt(distSq)
 					local lv = cam.CFrame.LookVector
 					local dot = (dx * lv.X + dy * lv.Y + dz * lv.Z) * invDist
-					isHeadLocked = (dot >= 0.985)
+					canAutoShoot = (dot >= 0.94)
 				end
-				if isHeadLocked then
+				if canAutoShoot then
 					setAutoShootStatusText("FIRING -> " .. tostring(currentTarget.DisplayName))
 					if triggerAutoShoot then triggerAutoShoot() end
 				else
 					if StopAutoShootFiring then StopAutoShootFiring() end
-					setAutoShootStatusText("Aligning Head...")
+					setAutoShootStatusText("Aligning Target...")
 				end
 			else
 				if StopAutoShootFiring then StopAutoShootFiring() end
-				setAutoShootStatusText(autoShootEnabled and "Stopped (Wall / No Head)" or "Auto Shoot: OFF")
+				setAutoShootStatusText(autoShootEnabled and "Stopped (Target Behind Wall)" or "Auto Shoot: OFF")
 			end
 		else
 			currentTarget = nil
@@ -4288,7 +4293,7 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		else
 			setAimbotStatusText("Status: Searching...")
 		end
-		setAutoShootStatusText(autoShootEnabled and "Auto Shoot: Waiting Head Lock" or "Auto Shoot: OFF")
+		setAutoShootStatusText(autoShootEnabled and "Auto Shoot: Ready (Wait Lock)" or "Auto Shoot: OFF")
 	end
 end)
 local lastAirTimeReset = 0 local function landHum(h) h:ChangeState(Enum.HumanoidStateType.Landed)
