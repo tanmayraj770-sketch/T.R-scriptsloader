@@ -79,7 +79,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V96.json", "TRScripts_Config_V95.json", "TRScripts_Config_V94.json",
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
-		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AutoShootDelayMs = 45, ESPHealthBars = true, AimbotFOVRadius = 200,
+		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
 		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
@@ -501,7 +501,10 @@ local function FindKeybindConflict(keyName, ignoreSlot)
 		return "Target Player Aimbot"
 	end
 	if ignoreSlot ~= "AutoShoot" and (Config.AutoShootKeybind or "Z") == keyName then
-		return "Auto Shoot"
+		return "Normal Auto Shoot"
+	end
+	if ignoreSlot ~= "AimbotAutoShoot" and (Config.AimbotAutoShootKeybind or "V") == keyName then
+		return "Aimbot Auto Shoot"
 	end
 	if type(savedConfig.Waypoints) == "table" then
 		for idx, wp in ipairs(savedConfig.Waypoints) do
@@ -1970,8 +1973,12 @@ if aimbotEnabled and targetAimbotEnabled then targetAimbotEnabled = false Config
 local specificTargetPlayer = nil
 local strongLock = (Config.StrongLock ~= false)
 local aimbotTeamCheck = (Config.AimbotTeamCheck ~= false)
-local autoShootEnabled = (Config.AutoShootEnabled == true) local lastAutoShoot = 0
+local autoShootEnabled = (Config.AutoShootEnabled == true)
+local aimbotAutoShootEnabled = (Config.AimbotAutoShootEnabled == true)
+if autoShootEnabled and aimbotAutoShootEnabled then aimbotAutoShootEnabled = false Config.AimbotAutoShootEnabled = false end
+local lastAutoShoot = 0
 local isAutoShootingActive = false
+local lastMiddleDotTarget, lastMiddleDotTime = nil, 0
 local currentTarget, lastEspUpdate = nil, 0
 local excludedPlayers, characterCache, adornmentsCache = {}, {}, {}
 local guiFovCircle = nil
@@ -1982,8 +1989,8 @@ local aimPartName = Config.AimPartName or "Head"
 local reusableWallcheckParams, updateWallcheckFilter
 local IsTeammate, getTargetPart, isTargetVisible, removePlayerAdornments, clearAllAdornments, worldToScreenDistance
 local RefreshESPHighlights, updateAllAdornments, findBestTarget
-local aimbotStatusLabel, autoShootStatusLbl, excludeFrame, updateExcludeCount, rebuildExcludeList
-local toggleAimbot, toggleTargetAimbot, toggleAutoShoot, triggerAutoShoot, StopAutoShootFiring
+local aimbotStatusLabel, autoShootStatusLbl, aimbotAutoShootStatusLbl, excludeFrame, updateExcludeCount, rebuildExcludeList
+local toggleAimbot, toggleTargetAimbot, toggleAutoShoot, toggleAimbotAutoShoot, triggerAutoShoot, StopAutoShootFiring
 local function SetupTab7()
 	local guiFovStroke
 	guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
@@ -2004,7 +2011,11 @@ local function SetupTab7()
 		end
 	end
 	triggerAutoShoot = function()
-		if not autoShootEnabled then
+		if not (autoShootEnabled or aimbotAutoShootEnabled) then
+			StopAutoShootFiring()
+			return
+		end
+		if aimbotAutoShootEnabled and not ((aimbotEnabled or targetAimbotEnabled) and currentTarget ~= nil) then
 			StopAutoShootFiring()
 			return
 		end
@@ -2020,15 +2031,21 @@ local function SetupTab7()
 		end
 		if not isAutoShootingActive then
 			isAutoShootingActive = true
-			if mouse1press then pcall(mouse1press) end
+			if mouse1press then
+				pcall(mouse1press)
+			elseif mouse1click then
+				pcall(mouse1click)
+			end
 		end
 		local nowT = os.clock()
-		local shootDelay = math.clamp((tonumber(Config.AutoShootDelayMs) or 45) / 1000, 0.02, 0.5)
+		local shootDelay = math.clamp((tonumber(Config.AutoShootDelayMs) or 25) / 1000, 0.02, 0.5)
 		if nowT - lastAutoShoot >= shootDelay then
 			lastAutoShoot = nowT
 			local tool = char:FindFirstChildOfClass("Tool")
 			if tool then pcall(function() tool:Activate() end) end
-			if mouse1click then
+			if mouse1press then
+				pcall(mouse1press)
+			elseif mouse1click then
 				pcall(mouse1click)
 			elseif VirtualUser then
 				pcall(function()
@@ -2039,9 +2056,6 @@ local function SetupTab7()
 						VirtualUser:ClickButton1(Vector2.new(vs.X * 0.5, vs.Y * 0.5))
 					end
 				end)
-			end
-			if mouse1press and isAutoShootingActive then
-				pcall(mouse1press)
 			end
 		end
 	end
@@ -2450,7 +2464,7 @@ local function SetupTab7()
 						local _, onScreen, sDist = worldToScreenDistance(pp)
 						if onScreen and sDist <= bestDist and isTargetVisible(part, char) then
 							bestDist, bestPlr = sDist, plr end end end end end return bestPlr end
-	-- Section 1: Dual Aimbot Engines (Normal [Q] vs Target Player [T]) & Head-Locked Auto Shoot [Z]
+	-- Section 1: Dual Aimbot Engines ([Q] vs [T]) & Dual Auto Shoot Modes ([Z] Normal vs [V] Aimbot-Lock)
 	CreateSectionHeader(Tab7_Visuals, "1. Normal Aimbot [Q] & 2. Target Player Aimbot [T] (Mutually Exclusive)", 1)
 	local AimbotEngineCard = CreateCard(Tab7_Visuals, 94, 2)
 	local aimbotToggleBtn = Instance.new("TextButton", AimbotEngineCard)
@@ -2511,7 +2525,7 @@ local function SetupTab7()
 	RegisterThemeObject(targetScrollList, "ScrollBarImageColor3", "Accent")
 	Instance.new("UIListLayout", targetScrollList).Padding = UDim.new(0, 5)
 
-	-- Card 3: Auto Shoot (Fires ONLY when locked onto visible Player Head, stops behind walls)
+	-- Card 3: Mode 1 - Normal Auto Shoot [Z] (Works Anytime Screen Middle Dot is on a Player)
 	local AutoShootCard = CreateCard(Tab7_Visuals, 94, 4)
 	local autoShootToggleBtn = Instance.new("TextButton", AutoShootCard)
 	autoShootToggleBtn.Size = UDim2.new(0.5, -14, 0, 34) autoShootToggleBtn.Position = UDim2.new(0, 10, 0, 10)
@@ -2521,10 +2535,10 @@ local function SetupTab7()
 	autoShootStatusLbl.Size = UDim2.new(0.5, -14, 0, 34)
 	autoShootStatusLbl.Position = UDim2.new(0.5, 4, 0, 10) autoShootStatusLbl.BackgroundTransparency = 0.15
 	autoShootStatusLbl.Font = Enum.Font.GothamSemibold autoShootStatusLbl.TextSize = 11
-	autoShootStatusLbl.Text = "Auto Shoot: OFF"
+	autoShootStatusLbl.Text = "Normal Shoot: OFF"
 	RegisterThemeObject(autoShootStatusLbl, "BackgroundColor3", "PanelBg")
 	RegisterThemeObject(autoShootStatusLbl, "TextColor3", "TextPrimary") AddCorner(autoShootStatusLbl, 6)
-	local asKeyLabel = MakeLabel(AutoShootCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 52), "Auto Shoot Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+	local asKeyLabel = MakeLabel(AutoShootCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 52), "Normal Shoot Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
 	asKeyLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	local autoShootKeyAssignBtn = MakeButton(AutoShootCard, UDim2.new(0.36, -6, 0, 30), UDim2.new(0.38, 4, 0, 52), "Bind Key: [Z]", "PanelBg", 11)
 	local autoShootKeyDeleteBtn = Instance.new("TextButton", AutoShootCard)
@@ -2535,32 +2549,56 @@ local function SetupTab7()
 	autoShootKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	autoShootKeyDeleteBtn.Text = E.Trash .. " Delete" AddCorner(autoShootKeyDeleteBtn, 6)
 
+	-- Card 4: Mode 2 - Aimbot-Lock Auto Shoot [V] (Fires ONLY When Aimbot [Q]/[T] is ON & Locked onto a Player)
+	local AimbotAutoShootCard = CreateCard(Tab7_Visuals, 94, 5)
+	local aimbotAutoShootToggleBtn = Instance.new("TextButton", AimbotAutoShootCard)
+	aimbotAutoShootToggleBtn.Size = UDim2.new(0.5, -14, 0, 34) aimbotAutoShootToggleBtn.Position = UDim2.new(0, 10, 0, 10)
+	aimbotAutoShootToggleBtn.Font = Enum.Font.GothamBold aimbotAutoShootToggleBtn.TextSize = 12
+	aimbotAutoShootToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255) AddCorner(aimbotAutoShootToggleBtn, 6)
+	aimbotAutoShootStatusLbl = Instance.new("TextLabel", AimbotAutoShootCard)
+	aimbotAutoShootStatusLbl.Size = UDim2.new(0.5, -14, 0, 34)
+	aimbotAutoShootStatusLbl.Position = UDim2.new(0.5, 4, 0, 10) aimbotAutoShootStatusLbl.BackgroundTransparency = 0.15
+	aimbotAutoShootStatusLbl.Font = Enum.Font.GothamSemibold aimbotAutoShootStatusLbl.TextSize = 11
+	aimbotAutoShootStatusLbl.Text = "Aimbot Shoot: OFF"
+	RegisterThemeObject(aimbotAutoShootStatusLbl, "BackgroundColor3", "PanelBg")
+	RegisterThemeObject(aimbotAutoShootStatusLbl, "TextColor3", "TextPrimary") AddCorner(aimbotAutoShootStatusLbl, 6)
+	local aasKeyLabel = MakeLabel(AimbotAutoShootCard, UDim2.new(0.38, -10, 0, 30), UDim2.new(0, 10, 0, 52), "Aimbot Shoot Key:", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+	aasKeyLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	local aimbotAutoShootKeyAssignBtn = MakeButton(AimbotAutoShootCard, UDim2.new(0.36, -6, 0, 30), UDim2.new(0.38, 4, 0, 52), "Bind Key: [V]", "PanelBg", 11)
+	local aimbotAutoShootKeyDeleteBtn = Instance.new("TextButton", AimbotAutoShootCard)
+	aimbotAutoShootKeyDeleteBtn.Size = UDim2.new(0.26, -14, 0, 30)
+	aimbotAutoShootKeyDeleteBtn.Position = UDim2.new(0.74, 4, 0, 52)
+	aimbotAutoShootKeyDeleteBtn.BackgroundColor3 = Color3.fromRGB(165, 38, 55)
+	aimbotAutoShootKeyDeleteBtn.Font = Enum.Font.GothamBold aimbotAutoShootKeyDeleteBtn.TextSize = 11
+	aimbotAutoShootKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	aimbotAutoShootKeyDeleteBtn.Text = E.Trash .. " Delete" AddCorner(aimbotAutoShootKeyDeleteBtn, 6)
+
 	-- Slider for Triggerbot Fire Rate & Burst Delay (20ms to 500ms)
-	CreateSlider(Tab7_Visuals, "Triggerbot Fire Rate / Burst Delay (ms)", 20, 500, tonumber(Config.AutoShootDelayMs) or 45, 5, function(val)
+	CreateSlider(Tab7_Visuals, "Triggerbot Fire Rate / Burst Delay (ms)", 20, 500, tonumber(Config.AutoShootDelayMs) or 25, 6, function(val)
 		Config.AutoShootDelayMs = val
 		savedConfig.Settings.AutoShootDelayMs = val
 		SaveConfig(false)
 	end)
 
-	CreateToggle(Tab7_Visuals, "Aggressive Strong Lock Mode (Instant Snap + Velocity Lead)", strongLock, 6, function(state)
+	CreateToggle(Tab7_Visuals, "Aggressive Strong Lock Mode (Instant Snap + Velocity Lead)", strongLock, 7, function(state)
 		strongLock = state Config.StrongLock = state if not strongLock then currentTarget = nil end
 		SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "Raycast Wallcheck (Stop Aim & Auto-Shoot Behind Walls)", wallcheckEnabled, 7, function(state)
+	CreateToggle(Tab7_Visuals, "Raycast Wallcheck (Stop Aim & Auto-Shoot Behind Walls)", wallcheckEnabled, 8, function(state)
 		wallcheckEnabled = state Config.WallcheckEnabled = state SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "Only Aim at Enemies (Ignore Teammates in Normal Aimbot)", aimbotTeamCheck, 8, function(state)
+	CreateToggle(Tab7_Visuals, "Only Aim at Enemies (Ignore Teammates in Normal Aimbot)", aimbotTeamCheck, 9, function(state)
 		aimbotTeamCheck = state Config.AimbotTeamCheck = state
 		if state and currentTarget and IsTeammate(currentTarget) then currentTarget = nil end SaveConfig(false)
 	end)
-	CreateToggle(Tab7_Visuals, "Show Aimbot FOV Circle (Turn OFF for Full-Screen Aimbot)", fovCircleEnabled, 9, function(state)
+	CreateToggle(Tab7_Visuals, "Show Aimbot FOV Circle (Turn OFF for Full-Screen Aimbot)", fovCircleEnabled, 10, function(state)
 		fovCircleEnabled = state Config.AimbotFOVCircleEnabled = state currentTarget = nil
 		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
 	-- Neat V95 CreateSlider for Aimbot FOV Circle Radius
 	local FovSliderObj local fovBox
-	FovSliderObj = CreateSlider(Tab7_Visuals, "Aimbot FOV Circle Radius (px)", 20, 800, FOV_RADIUS, 10, function(val)
+	FovSliderObj = CreateSlider(Tab7_Visuals, "Aimbot FOV Circle Radius (px)", 20, 800, FOV_RADIUS, 11, function(val)
 		FOV_RADIUS = val Config.AimbotFOVRadius = val if fovBox then fovBox.Text = tostring(val) end
 		SyncAimbotFovCircleVisibility() SaveConfig(false) end)
 	-- Target Part, Manual FOV Input & Player Exclusion Row Card
-	local AimbotExtraCard = CreateCard(Tab7_Visuals, 48, 11)
+	local AimbotExtraCard = CreateCard(Tab7_Visuals, 48, 12)
 	local aimPartBtn = MakeButton(AimbotExtraCard, UDim2.new(0.34, -10, 0, 32), UDim2.new(0, 10, 0, 8), "", "Accent", 12)
 	fovBox = Instance.new("TextBox", AimbotExtraCard) fovBox.Size = UDim2.new(0.32, -8, 0, 32)
 	fovBox.Position = UDim2.new(0.34, 4, 0, 8)
@@ -2600,13 +2638,28 @@ local function SetupTab7()
 
 		local ask = Config.AutoShootKeybind or "Z"
 		autoShootKeyAssignBtn.Text = "Bind Key: [" .. ask .. "]"
-		autoShootToggleBtn.Text = "Auto Shoot [" .. ask .. "]: " .. (autoShootEnabled and "ON" or "OFF")
+		autoShootToggleBtn.Text = "Normal Auto Shoot [" .. ask .. "]: " .. (autoShootEnabled and "ON" or "OFF")
 		autoShootToggleBtn.BackgroundColor3 = autoShootEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(185, 52, 52)
 		if not autoShootEnabled then
-			StopAutoShootFiring()
-			if autoShootStatusLbl then autoShootStatusLbl.Text = "Auto Shoot: OFF" end
+			if autoShootStatusLbl then autoShootStatusLbl.Text = "Normal Shoot: OFF" end
+		else
+			if autoShootStatusLbl then autoShootStatusLbl.Text = "Ready (Point at Player)" end
+		end
+
+		local aask = Config.AimbotAutoShootKeybind or "V"
+		aimbotAutoShootKeyAssignBtn.Text = "Bind Key: [" .. aask .. "]"
+		aimbotAutoShootToggleBtn.Text = "Aimbot Auto Shoot [" .. aask .. "]: " .. (aimbotAutoShootEnabled and "ON" or "OFF")
+		aimbotAutoShootToggleBtn.BackgroundColor3 = aimbotAutoShootEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(185, 52, 52)
+		if not aimbotAutoShootEnabled then
+			if aimbotAutoShootStatusLbl then aimbotAutoShootStatusLbl.Text = "Aimbot Shoot: OFF" end
 		elseif not (aimbotEnabled or targetAimbotEnabled) then
-			if autoShootStatusLbl then autoShootStatusLbl.Text = "Auto Shoot: Ready (Point at Player)" end
+			if aimbotAutoShootStatusLbl then aimbotAutoShootStatusLbl.Text = "Standby (Need Aimbot [Q])" end
+		else
+			if aimbotAutoShootStatusLbl then aimbotAutoShootStatusLbl.Text = "Waiting Aimbot Lock..." end
+		end
+
+		if not (autoShootEnabled or aimbotAutoShootEnabled) then
+			StopAutoShootFiring()
 		end
 
 		aimPartBtn.Text = (aimPartName == "Head") and "Aim Part: Head" or "Aim Part: Body"
@@ -2702,7 +2755,7 @@ local function SetupTab7()
 		end
 		currentTarget = nil
 		if not (aimbotEnabled or targetAimbotEnabled) then
-			StopAutoShootFiring()
+			if aimbotAutoShootEnabled then StopAutoShootFiring() end
 			if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end
 		end
 		RefreshAimbotVisuals()
@@ -2720,18 +2773,40 @@ local function SetupTab7()
 		end
 		currentTarget = nil
 		if not (aimbotEnabled or targetAimbotEnabled) then
-			StopAutoShootFiring()
+			if aimbotAutoShootEnabled then StopAutoShootFiring() end
 			if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle" end
 		end
 		RefreshAimbotVisuals()
 		SaveConfig(false)
 	end
 
+	-- Mutual Exclusivity: Normal Auto Shoot [Z] vs Aimbot-Lock Auto Shoot [V]
 	toggleAutoShoot = function()
 		autoShootEnabled = not autoShootEnabled
 		Config.AutoShootEnabled = autoShootEnabled
 		savedConfig.Settings.AutoShootEnabled = autoShootEnabled
-		if not autoShootEnabled then
+		if autoShootEnabled and aimbotAutoShootEnabled then
+			aimbotAutoShootEnabled = false
+			Config.AimbotAutoShootEnabled = false
+			savedConfig.Settings.AimbotAutoShootEnabled = false
+		end
+		if not (autoShootEnabled or aimbotAutoShootEnabled) then
+			StopAutoShootFiring()
+		end
+		RefreshAimbotVisuals()
+		SaveConfig(false)
+	end
+
+	toggleAimbotAutoShoot = function()
+		aimbotAutoShootEnabled = not aimbotAutoShootEnabled
+		Config.AimbotAutoShootEnabled = aimbotAutoShootEnabled
+		savedConfig.Settings.AimbotAutoShootEnabled = aimbotAutoShootEnabled
+		if aimbotAutoShootEnabled and autoShootEnabled then
+			autoShootEnabled = false
+			Config.AutoShootEnabled = false
+			savedConfig.Settings.AutoShootEnabled = false
+		end
+		if not (autoShootEnabled or aimbotAutoShootEnabled) or not (aimbotEnabled or targetAimbotEnabled) then
 			StopAutoShootFiring()
 		end
 		RefreshAimbotVisuals()
@@ -2741,6 +2816,7 @@ local function SetupTab7()
 	aimbotToggleBtn.MouseButton1Click:Connect(toggleAimbot)
 	targetAimbotToggleBtn.MouseButton1Click:Connect(toggleTargetAimbot)
 	autoShootToggleBtn.MouseButton1Click:Connect(toggleAutoShoot)
+	aimbotAutoShootToggleBtn.MouseButton1Click:Connect(toggleAimbotAutoShoot)
 
 	aimPartBtn.MouseButton1Click:Connect(function()
 		aimPartName = (aimPartName == "Head") and "HumanoidRootPart" or "Head" Config.AimPartName = aimPartName
@@ -2763,6 +2839,12 @@ local function SetupTab7()
 			TryAssignUniqueKeybind(k, "AutoShoot", function(val) Config.AutoShootKeybind = val; savedConfig.Settings.AutoShootKeybind = val end, RefreshAimbotVisuals, autoShootKeyAssignBtn) end end)
 	autoShootKeyDeleteBtn.MouseButton1Click:Connect(function() Config.AutoShootKeybind = "None"; savedConfig.Settings.AutoShootKeybind = "None"
 		ActiveKeybindCaptureCallback = nil RefreshAimbotVisuals() SaveConfig(false) end)
+
+	aimbotAutoShootKeyAssignBtn.MouseButton1Click:Connect(function()
+		aimbotAutoShootKeyAssignBtn.Text = "[Key / Del]" ActiveKeybindCaptureCallback = function(k)
+			TryAssignUniqueKeybind(k, "AimbotAutoShoot", function(val) Config.AimbotAutoShootKeybind = val; savedConfig.Settings.AimbotAutoShootKeybind = val end, RefreshAimbotVisuals, aimbotAutoShootKeyAssignBtn) end end)
+	aimbotAutoShootKeyDeleteBtn.MouseButton1Click:Connect(function() Config.AimbotAutoShootKeybind = "None"; savedConfig.Settings.AimbotAutoShootKeybind = "None"
+		ActiveKeybindCaptureCallback = nil RefreshAimbotVisuals() SaveConfig(false) end)
 	fovBox.FocusLost:Connect(function() local v = tonumber(fovBox.Text) if v then
 			FOV_RADIUS = math.clamp(math.floor(v + 0.5), 20, 800) Config.AimbotFOVRadius = FOV_RADIUS
 			if FovSliderObj then FovSliderObj.SetValue(FOV_RADIUS) end SyncAimbotFovCircleVisibility()
@@ -2771,8 +2853,8 @@ local function SetupTab7()
 		AimbotExtraCard.Size = excludeFrame.Visible and UDim2.new(1, 0, 0, 186) or UDim2.new(1, 0, 0, 48)
 		if excludeFrame.Visible then rebuildExcludeList() end end) RefreshAimbotVisuals()
 	-- Section 2: Player ESP Highlights, 3D Boxes & Health/Shield Bars
-	CreateSectionHeader(Tab7_Visuals, "Player ESP (Chams, 3D Boxes & Health/Shield Bars)", 12)
-	CreateToggle(Tab7_Visuals, "Player Highlight & 3D Box ESP (Chams + Hitbox Boxes)", Config.ESPEnabled, 13, function(state)
+	CreateSectionHeader(Tab7_Visuals, "Player ESP (Chams, 3D Boxes & Health/Shield Bars)", 13)
+	CreateToggle(Tab7_Visuals, "Player Highlight & 3D Box ESP (Chams + Hitbox Boxes)", Config.ESPEnabled, 14, function(state)
 		Config.ESPEnabled = state
 		if not state then
 			clearAllHighlights()
@@ -2783,7 +2865,7 @@ local function SetupTab7()
 		RefreshESPHighlights()
 		SaveConfig(false)
 	end)
-	CreateToggle(Tab7_Visuals, "Player Health & Shield Bars (Visible At Any Distance | Works Without ESP)", Config.ESPHealthBars ~= false, 14, function(state)
+	CreateToggle(Tab7_Visuals, "Player Health & Shield Bars (Visible At Any Distance | Works Without ESP)", Config.ESPHealthBars ~= false, 15, function(state)
 		Config.ESPHealthBars = state
 		if not state and not Config.ESPEnabled then
 			clearAllAdornments()
@@ -2792,14 +2874,14 @@ local function SetupTab7()
 		end
 		SaveConfig(false)
 	end)
-	CreateToggle(Tab7_Visuals, "Turn On ESP for Teammates (Show Teammate Highlights & Boxes)", espShowTeammates, 15, function(state)
+	CreateToggle(Tab7_Visuals, "Turn On ESP for Teammates (Show Teammate Highlights & Boxes)", espShowTeammates, 16, function(state)
 		espShowTeammates = state Config.ESPShowTeammates = state RefreshESPHighlights() updateAllAdornments()
 		SaveConfig(false) end)
 	-- Section 3: Camera Field of View & Perspective
-	CreateSectionHeader(Tab7_Visuals, "Camera Field of View & Perspective", 16)
-	CreateSlider(Tab7_Visuals, "Camera Field of View (FOV)", 30, 120, Config.FOV, 17, function(val)
+	CreateSectionHeader(Tab7_Visuals, "Camera Field of View & Perspective", 17)
+	CreateSlider(Tab7_Visuals, "Camera Field of View (FOV)", 30, 120, Config.FOV, 18, function(val)
 		Config.FOV = val pcall(function() workspace.CurrentCamera.FieldOfView = val end) SaveConfig(false) end)
-	local CamModeCard = CreateCard(Tab7_Visuals, 50, 18) local CamModeList = Instance.new("UIListLayout")
+	local CamModeCard = CreateCard(Tab7_Visuals, 50, 19) local CamModeList = Instance.new("UIListLayout")
 	CamModeList.FillDirection = Enum.FillDirection.Horizontal
 	CamModeList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	CamModeList.VerticalAlignment = Enum.VerticalAlignment.Center CamModeList.Padding = UDim.new(0, 8)
@@ -2813,13 +2895,13 @@ local function SetupTab7()
 		local MBtn = MakeButton(CamModeCard, UDim2.new(0, 165, 0, 32), nil, modeName, "AccentDark", 11)
 		MBtn.MouseButton1Click:Connect(function() ApplyCameraMode(modeName) end) end
 	-- Section 4: World Lighting, Fullbright & Time Presets
-	CreateSectionHeader(Tab7_Visuals, "Lighting, Fullbright & Time Presets", 19)
-	CreateToggle(Tab7_Visuals, "Fullbright Lighting Mode (No Shadows + Max Illumination)", Config.FullbrightEnabled, 20, function(state)
+	CreateSectionHeader(Tab7_Visuals, "Lighting, Fullbright & Time Presets", 20)
+	CreateToggle(Tab7_Visuals, "Fullbright Lighting Mode (No Shadows + Max Illumination)", Config.FullbrightEnabled, 21, function(state)
 		Config.FullbrightEnabled = state if not state then pcall(function()
 				Lighting.Brightness = DefaultLighting.Brightness
 				Lighting.GlobalShadows = DefaultLighting.GlobalShadows
 				Lighting.OutdoorAmbient = DefaultLighting.OutdoorAmbient end) end SaveConfig(false) end)
-	local TimeCard = CreateCard(Tab7_Visuals, 50, 21) local TimeList = Instance.new("UIListLayout")
+	local TimeCard = CreateCard(Tab7_Visuals, 50, 22) local TimeList = Instance.new("UIListLayout")
 	TimeList.FillDirection = Enum.FillDirection.Horizontal
 	TimeList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	TimeList.VerticalAlignment = Enum.VerticalAlignment.Center TimeList.Padding = UDim.new(0, 10)
@@ -4235,7 +4317,7 @@ local function checkScreenMiddleDotRay(cam)
 	local lookDir = cam.CFrame.LookVector
 	for _ = 1, 6 do
 		local res = workspace:Raycast(origin, lookDir * 1000, reusableWallcheckParams)
-		if not res or not res.Instance then return nil, nil end
+		if not res or not res.Instance then break end
 		local hit = res.Instance
 		local hitPlr, hitChar = getValidEnemyHitboxFromInstance(hit)
 		if hitPlr then
@@ -4245,16 +4327,35 @@ local function checkScreenMiddleDotRay(cam)
 					local teamAllowed = (not aimbotTeamCheck) or (not IsTeammate(hitPlr))
 					local targetAllowed = (not targetAimbotEnabled) or (not specificTargetPlayer) or (hitPlr == specificTargetPlayer)
 					if teamAllowed and targetAllowed then
+						lastMiddleDotTarget = hitPlr
+						lastMiddleDotTime = os.clock()
 						return hitPlr, hitChar
 					end
 				end
 			end
-			return nil, nil
+			break
 		end
 		if not hit.CanCollide or hit.Transparency >= 0.85 or hit:FindFirstAncestorOfClass("Accessory") or hit:FindFirstAncestorOfClass("Tool") then
 			origin = res.Position + (lookDir * 0.2)
 		else
-			return nil, nil
+			break
+		end
+	end
+	-- 150ms anti-stutter hold grace so recoil vibration never interrupts rapid Assault Rifle spray
+	if isAutoShootingActive and lastMiddleDotTarget and lastMiddleDotTarget.Parent and (os.clock() - lastMiddleDotTime <= 0.15) then
+		local gChar = GetCharacterFromPlayer(lastMiddleDotTarget)
+		local gHum = gChar and gChar:FindFirstChildOfClass("Humanoid")
+		local gPart = getTargetPart(gChar)
+		if gChar and gHum and gHum.Health > 0 and gPart and isTargetVisible(gPart, gChar) then
+			local gp = gPart.Position
+			local dx, dy, dz = gp.X - origin.X, gp.Y - origin.Y, gp.Z - origin.Z
+			local dSq = dx * dx + dy * dy + dz * dz
+			if dSq > 0.0001 then
+				local dot = (dx * lookDir.X + dy * lookDir.Y + dz * lookDir.Z) / math.sqrt(dSq)
+				if dot >= 0.95 then
+					return lastMiddleDotTarget, gChar
+				end
+			end
 		end
 	end
 	return nil, nil
@@ -4284,9 +4385,14 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 			aimbotStatusLabel.Text = txt
 		end
 	end
-	local function setAutoShootStatusText(txt)
+	local function setNormalShootStatusText(txt)
 		if autoShootStatusLbl and autoShootStatusLbl.Text ~= txt then
 			autoShootStatusLbl.Text = txt
+		end
+	end
+	local function setAimbotShootStatusText(txt)
+		if aimbotAutoShootStatusLbl and aimbotAutoShootStatusLbl.Text ~= txt then
+			aimbotAutoShootStatusLbl.Text = txt
 		end
 	end
 	local cam = workspace.CurrentCamera
@@ -4305,27 +4411,30 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		lastShiftLook = nil
 	end
 
-	-- Mode A: Aimbot is OFF -> Standalone Screen Middle Dot Triggerbot
+	-- When Aimbot [Q]/[T] is OFF:
+	-- Mode 2 (Aimbot-Lock Auto Shoot [V]) is strictly inactive; Mode 1 (Normal Auto Shoot [Z]) works via Screen Middle Dot!
 	if not anyAimbotActive then
 		currentTarget = nil
 		setAimbotStatusText("Status: Idle")
+		setAimbotShootStatusText(aimbotAutoShootEnabled and "Standby (Need Aimbot [Q])" or "Aimbot Shoot: OFF")
 		if autoShootEnabled and not isClosingPermanently then
 			local hitPlr = checkScreenMiddleDotRay(cam)
 			if hitPlr then
-				setAutoShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
+				setNormalShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
 				if triggerAutoShoot then triggerAutoShoot() end
 			else
 				if StopAutoShootFiring then StopAutoShootFiring() end
-				setAutoShootStatusText("Auto Shoot: Ready (Point at Player)")
+				setNormalShootStatusText("Ready (Point at Player)")
 			end
 		else
 			if StopAutoShootFiring then StopAutoShootFiring() end
-			setAutoShootStatusText("Auto Shoot: OFF")
+			setNormalShootStatusText("Normal Shoot: OFF")
 		end
 		return
 	end
 
-	-- Mode B: Aimbot is ON -> 1. Target Resolution: Mode 2 (Target Specific Player ONLY) vs Mode 1 (Normal Aimbot)
+	-- When Aimbot [Q]/[T] is ON:
+	-- 1. Target Resolution: Mode 2 (Target Specific Player ONLY) vs Mode 1 (Normal Aimbot)
 	if targetAimbotEnabled then
 		local tPlr = specificTargetPlayer
 		if tPlr and tPlr.Parent and tPlr ~= LocalPlayer then
@@ -4357,7 +4466,7 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		end
 	end
 
-	-- 2. Ultra-Aggressive Lock & Sniper/Rifle Precision Head-Locked Auto Shoot
+	-- 2. Ultra-Aggressive Lock & Dual Auto Shoot Execution
 	if currentTarget then
 		local tChar = GetCharacterFromPlayer(currentTarget)
 		local targetPart = getTargetPart(tChar)
@@ -4371,18 +4480,21 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 			cam.CFrame = strongLock and goalCF or cam.CFrame:Lerp(goalCF, LERP_ALPHA)
 			setAimbotStatusText("Locked: " .. tostring(currentTarget.DisplayName))
 
-			-- Auto Shoot: Fires when locked onto visible Head/TargetPart (or when screen middle dot is directly on player)
-			if autoShootEnabled and lockPart and isTargetVisible(lockPart, tChar) then
+			if (autoShootEnabled or aimbotAutoShootEnabled) and lockPart and isTargetVisible(lockPart, tChar) then
 				local hp = lockPart.Position
 				local cp = cam.CFrame.Position
+				if strongLock then
+					cam.CFrame = CFrame.new(cp, hp)
+				end
 				local dx, dy, dz = hp.X - cp.X, hp.Y - cp.Y, hp.Z - cp.Z
 				local distSq = dx * dx + dy * dy + dz * dz
-				local isHeadLocked = false
-				if distSq > 0.0001 then
+				local isHeadLocked = strongLock
+				if not isHeadLocked and distSq > 0.0001 then
 					local invDist = 1 / math.sqrt(distSq)
 					local lv = cam.CFrame.LookVector
 					local dot = (dx * lv.X + dy * lv.Y + dz * lv.Z) * invDist
-					isHeadLocked = (dot >= 0.985)
+					local minDot = isAutoShootingActive and 0.92 or 0.985
+					isHeadLocked = (dot >= minDot)
 				end
 				if not isHeadLocked then
 					local rayHitPlr = checkScreenMiddleDotRay(cam)
@@ -4391,24 +4503,26 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 					end
 				end
 				if isHeadLocked then
-					if strongLock then
-						cam.CFrame = CFrame.new(cp, hp)
-					end
-					setAutoShootStatusText("FIRING -> " .. tostring(currentTarget.DisplayName))
+					local fireTxt = "FIRING -> " .. tostring(currentTarget.DisplayName)
+					setNormalShootStatusText(autoShootEnabled and fireTxt or "Normal Shoot: OFF")
+					setAimbotShootStatusText(aimbotAutoShootEnabled and fireTxt or "Aimbot Shoot: OFF")
 					if triggerAutoShoot then triggerAutoShoot() end
 				else
 					if StopAutoShootFiring then StopAutoShootFiring() end
-					setAutoShootStatusText("Aligning Head...")
+					setNormalShootStatusText(autoShootEnabled and "Aligning Target..." or "Normal Shoot: OFF")
+					setAimbotShootStatusText(aimbotAutoShootEnabled and "Aligning Head..." or "Aimbot Shoot: OFF")
 				end
 			else
 				if StopAutoShootFiring then StopAutoShootFiring() end
-				setAutoShootStatusText(autoShootEnabled and "Stopped (Wall / No Head)" or "Auto Shoot: OFF")
+				setNormalShootStatusText(autoShootEnabled and "Stopped (Behind Wall)" or "Normal Shoot: OFF")
+				setAimbotShootStatusText(aimbotAutoShootEnabled and "Stopped (Behind Wall)" or "Aimbot Shoot: OFF")
 			end
 		else
 			currentTarget = nil
 			if StopAutoShootFiring then StopAutoShootFiring() end
 			setAimbotStatusText(targetAimbotEnabled and "Target Behind Wall / Dead" or "Status: Searching...")
-			setAutoShootStatusText(autoShootEnabled and "Stopped (Target Behind Wall)" or "Auto Shoot: OFF")
+			setNormalShootStatusText(autoShootEnabled and "Stopped (Behind Wall)" or "Normal Shoot: OFF")
+			setAimbotShootStatusText(aimbotAutoShootEnabled and "Stopped (Behind Wall)" or "Aimbot Shoot: OFF")
 		end
 	else
 		if targetAimbotEnabled then
@@ -4416,18 +4530,21 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		else
 			setAimbotStatusText("Status: Searching...")
 		end
+		-- Mode 2 (Aimbot-Lock Auto Shoot) MUST NOT fire when Aimbot has no locked target!
+		setAimbotShootStatusText(aimbotAutoShootEnabled and "Waiting Aimbot Lock..." or "Aimbot Shoot: OFF")
+		-- Mode 1 (Normal Auto Shoot) still fires if Screen Middle Dot is on an enemy!
 		if autoShootEnabled and not isClosingPermanently then
 			local hitPlr = checkScreenMiddleDotRay(cam)
 			if hitPlr then
-				setAutoShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
+				setNormalShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
 				if triggerAutoShoot then triggerAutoShoot() end
 			else
 				if StopAutoShootFiring then StopAutoShootFiring() end
-				setAutoShootStatusText("Auto Shoot: Ready (Point at Player)")
+				setNormalShootStatusText("Ready (Point at Player)")
 			end
 		else
 			if StopAutoShootFiring then StopAutoShootFiring() end
-			setAutoShootStatusText("Auto Shoot: OFF")
+			setNormalShootStatusText("Normal Shoot: OFF")
 		end
 	end
 end)
@@ -4580,6 +4697,8 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 		if tAimKey ~= "None" and keyName == tAimKey and toggleTargetAimbot then toggleTargetAimbot() return end
 		local asKey = Config.AutoShootKeybind or "Z"
 		if asKey ~= "None" and keyName == asKey and toggleAutoShoot then toggleAutoShoot() return end
+		local aasKey = Config.AimbotAutoShootKeybind or "V"
+		if aasKey ~= "None" and keyName == aasKey and toggleAimbotAutoShoot then toggleAimbotAutoShoot() return end
 		if input.KeyCode == Enum.KeyCode.E and ActiveTabName == "Items & Prompts" then
 			if pullNearbyItems then pullNearbyItems() end return end
 		local fcKey = Config.FreecamKeybind or "C"
@@ -4594,7 +4713,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 						SafeTeleportToCoords(pos.X, pos.Y + 3, pos.Z) end end end end end end))
 -- Close, Re-Execution Cleanup & Full Shutdown Handler
 local function ShutdownInstance(immediate) if isClosingPermanently then return end
-	FlingActive, aimbotEnabled, targetAimbotEnabled, currentTarget, masterFlightEnabled = false, false, false, nil, false
+	FlingActive, aimbotEnabled, targetAimbotEnabled, autoShootEnabled, aimbotAutoShootEnabled, currentTarget, masterFlightEnabled = false, false, false, false, false, nil, false
 	if StopAutoShootFiring then pcall(StopAutoShootFiring) end
 	if SetStickTarget then pcall(SetStickTarget, nil) end
 	pcall(function() RunService:UnbindFromRenderStep("TR_Stick_Step") end)
