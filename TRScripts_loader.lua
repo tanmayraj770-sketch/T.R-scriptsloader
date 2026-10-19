@@ -79,7 +79,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V96.json", "TRScripts_Config_V95.json", "TRScripts_Config_V94.json",
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
-		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotKeyMode = "Toggle", TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
+		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotKeyMode = "Toggle", AimbotBurstDurationMs = 1000, TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
 		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
@@ -275,26 +275,38 @@ local ContentContainer = Instance.new("Frame") ContentContainer.Size = UDim2.new
 ContentContainer.Position = UDim2.new(0, 200, 0, 50) ContentContainer.BackgroundTransparency = 0.12
 ContentContainer.BorderSizePixel = 0 ContentContainer.Parent = MainFrame
 RegisterThemeObject(ContentContainer, "BackgroundColor3", "PanelBg") AddCorner(ContentContainer, 10)
+local isMobileDevice = UserInputService.TouchEnabled and (not UserInputService.KeyboardEnabled or (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.Y <= 520))
+local MobileFloatBtn = nil
+local function GetTargetWindowScale()
+	if not isMobileDevice then return 1 end
+	local cam = workspace.CurrentCamera
+	local vs = cam and cam.ViewportSize or Vector2.new(800, 400)
+	local scaleX = (vs.X * 0.84) / math.max(CurrentWidth, 560)
+	local scaleY = (vs.Y * 0.80) / math.max(CurrentHeight, 360)
+	return math.clamp(math.min(scaleX, scaleY, 0.70), 0.42, 0.72)
+end
 local function SetMenuVisible(state, onComplete) if isClosingPermanently then return end
 	for _, tw in ipairs(activeWindowTweens) do pcall(function() tw:Cancel() end) end activeWindowTweens = {}
 	local wasVisible = MainFrame.Visible
 	isMenuVisible = state if SyncAimbotFovCircleVisibility then SyncAimbotFovCircleVisibility() end
 	local animStyle = Config.Animation or "Default"
+	local targetScale = GetTargetWindowScale()
 	MainFrame.Size = UDim2.new(0, CurrentWidth, 0, CurrentHeight)
 	MainFrame.Rotation = 0
 	TopBar.Position = UDim2.new(0, 0, 0, 0)
 	Sidebar.Position = UDim2.new(0, 10, 0, 50)
 	ContentContainer.Position = UDim2.new(0, 200, 0, 50)
 	MainStroke.Thickness = 1.6
-	if state then MainFrame.Visible = true
+	if state then
+		if MobileFloatBtn then MobileFloatBtn.Visible = false end
+		MainFrame.Visible = true
 		if animStyle == "Windows" then
-			-- Improved Windows 11 Fluent Window Open (Zero Clipping, Zero Flash)
-			MainScale.Scale = 0.88
+			MainScale.Scale = targetScale * 0.88
 			MainFrame.Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 36)
 			MainFrame.BackgroundTransparency = 0.70
 			MainStroke.Transparency = 0.85
 			local info = TweenInfo.new(0.24, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
-			local t1 = TweenService:Create(MainScale, info, { Scale = 1 })
+			local t1 = TweenService:Create(MainScale, info, { Scale = targetScale })
 			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = 0.06 })
 			local t3 = TweenService:Create(MainStroke, info, { Transparency = 0.25 })
 			activeWindowTweens = { t1, t2, t3 }
@@ -303,7 +315,6 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 				if st == Enum.PlaybackState.Completed and onComplete then onComplete() end
 			end)
 		elseif animStyle == "macOS" then
-			-- Improved macOS Window Open (Dock Spring Bounce, Zero Clipping, Zero Flash)
 			MainScale.Scale = 0.12
 			MainFrame.Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 130)
 			MainFrame.BackgroundTransparency = 0.65
@@ -311,7 +322,7 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 			local infoScale = TweenInfo.new(0.36, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			local infoPos = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			local infoStroke = TweenInfo.new(0.28, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-			local t1 = TweenService:Create(MainScale, infoScale, { Scale = 1 })
+			local t1 = TweenService:Create(MainScale, infoScale, { Scale = targetScale })
 			local t2 = TweenService:Create(MainFrame, infoPos, { Position = RestingPosition, BackgroundTransparency = 0.06 })
 			local t3 = TweenService:Create(MainStroke, infoStroke, { Transparency = 0.25 })
 			activeWindowTweens = { t1, t2, t3 }
@@ -320,13 +331,12 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 				if st == Enum.PlaybackState.Completed and onComplete then onComplete() end
 			end)
 		else
-			-- Default Quint Animation: 100% untouched
 			if not wasVisible then
 				MainScale.Scale = 0 MainFrame.Position = RestingPosition
 				MainFrame.BackgroundTransparency = 1 MainStroke.Transparency = 1
 			end
 			local info = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-			local t1 = TweenService:Create(MainScale, info, { Scale = 1 })
+			local t1 = TweenService:Create(MainScale, info, { Scale = targetScale })
 			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = 0.06 })
 			local t3 = TweenService:Create(MainStroke, info, { Transparency = 0.25 })
 			activeWindowTweens = { t1, t2, t3 } t1:Play() t2:Play() t3:Play() t1.Completed:Connect(function(st)
@@ -334,10 +344,10 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 		end
 	else
 		draggingGui, resizingMode = false, nil
+		if MobileFloatBtn and not isClosingPermanently then MobileFloatBtn.Visible = true end
 		if animStyle == "Windows" then
-			-- Improved Windows 11 Fluent Window Close (Clean Snap-Down, Zero Clipping, Zero Flash)
 			local info = TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.In)
-			local t1 = TweenService:Create(MainScale, info, { Scale = 0.88 })
+			local t1 = TweenService:Create(MainScale, info, { Scale = targetScale * 0.88 })
 			local t2 = TweenService:Create(MainFrame, info, { Position = UDim2.new(RestingPosition.X.Scale, RestingPosition.X.Offset, RestingPosition.Y.Scale, RestingPosition.Y.Offset + 36), BackgroundTransparency = 1 })
 			local t3 = TweenService:Create(MainStroke, info, { Transparency = 1 })
 			activeWindowTweens = { t1, t2, t3 }
@@ -349,7 +359,6 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 				end
 			end)
 		elseif animStyle == "macOS" then
-			-- Improved macOS Window Close (Smooth Dock Minimize, Zero Clipping, Zero Flash)
 			local infoScale = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 			local infoPos = TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 			local infoStroke = TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
@@ -365,7 +374,6 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 				end
 			end)
 		else
-			-- Default Quint Animation Close: 100% untouched
 			local info = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 			local t1 = TweenService:Create(MainScale, info, { Scale = 0 })
 			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = 1 })
@@ -374,7 +382,59 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 				if st == Enum.PlaybackState.Completed then if not isMenuVisible then MainFrame.Visible = false end
 					if onComplete then onComplete() end end end)
 		end
-	end end MainScale.Scale = 1
+	end end
+MainScale.Scale = GetTargetWindowScale()
+if isMobileDevice then
+	MobileFloatBtn = Instance.new("TextButton")
+	MobileFloatBtn.Name = "TR_MobileFloatBtn"
+	MobileFloatBtn.Size = UDim2.new(0, 48, 0, 48)
+	MobileFloatBtn.Position = UDim2.new(0, 18, 0.5, -24)
+	MobileFloatBtn.BackgroundTransparency = 0.08
+	MobileFloatBtn.BorderSizePixel = 0
+	MobileFloatBtn.Font = Enum.Font.GothamBold
+	MobileFloatBtn.TextSize = 13
+	MobileFloatBtn.Text = E.Bolt .. " T.R"
+	MobileFloatBtn.Visible = false
+	MobileFloatBtn.ZIndex = 50
+	MobileFloatBtn.Parent = ScreenGui
+	RegisterThemeObject(MobileFloatBtn, "BackgroundColor3", "MainBg")
+	RegisterThemeObject(MobileFloatBtn, "TextColor3", "Accent")
+	AddCorner(MobileFloatBtn, 14)
+	local floatStroke = Instance.new("UIStroke", MobileFloatBtn)
+	floatStroke.Thickness = 2
+	floatStroke.Transparency = 0.15
+	RegisterThemeObject(floatStroke, "Color", "Accent")
+	local floatDragging, floatMoved = false, false
+	local floatDragStart, floatStartPos = nil, nil
+	MobileFloatBtn.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+			floatDragging = true
+			floatMoved = false
+			floatDragStart = inp.Position
+			floatStartPos = MobileFloatBtn.Position
+			inp.Changed:Connect(function()
+				if inp.UserInputState == Enum.UserInputState.End then
+					floatDragging = false
+				end
+			end)
+		end
+	end)
+	table.insert(Connections, UserInputService.InputChanged:Connect(function(inp)
+		if floatDragging and (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseMovement) then
+			local delta = inp.Position - floatDragStart
+			if delta.Magnitude > 6 then floatMoved = true end
+			MobileFloatBtn.Position = UDim2.new(
+				floatStartPos.X.Scale, floatStartPos.X.Offset + delta.X,
+				floatStartPos.Y.Scale, floatStartPos.Y.Offset + delta.Y
+			)
+		end
+	end))
+	MobileFloatBtn.MouseButton1Click:Connect(function()
+		if not floatMoved then
+			SetMenuVisible(true)
+		end
+	end)
+end
 MainFrame.BackgroundTransparency = 0.06 MainStroke.Transparency = 0.25 MainFrame.Visible = true
 isMenuVisible = true MinBtn.MouseButton1Click:Connect(function() SetMenuVisible(false) end)
 --==============================================================================
@@ -1968,6 +2028,7 @@ local ESP_UPDATE_INTERVAL, LERP_ALPHA = 0.25, 0.72
 local FOV_RADIUS = tonumber(Config.AimbotFOVRadius) or 200
 local fovCircleEnabled = (Config.AimbotFOVCircleEnabled ~= false)
 local aimbotKeyMode = (Config.AimbotKeyMode == "Burst1s") and "Burst1s" or "Toggle"
+local aimbotBurstDurationMs = math.clamp(math.floor((tonumber(Config.AimbotBurstDurationMs) or 1000) + 0.5), 50, 60000)
 local aimbotBurstEndTime = 0
 local aimbotEnabled = (aimbotKeyMode == "Toggle") and (Config.AimbotEnabled == true) or false
 local targetAimbotEnabled = (Config.TargetAimbotEnabled == true)
@@ -2468,7 +2529,7 @@ local function SetupTab7()
 							bestDist, bestPlr = sDist, plr end end end end end return bestPlr end
 	-- Section 1: Dual Aimbot Engines ([Q] vs [T]) & Dual Auto Shoot Modes ([Z] Normal vs [V] Aimbot-Lock)
 	CreateSectionHeader(Tab7_Visuals, "1. Normal Aimbot [Q] & 2. Target Player Aimbot [T] (Mutually Exclusive)", 1)
-	local AimbotEngineCard = CreateCard(Tab7_Visuals, 132, 2)
+	local AimbotEngineCard = CreateCard(Tab7_Visuals, 170, 2)
 	local aimbotToggleBtn = Instance.new("TextButton", AimbotEngineCard)
 	aimbotToggleBtn.Size = UDim2.new(0.5, -14, 0, 34) aimbotToggleBtn.Position = UDim2.new(0, 10, 0, 10)
 	aimbotToggleBtn.Font = Enum.Font.GothamBold aimbotToggleBtn.TextSize = 12
@@ -2500,6 +2561,19 @@ local function SetupTab7()
 	aimbotToggleModeBtn.Position = UDim2.new(0.5, 4, 0, 88)
 	aimbotToggleModeBtn.Font = Enum.Font.GothamBold aimbotToggleModeBtn.TextSize = 11
 	aimbotToggleModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255) AddCorner(aimbotToggleModeBtn, 6)
+	local aimbotDurLabel = MakeLabel(AimbotEngineCard, UDim2.new(0.5, -14, 0, 32), UDim2.new(0, 10, 0, 126), "Button [Q] On-Time (ms):", Enum.Font.GothamSemibold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+	aimbotDurLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	local aimbotDurationBox = Instance.new("TextBox", AimbotEngineCard)
+	aimbotDurationBox.Size = UDim2.new(0.5, -14, 0, 32)
+	aimbotDurationBox.Position = UDim2.new(0.5, 4, 0, 126)
+	aimbotDurationBox.PlaceholderText = "Time in ms (e.g. 1000)"
+	aimbotDurationBox.Text = tostring(aimbotBurstDurationMs)
+	aimbotDurationBox.ClearTextOnFocus = false
+	aimbotDurationBox.Font = Enum.Font.GothamSemibold
+	aimbotDurationBox.TextSize = 12
+	RegisterThemeObject(aimbotDurationBox, "BackgroundColor3", "PanelBg")
+	RegisterThemeObject(aimbotDurationBox, "TextColor3", "TextPrimary")
+	AddCorner(aimbotDurationBox, 6)
 
 	-- Card 2: Target Specific Player Aimbot (Locks ONLY onto Selected Player)
 	local TargetAimbotCard = CreateCard(Tab7_Visuals, 94, 3)
@@ -2637,14 +2711,14 @@ local function SetupTab7()
 		aimbotKeyAssignBtn.Text = "Bind Key: [" .. k .. "]"
 		local isBurst = (aimbotKeyMode == "Burst1s")
 		if isBurst then
-			aimbotToggleBtn.Text = "1s Aimbot [" .. k .. "]: " .. (aimbotEnabled and "ON (1s)" or "OFF")
+			aimbotToggleBtn.Text = "Button Aim [" .. k .. "]: " .. (aimbotEnabled and ("ON (" .. tostring(aimbotBurstDurationMs) .. "ms)") or "OFF")
 		else
 			aimbotToggleBtn.Text = "Toggle Aimbot [" .. k .. "]: " .. (aimbotEnabled and "ON" or "OFF")
 		end
 		aimbotToggleBtn.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(185, 52, 52)
-		aimbotBurstModeBtn.Text = (isBurst and "[ON] " or "") .. "Option 1: 1s Button [" .. k .. "]"
+		aimbotBurstModeBtn.Text = (isBurst and "[ON] " or "") .. "1. Button [" .. k .. "] (" .. tostring(aimbotBurstDurationMs) .. "ms)"
 		aimbotBurstModeBtn.BackgroundColor3 = isBurst and theme.Accent or theme.PanelBg
-		aimbotToggleModeBtn.Text = (not isBurst and "[ON] " or "") .. "Option 2: Toggle [" .. k .. "]"
+		aimbotToggleModeBtn.Text = (not isBurst and "[ON] " or "") .. "2. Toggle [" .. k .. "] (Stay ON)"
 		aimbotToggleModeBtn.BackgroundColor3 = (not isBurst) and theme.Accent or theme.PanelBg
 
 		local tk = Config.TargetAimbotKeybind or "T"
@@ -2768,10 +2842,11 @@ local function SetupTab7()
 	-- Mutual Exclusivity: Normal Aimbot [Q] (Option 1: 1s Button vs Option 2: Toggle) vs Target Player Aimbot [T]
 	toggleAimbot = function()
 		if aimbotKeyMode == "Burst1s" then
+			local durSec = math.clamp((tonumber(aimbotBurstDurationMs) or 1000) / 1000, 0.05, 60)
 			aimbotEnabled = true
 			Config.AimbotEnabled = true
 			savedConfig.Settings.AimbotEnabled = false
-			aimbotBurstEndTime = os.clock() + 1.0
+			aimbotBurstEndTime = os.clock() + durSec
 			if targetAimbotEnabled then
 				targetAimbotEnabled = false
 				Config.TargetAimbotEnabled = false
@@ -2779,14 +2854,14 @@ local function SetupTab7()
 			end
 			currentTarget = nil
 			RefreshAimbotVisuals()
-			task.delay(1.01, function()
+			task.delay(durSec + 0.01, function()
 				if aimbotEnabled and aimbotKeyMode == "Burst1s" and aimbotBurstEndTime > 0 and os.clock() >= aimbotBurstEndTime then
 					aimbotEnabled = false
 					Config.AimbotEnabled = false
 					aimbotBurstEndTime = 0
 					currentTarget = nil
 					if aimbotAutoShootEnabled and StopAutoShootFiring then StopAutoShootFiring() end
-					if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle (1s Ended)" end
+					if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle (" .. tostring(aimbotBurstDurationMs) .. "ms Ended)" end
 					RefreshAimbotVisuals()
 				end
 			end)
@@ -2834,6 +2909,18 @@ local function SetupTab7()
 		aimbotBurstEndTime = 0
 		RefreshAimbotVisuals()
 		SaveConfig(false)
+	end)
+
+	aimbotDurationBox.FocusLost:Connect(function()
+		local v = tonumber(aimbotDurationBox.Text)
+		if v then
+			aimbotBurstDurationMs = math.clamp(math.floor(v + 0.5), 50, 60000)
+			Config.AimbotBurstDurationMs = aimbotBurstDurationMs
+			savedConfig.Settings.AimbotBurstDurationMs = aimbotBurstDurationMs
+			SaveConfig(false)
+		end
+		aimbotDurationBox.Text = tostring(aimbotBurstDurationMs)
+		RefreshAimbotVisuals()
 	end)
 
 	toggleTargetAimbot = function()
@@ -4480,7 +4567,7 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		aimbotBurstEndTime = 0
 		currentTarget = nil
 		if aimbotAutoShootEnabled and StopAutoShootFiring then StopAutoShootFiring() end
-		setAimbotStatusText("Status: Idle (1s Ended)")
+		setAimbotStatusText("Status: Idle (" .. tostring(aimbotBurstDurationMs) .. "ms Ended)")
 		if RefreshAimbotVisuals then pcall(RefreshAimbotVisuals) end
 	end
 	local anyAimbotActive = (aimbotEnabled or targetAimbotEnabled) and not isClosingPermanently
