@@ -2122,7 +2122,7 @@ local function SetupTab7()
 			end
 		end
 		local nowT = os.clock()
-		local shootDelay = math.clamp((tonumber(Config.AutoShootDelayMs) or 25) / 1000, 0.02, 0.5)
+		local shootDelay = math.clamp((tonumber(Config.AutoShootDelayMs) or 25) / 1000, 0.001, 0.1)
 		if nowT - lastAutoShoot >= shootDelay then
 			lastAutoShoot = nowT
 			local tool = char:FindFirstChildOfClass("Tool")
@@ -2680,8 +2680,8 @@ local function SetupTab7()
 	aimbotAutoShootKeyDeleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	aimbotAutoShootKeyDeleteBtn.Text = E.Trash .. " Delete" AddCorner(aimbotAutoShootKeyDeleteBtn, 6)
 
-	-- Slider for Triggerbot Fire Rate & Burst Delay (20ms to 500ms)
-	CreateSlider(Tab7_Visuals, "Triggerbot Fire Rate / Burst Delay (ms)", 20, 500, tonumber(Config.AutoShootDelayMs) or 25, 6, function(val)
+	-- Slider for Triggerbot Fire Rate & Burst Delay (1ms to 100ms)
+	CreateSlider(Tab7_Visuals, "Triggerbot Fire Rate / Burst Delay (ms)", 1, 100, math.clamp(tonumber(Config.AutoShootDelayMs) or 25, 1, 100), 6, function(val)
 		Config.AutoShootDelayMs = val
 		savedConfig.Settings.AutoShootDelayMs = val
 		SaveConfig(false)
