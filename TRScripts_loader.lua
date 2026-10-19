@@ -1975,16 +1975,16 @@ local isAutoShootingActive = false
 local currentTarget, lastEspUpdate = nil, 0
 local excludedPlayers, characterCache, adornmentsCache = {}, {}, {}
 local guiFovCircle = nil
+local MAX_DISTANCE = 650
+local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
+local espShowTeammates = (Config.ESPShowTeammates == true)
+local aimPartName = Config.AimPartName or "Head"
 local reusableWallcheckParams, updateWallcheckFilter
 local IsTeammate, getTargetPart, isTargetVisible, removePlayerAdornments, clearAllAdornments, worldToScreenDistance
 local RefreshESPHighlights, updateAllAdornments, findBestTarget
 local aimbotStatusLabel, autoShootStatusLbl, excludeFrame, updateExcludeCount, rebuildExcludeList
 local toggleAimbot, toggleTargetAimbot, toggleAutoShoot, triggerAutoShoot, StopAutoShootFiring
 local function SetupTab7()
-	local MAX_DISTANCE = 650
-	local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
-	local espShowTeammates = (Config.ESPShowTeammates == true)
-	local aimPartName = Config.AimPartName or "Head"
 	local guiFovStroke
 	guiFovCircle = Instance.new("Frame") guiFovCircle.Name = "TR_FOVCircle"
 	guiFovCircle.AnchorPoint = Vector2.new(0.5, 0.5) guiFovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -2004,12 +2004,20 @@ local function SetupTab7()
 		end
 	end
 	triggerAutoShoot = function()
-		if not (aimbotEnabled or targetAimbotEnabled) or not autoShootEnabled then
+		if not autoShootEnabled then
 			StopAutoShootFiring()
 			return
 		end
 		local char = player.Character if not char then StopAutoShootFiring() return end
 		local hum = char:FindFirstChildOfClass("Humanoid") if not hum or hum.Health <= 0 then StopAutoShootFiring() return end
+		if (aimbotEnabled or targetAimbotEnabled) and currentTarget and strongLock then
+			local cam = workspace.CurrentCamera
+			local tChar = GetCharacterFromPlayer(currentTarget)
+			local tPart = (aimPartName == "Head" and tChar and tChar:FindFirstChild("Head")) or getTargetPart(tChar)
+			if cam and tPart then
+				cam.CFrame = CFrame.new(cam.CFrame.Position, tPart.Position)
+			end
+		end
 		if not isAutoShootingActive then
 			isAutoShootingActive = true
 			if mouse1press then pcall(mouse1press) end
@@ -2024,11 +2032,16 @@ local function SetupTab7()
 				pcall(mouse1click)
 			elseif VirtualUser then
 				pcall(function()
+					local cam = workspace.CurrentCamera
+					local vs = cam and cam.ViewportSize or Vector2.new(960, 540)
 					if VirtualUser.CaptureController and VirtualUser.ClickButton1 then
 						VirtualUser:CaptureController()
-						VirtualUser:ClickButton1(Vector2.new(0, 0))
+						VirtualUser:ClickButton1(Vector2.new(vs.X * 0.5, vs.Y * 0.5))
 					end
 				end)
+			end
+			if mouse1press and isAutoShootingActive then
+				pcall(mouse1press)
 			end
 		end
 	end
@@ -2068,20 +2081,46 @@ local function SetupTab7()
 		local t = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
 		return (t and t:IsA("BasePart") and t) or character.PrimaryPart end
 	reusableWallcheckParams = RaycastParams.new()
-	reusableWallcheckParams.FilterType = Enum.RaycastFilterType.Blacklist local reusableWallFilter = {}
-	updateWallcheckFilter = function(char) char = char or LocalPlayer.Character reusableWallFilter[1] = char
-		reusableWallcheckParams.FilterDescendantsInstances = reusableWallFilter end updateWallcheckFilter()
-	isTargetVisible = function(targetPart, targetCharacter) if not wallcheckEnabled then return true end
-		local cam = workspace.CurrentCamera if not cam or not targetPart then return false end
-		if reusableWallFilter[1] ~= LocalPlayer.Character then updateWallcheckFilter(LocalPlayer.Character) end
-		local camPos = cam.CFrame.Position local tPos = targetPart.Position
-		local dir = Vector3.new(tPos.X - camPos.X, tPos.Y - camPos.Y, tPos.Z - camPos.Z)
-		local res = workspace:Raycast(camPos, dir, reusableWallcheckParams)
-		if not res or not res.Instance then return true end
-		if targetCharacter and res.Instance:IsDescendantOf(targetCharacter) then return true end
+	reusableWallcheckParams.FilterType = Enum.RaycastFilterType.Blacklist
+	reusableWallcheckParams.IgnoreWater = true
+	local reusableWallFilter = {}
+	updateWallcheckFilter = function(char)
+		char = char or LocalPlayer.Character
+		table.clear(reusableWallFilter)
+		if char then table.insert(reusableWallFilter, char) end
+		if workspace.CurrentCamera then table.insert(reusableWallFilter, workspace.CurrentCamera) end
+		local fakeFloor = workspace:FindFirstChild("TR_FakeFloor")
+		if fakeFloor then table.insert(reusableWallFilter, fakeFloor) end
 		local hurtFolder = workspace:FindFirstChild("HurtEffect")
-		if hurtFolder and res.Instance:IsDescendantOf(hurtFolder) then return true end
-		return false
+		if hurtFolder then table.insert(reusableWallFilter, hurtFolder) end
+		reusableWallcheckParams.FilterDescendantsInstances = reusableWallFilter
+	end
+	updateWallcheckFilter()
+	isTargetVisible = function(targetPart, targetCharacter)
+		if not wallcheckEnabled then return true end
+		local cam = workspace.CurrentCamera
+		if not cam or not targetPart then return false end
+		if reusableWallFilter[1] ~= LocalPlayer.Character or reusableWallFilter[2] ~= cam then
+			updateWallcheckFilter(LocalPlayer.Character)
+		end
+		local origin = cam.CFrame.Position
+		local tPos = targetPart.Position
+		for _ = 1, 6 do
+			local dir = Vector3.new(tPos.X - origin.X, tPos.Y - origin.Y, tPos.Z - origin.Z)
+			if dir.Magnitude < 0.5 then return true end
+			local res = workspace:Raycast(origin, dir, reusableWallcheckParams)
+			if not res or not res.Instance then return true end
+			local hit = res.Instance
+			if targetCharacter and hit:IsDescendantOf(targetCharacter) then return true end
+			local hurtFolder = workspace:FindFirstChild("HurtEffect")
+			if hurtFolder and hit:IsDescendantOf(hurtFolder) then return true end
+			if not hit.CanCollide or hit.Transparency >= 0.85 or hit:FindFirstAncestorOfClass("Accessory") or hit:FindFirstAncestorOfClass("Tool") then
+				origin = res.Position + (dir.Unit * 0.2)
+			else
+				return false
+			end
+		end
+		return true
 	end worldToScreenDistance = function(worldPos) local cam = workspace.CurrentCamera
 		if not cam then return nil, false, math.huge end
 		local vp, onScreen = cam:WorldToViewportPoint(worldPos)
@@ -2155,6 +2194,7 @@ local function SetupTab7()
 			if pair.healthBg then pcall(function() pair.healthBg:Destroy() end) end
 			if pair.shieldBar then pcall(function() pair.shieldBar:Destroy() end) end
 			if pair.shieldBg then pcall(function() pair.shieldBg:Destroy() end) end
+			if pair.hpBillboard then pcall(function() pair.hpBillboard:Destroy() end) end
 			adornmentsCache[plr] = nil
 		end
 		removePlayerHighlight(plr)
@@ -2205,7 +2245,9 @@ local function SetupTab7()
 		end
 	end
 	updateAllAdornments = function()
-		if not Config.ESPEnabled then
+		local espOn = (Config.ESPEnabled == true)
+		local barsOn = (Config.ESPHealthBars ~= false)
+		if not espOn and not barsOn then
 			if next(adornmentsCache) ~= nil then clearAllAdornments() end
 			return
 		end
@@ -2265,30 +2307,49 @@ local function SetupTab7()
 						adornmentsCache[plr] = pair
 					end
 
-					if pair.inner.Adornee ~= root then
-						pair.inner.Adornee = root
-						pair.outline.Adornee = root
+					pair.inner.Visible = espOn
+					pair.outline.Visible = espOn
+					if espOn then
+						if pair.inner.Adornee ~= root then
+							pair.inner.Adornee = root
+							pair.outline.Adornee = root
+						end
+						if pair.inner.Color3 ~= accentCol then pair.inner.Color3 = accentCol end
 					end
-					if pair.inner.Color3 ~= accentCol then pair.inner.Color3 = accentCol end
 
 					local hp, maxHp, shield, maxShield = GetPlayerHealthAndShield(char, hum)
-					if showBars then
+					if barsOn then
+						local cam = workspace.CurrentCamera
+						local camPos = cam and cam.CFrame.Position
+						local dist = camPos and (camPos - root.Position).Magnitude or 40
+						-- Distance-scaled thickness: expands as distance increases so bar never becomes a 1px invisible sliver!
+						local barThick = math.clamp(0.48 + (dist * 0.0055), 0.48, 3.2)
+						local bgThick = barThick + 0.35
+						local xOffsetLeft = -2.5 - (dist * 0.004)
+						local xOffsetRight = 2.5 + (dist * 0.004)
+						local hpPct = math.clamp(hp / maxHp, 0, 1)
+						local barH = math.max(0.22, 5.0 * hpPct)
+
 						pair.healthBg.Visible = true
 						pair.healthBar.Visible = true
 						if pair.healthBg.Adornee ~= root then
 							pair.healthBg.Adornee = root
 							pair.healthBar.Adornee = root
 						end
-						local hpPct = math.clamp(hp / maxHp, 0, 1)
-						local barH = math.max(0.12, 5.0 * hpPct)
-						pair.healthBar.Size = Vector3.new(0.24, barH, 0.24)
-						pair.healthBar.CFrame = CFrame.new(-2.6, -2.5 + (barH * 0.5), 0)
-						if hpPct > 0.6 then
-							pair.healthBar.Color3 = Color3.fromRGB(46, 204, 113)
+						pair.healthBg.Size = Vector3.new(bgThick, 5.3, bgThick)
+						pair.healthBg.CFrame = CFrame.new(xOffsetLeft, 0, 0)
+						pair.healthBg.Transparency = 0.0
+						pair.healthBg.Color3 = Color3.fromRGB(0, 0, 0)
+
+						pair.healthBar.Size = Vector3.new(barThick, barH, barThick)
+						pair.healthBar.CFrame = CFrame.new(xOffsetLeft, -2.5 + (barH * 0.5), 0)
+						pair.healthBar.Transparency = 0.0
+						if hpPct > 0.55 then
+							pair.healthBar.Color3 = Color3.fromRGB(0, 255, 120) -- Neon Emerald
 						elseif hpPct > 0.25 then
-							pair.healthBar.Color3 = Color3.fromRGB(241, 196, 15)
+							pair.healthBar.Color3 = Color3.fromRGB(255, 215, 0) -- Neon Gold
 						else
-							pair.healthBar.Color3 = Color3.fromRGB(231, 76, 60)
+							pair.healthBar.Color3 = Color3.fromRGB(255, 30, 30) -- Neon Crimson
 						end
 
 						local showShield = (shield > 0)
@@ -2300,15 +2361,73 @@ local function SetupTab7()
 								pair.shieldBar.Adornee = root
 							end
 							local sPct = math.clamp(shield / maxShield, 0, 1)
-							local sBarH = math.max(0.12, 5.0 * sPct)
-							pair.shieldBar.Size = Vector3.new(0.24, sBarH, 0.24)
-							pair.shieldBar.CFrame = CFrame.new(2.6, -2.5 + (sBarH * 0.5), 0)
+							local sBarH = math.max(0.22, 5.0 * sPct)
+							pair.shieldBg.Size = Vector3.new(bgThick, 5.3, bgThick)
+							pair.shieldBg.CFrame = CFrame.new(xOffsetRight, 0, 0)
+							pair.shieldBg.Transparency = 0.0
+							pair.shieldBg.Color3 = Color3.fromRGB(0, 0, 0)
+
+							pair.shieldBar.Size = Vector3.new(barThick, sBarH, barThick)
+							pair.shieldBar.CFrame = CFrame.new(xOffsetRight, -2.5 + (sBarH * 0.5), 0)
+							pair.shieldBar.Transparency = 0.0
+							pair.shieldBar.Color3 = Color3.fromRGB(0, 215, 255) -- Electric Cyan
 						end
+
+						-- Overhead BillboardGui for constant, crisp readable health at any distance up to 1200 studs!
+						if not pair.hpBillboard then
+							local bb = Instance.new("BillboardGui")
+							bb.Name = "TR_HealthBillboard"
+							bb.AlwaysOnTop = true
+							bb.Size = UDim2.new(0, 88, 0, 16)
+							bb.StudsOffset = Vector3.new(0, 3.8, 0)
+							bb.DistanceMax = 1200
+							bb.Parent = ScreenGui
+							local bgF = Instance.new("Frame")
+							bgF.Size = UDim2.new(1, 0, 1, 0)
+							bgF.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+							bgF.BackgroundTransparency = 0.2
+							bgF.BorderSizePixel = 0
+							bgF.Parent = bb
+							AddCorner(bgF, 4)
+							local hpFill = Instance.new("Frame")
+							hpFill.Size = UDim2.new(1, 0, 1, 0)
+							hpFill.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+							hpFill.BorderSizePixel = 0
+							hpFill.Parent = bgF
+							AddCorner(hpFill, 4)
+							local txt = Instance.new("TextLabel")
+							txt.Size = UDim2.new(1, 0, 1, 0)
+							txt.BackgroundTransparency = 1
+							txt.Font = Enum.Font.GothamBold
+							txt.TextSize = 11
+							txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+							txt.Parent = bgF
+							pair.hpBillboard = bb
+							pair.hpFill = hpFill
+							pair.hpText = txt
+						end
+						if pair.hpBillboard.Adornee ~= root then
+							pair.hpBillboard.Adornee = root
+						end
+						pair.hpBillboard.Enabled = true
+						pair.hpFill.Size = UDim2.new(hpPct, 0, 1, 0)
+						if hpPct > 0.55 then
+							pair.hpFill.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+						elseif hpPct > 0.25 then
+							pair.hpFill.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
+						else
+							pair.hpFill.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
+						end
+						local sValText = (shield > 0) and string.format(" | %d S", math.floor(shield + 0.5)) or ""
+						pair.hpText.Text = string.format("%d HP%s", math.floor(hp + 0.5), sValText)
 					else
 						pair.healthBg.Visible = false
 						pair.healthBar.Visible = false
 						pair.shieldBg.Visible = false
 						pair.shieldBar.Visible = false
+						if pair.hpBillboard then
+							pair.hpBillboard.Enabled = false
+						end
 					end
 				else
 					if adornmentsCache[plr] then removePlayerAdornments(plr) end
@@ -2487,7 +2606,7 @@ local function SetupTab7()
 			StopAutoShootFiring()
 			if autoShootStatusLbl then autoShootStatusLbl.Text = "Auto Shoot: OFF" end
 		elseif not (aimbotEnabled or targetAimbotEnabled) then
-			if autoShootStatusLbl then autoShootStatusLbl.Text = "Auto Shoot: Ready (Wait Lock)" end
+			if autoShootStatusLbl then autoShootStatusLbl.Text = "Auto Shoot: Ready (Point at Player)" end
 		end
 
 		aimPartBtn.Text = (aimPartName == "Head") and "Aim Part: Head" or "Aim Part: Body"
@@ -2654,10 +2773,25 @@ local function SetupTab7()
 	-- Section 2: Player ESP Highlights, 3D Boxes & Health/Shield Bars
 	CreateSectionHeader(Tab7_Visuals, "Player ESP (Chams, 3D Boxes & Health/Shield Bars)", 12)
 	CreateToggle(Tab7_Visuals, "Player Highlight & 3D Box ESP (Chams + Hitbox Boxes)", Config.ESPEnabled, 13, function(state)
-		Config.ESPEnabled = state if not state then clearAllAdornments() else updateAllAdornments() end
-		RefreshESPHighlights() SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "ESP Health & Shield Bars (Left/Right Combat Bars)", Config.ESPHealthBars ~= false, 14, function(state)
-		Config.ESPHealthBars = state updateAllAdornments() SaveConfig(false) end)
+		Config.ESPEnabled = state
+		if not state then
+			clearAllHighlights()
+			if not (Config.ESPHealthBars ~= false) then clearAllAdornments() else updateAllAdornments() end
+		else
+			updateAllAdornments()
+		end
+		RefreshESPHighlights()
+		SaveConfig(false)
+	end)
+	CreateToggle(Tab7_Visuals, "Player Health & Shield Bars (Visible At Any Distance | Works Without ESP)", Config.ESPHealthBars ~= false, 14, function(state)
+		Config.ESPHealthBars = state
+		if not state and not Config.ESPEnabled then
+			clearAllAdornments()
+		else
+			updateAllAdornments()
+		end
+		SaveConfig(false)
+	end)
 	CreateToggle(Tab7_Visuals, "Turn On ESP for Teammates (Show Teammate Highlights & Boxes)", espShowTeammates, 15, function(state)
 		espShowTeammates = state Config.ESPShowTeammates = state RefreshESPHighlights() updateAllAdornments()
 		SaveConfig(false) end)
@@ -4054,7 +4188,7 @@ table.insert(Connections, UserInputService.JumpRequest:Connect(function() if Con
 			local v = root.AssemblyLinearVelocity
 			root.AssemblyLinearVelocity = Vector3.new(v.X, jp, v.Z) end end end)) end
 table.insert(Connections, RunService.RenderStepped:Connect(function(dt)
-	if not Config.ESPEnabled and next(adornmentsCache) == nil then return end
+	if not (Config.ESPEnabled or (Config.ESPHealthBars ~= false)) and next(adornmentsCache) == nil then return end
 	lastEspUpdate = lastEspUpdate + dt if lastEspUpdate >= ESP_UPDATE_INTERVAL then lastEspUpdate = 0
 		updateAllAdornments() end end)) local lastShiftLook = nil local function updateShiftLockPre()
 	if CursorUnlockedOverride and not isClosingPermanently then
@@ -4078,6 +4212,72 @@ local function stepShiftLockCore(cam) UserInputService.MouseBehavior = Enum.Mous
 		hum.CameraOffset = (camDist > 1) and Vector3.new(1.75, 0, 0) or V3_ZERO
 		local lv = cam.CFrame.LookVector local flat = Vector3.new(lv.X, 0, lv.Z) if flat.Magnitude > 0.001 then
 			hum.AutoRotate = false root.CFrame = CFrame.new(root.Position, root.Position + flat.Unit) end end end
+local function getValidEnemyHitboxFromInstance(hitInstance)
+	if not hitInstance then return nil, nil end
+	if hitInstance:FindFirstAncestorOfClass("Accessory") or hitInstance:FindFirstAncestorOfClass("Tool") then
+		return nil, nil
+	end
+	local cur = hitInstance
+	while cur and cur ~= workspace do
+		if cur:IsA("Model") then
+			local p = Players:GetPlayerFromCharacter(cur)
+			if p then return p, cur end
+		end
+		cur = cur.Parent
+	end
+	return nil, nil
+end
+
+local function checkScreenMiddleDotRay(cam)
+	if not cam then return nil, nil end
+	if updateWallcheckFilter then updateWallcheckFilter(LocalPlayer.Character) end
+	local origin = cam.CFrame.Position
+	local lookDir = cam.CFrame.LookVector
+	for _ = 1, 6 do
+		local res = workspace:Raycast(origin, lookDir * 1000, reusableWallcheckParams)
+		if not res or not res.Instance then return nil, nil end
+		local hit = res.Instance
+		local hitPlr, hitChar = getValidEnemyHitboxFromInstance(hit)
+		if hitPlr then
+			if hitPlr ~= LocalPlayer and not excludedPlayers[hitPlr] then
+				local hitHum = hitChar:FindFirstChildOfClass("Humanoid")
+				if hitHum and hitHum.Health > 0 then
+					local teamAllowed = (not aimbotTeamCheck) or (not IsTeammate(hitPlr))
+					local targetAllowed = (not targetAimbotEnabled) or (not specificTargetPlayer) or (hitPlr == specificTargetPlayer)
+					if teamAllowed and targetAllowed then
+						return hitPlr, hitChar
+					end
+				end
+			end
+			return nil, nil
+		end
+		if not hit.CanCollide or hit.Transparency >= 0.85 or hit:FindFirstAncestorOfClass("Accessory") or hit:FindFirstAncestorOfClass("Tool") then
+			origin = res.Position + (lookDir * 0.2)
+		else
+			return nil, nil
+		end
+	end
+	return nil, nil
+end
+
+local function EnforceLockedCamera()
+	if isClosingPermanently or not (aimbotEnabled or targetAimbotEnabled) or not currentTarget then return end
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	local tChar = GetCharacterFromPlayer(currentTarget)
+	local tPart = getTargetPart(tChar)
+	if tChar and tPart then
+		local camPos = cam.CFrame.Position
+		local tVel = tPart.AssemblyLinearVelocity or V3_ZERO
+		local leadPos = tPart.Position + (tVel * 0.006)
+		local goalCF = CFrame.new(camPos, leadPos)
+		cam.CFrame = strongLock and goalCF or cam.CFrame:Lerp(goalCF, LERP_ALPHA)
+	end
+end
+
+table.insert(Connections, RunService.RenderStepped:Connect(EnforceLockedCamera))
+table.insert(Connections, RunService.Heartbeat:Connect(EnforceLockedCamera))
+
 RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, function()
 	local function setAimbotStatusText(txt)
 		if aimbotStatusLabel and aimbotStatusLabel.Text ~= txt then
@@ -4104,14 +4304,28 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 	else
 		lastShiftLook = nil
 	end
+
+	-- Mode A: Aimbot is OFF -> Standalone Screen Middle Dot Triggerbot
 	if not anyAimbotActive then
 		currentTarget = nil
-		if StopAutoShootFiring then StopAutoShootFiring() end
-		setAutoShootStatusText(autoShootEnabled and "Auto Shoot: Ready (Wait Lock)" or "Auto Shoot: OFF")
+		setAimbotStatusText("Status: Idle")
+		if autoShootEnabled and not isClosingPermanently then
+			local hitPlr = checkScreenMiddleDotRay(cam)
+			if hitPlr then
+				setAutoShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
+				if triggerAutoShoot then triggerAutoShoot() end
+			else
+				if StopAutoShootFiring then StopAutoShootFiring() end
+				setAutoShootStatusText("Auto Shoot: Ready (Point at Player)")
+			end
+		else
+			if StopAutoShootFiring then StopAutoShootFiring() end
+			setAutoShootStatusText("Auto Shoot: OFF")
+		end
 		return
 	end
 
-	-- 1. Target Resolution: Mode 2 (Target Specific Player ONLY) vs Mode 1 (Normal Aimbot)
+	-- Mode B: Aimbot is ON -> 1. Target Resolution: Mode 2 (Target Specific Player ONLY) vs Mode 1 (Normal Aimbot)
 	if targetAimbotEnabled then
 		local tPlr = specificTargetPlayer
 		if tPlr and tPlr.Parent and tPlr ~= LocalPlayer then
@@ -4143,11 +4357,12 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		end
 	end
 
-	-- 2. Ultra-Aggressive Lock & Strict Head-Locked Auto Shoot
+	-- 2. Ultra-Aggressive Lock & Sniper/Rifle Precision Head-Locked Auto Shoot
 	if currentTarget then
 		local tChar = GetCharacterFromPlayer(currentTarget)
 		local targetPart = getTargetPart(tChar)
 		local headPart = (tChar and tChar:FindFirstChild("Head")) or targetPart
+		local lockPart = (aimPartName == "Head" and headPart) or targetPart
 		if tChar and targetPart and isTargetVisible(targetPart, tChar) then
 			local camPos = cam.CFrame.Position
 			local tVel = targetPart.AssemblyLinearVelocity or V3_ZERO
@@ -4156,9 +4371,9 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 			cam.CFrame = strongLock and goalCF or cam.CFrame:Lerp(goalCF, LERP_ALPHA)
 			setAimbotStatusText("Locked: " .. tostring(currentTarget.DisplayName))
 
-			-- Auto Shoot: Fires ONLY when locked onto visible Player Head, stops immediately behind wall!
-			if autoShootEnabled and headPart and isTargetVisible(headPart, tChar) then
-				local hp = headPart.Position
+			-- Auto Shoot: Fires when locked onto visible Head/TargetPart (or when screen middle dot is directly on player)
+			if autoShootEnabled and lockPart and isTargetVisible(lockPart, tChar) then
+				local hp = lockPart.Position
 				local cp = cam.CFrame.Position
 				local dx, dy, dz = hp.X - cp.X, hp.Y - cp.Y, hp.Z - cp.Z
 				local distSq = dx * dx + dy * dy + dz * dz
@@ -4169,7 +4384,16 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 					local dot = (dx * lv.X + dy * lv.Y + dz * lv.Z) * invDist
 					isHeadLocked = (dot >= 0.985)
 				end
+				if not isHeadLocked then
+					local rayHitPlr = checkScreenMiddleDotRay(cam)
+					if rayHitPlr == currentTarget then
+						isHeadLocked = true
+					end
+				end
 				if isHeadLocked then
+					if strongLock then
+						cam.CFrame = CFrame.new(cp, hp)
+					end
 					setAutoShootStatusText("FIRING -> " .. tostring(currentTarget.DisplayName))
 					if triggerAutoShoot then triggerAutoShoot() end
 				else
@@ -4187,13 +4411,24 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 			setAutoShootStatusText(autoShootEnabled and "Stopped (Target Behind Wall)" or "Auto Shoot: OFF")
 		end
 	else
-		if StopAutoShootFiring then StopAutoShootFiring() end
 		if targetAimbotEnabled then
 			setAimbotStatusText(specificTargetPlayer and ("Waiting: " .. tostring(specificTargetPlayer.DisplayName)) or "Select a Target Player!")
 		else
 			setAimbotStatusText("Status: Searching...")
 		end
-		setAutoShootStatusText(autoShootEnabled and "Auto Shoot: Waiting Head Lock" or "Auto Shoot: OFF")
+		if autoShootEnabled and not isClosingPermanently then
+			local hitPlr = checkScreenMiddleDotRay(cam)
+			if hitPlr then
+				setAutoShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
+				if triggerAutoShoot then triggerAutoShoot() end
+			else
+				if StopAutoShootFiring then StopAutoShootFiring() end
+				setAutoShootStatusText("Auto Shoot: Ready (Point at Player)")
+			end
+		else
+			if StopAutoShootFiring then StopAutoShootFiring() end
+			setAutoShootStatusText("Auto Shoot: OFF")
+		end
 	end
 end)
 local lastAirTimeReset = 0 local function landHum(h) h:ChangeState(Enum.HumanoidStateType.Landed)
