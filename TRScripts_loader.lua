@@ -2004,7 +2004,7 @@ local function SetupTab7()
 		end
 	end
 	triggerAutoShoot = function()
-		if not (aimbotEnabled or targetAimbotEnabled) or not autoShootEnabled then
+		if not autoShootEnabled then
 			StopAutoShootFiring()
 			return
 		end
@@ -2571,7 +2571,7 @@ local function SetupTab7()
 			StopAutoShootFiring()
 			if autoShootStatusLbl then autoShootStatusLbl.Text = "Auto Shoot: OFF" end
 		elseif not (aimbotEnabled or targetAimbotEnabled) then
-			if autoShootStatusLbl then autoShootStatusLbl.Text = "Auto Shoot: Ready (Wait Lock)" end
+			if autoShootStatusLbl then autoShootStatusLbl.Text = "Auto Shoot: Ready (Point at Player)" end
 		end
 
 		aimPartBtn.Text = (aimPartName == "Head") and "Aim Part: Head" or "Aim Part: Body"
@@ -4177,6 +4177,111 @@ local function stepShiftLockCore(cam) UserInputService.MouseBehavior = Enum.Mous
 		hum.CameraOffset = (camDist > 1) and Vector3.new(1.75, 0, 0) or V3_ZERO
 		local lv = cam.CFrame.LookVector local flat = Vector3.new(lv.X, 0, lv.Z) if flat.Magnitude > 0.001 then
 			hum.AutoRotate = false root.CFrame = CFrame.new(root.Position, root.Position + flat.Unit) end end end
+local triggerRayParams = RaycastParams.new()
+triggerRayParams.FilterType = Enum.RaycastFilterType.Blacklist
+triggerRayParams.IgnoreWater = true
+local triggerFilter = {}
+
+local function updateTriggerFilter()
+	local myChar = LocalPlayer.Character
+	table.clear(triggerFilter)
+	if myChar then triggerFilter[1] = myChar end
+	triggerFilter[#triggerFilter + 1] = workspace.CurrentCamera
+	local fakeFloor = workspace:FindFirstChild("TR_FakeFloor")
+	if fakeFloor then triggerFilter[#triggerFilter + 1] = fakeFloor end
+	local hurt = workspace:FindFirstChild("HurtEffect")
+	if hurt then triggerFilter[#triggerFilter + 1] = hurt end
+	triggerRayParams.FilterDescendantsInstances = triggerFilter
+end
+
+local function getPlayerFromHitInstance(hitInstance)
+	if not hitInstance then return nil end
+	local cur = hitInstance
+	while cur and cur ~= workspace do
+		if cur:IsA("Model") then
+			local p = Players:GetPlayerFromCharacter(cur)
+			if p then return p, cur end
+		end
+		cur = cur.Parent
+	end
+	return nil
+end
+
+local function checkScreenMiddleDotTarget(cam)
+	if not cam then return nil, nil end
+	local camPos = cam.CFrame.Position
+	local camLook = cam.CFrame.LookVector
+
+	-- 1. Direct 3D Raycast from Camera Center / Middle Dot (Hits Head, Torso, Limbs, Accessories)
+	updateTriggerFilter()
+	local rayRes = workspace:Raycast(camPos, camLook * 1000, triggerRayParams)
+	if rayRes and rayRes.Instance then
+		local hitPlr, hitChar = getPlayerFromHitInstance(rayRes.Instance)
+		if hitPlr and hitPlr ~= LocalPlayer and not excludedPlayers[hitPlr] then
+			local hitHum = hitChar:FindFirstChildOfClass("Humanoid")
+			if hitHum and hitHum.Health > 0 then
+				local teamAllowed = (not aimbotTeamCheck) or (not IsTeammate(hitPlr))
+				local targetAllowed = (not targetAimbotEnabled) or (not specificTargetPlayer) or (hitPlr == specificTargetPlayer)
+				if teamAllowed and targetAllowed then
+					return hitPlr, hitChar
+				end
+			end
+		end
+	end
+
+	-- 2. Active Aimbot Target Lock Check
+	if currentTarget then
+		local tChar = GetCharacterFromPlayer(currentTarget)
+		local targetPart = getTargetPart(tChar)
+		local headPart = (tChar and tChar:FindFirstChild("Head")) or targetPart
+		local shootPart = (aimPartName == "Head" and headPart) or targetPart
+		if shootPart and isTargetVisible(shootPart, tChar) then
+			if strongLock then
+				return currentTarget, tChar
+			else
+				local sp = shootPart.Position
+				local dx, dy, dz = sp.X - camPos.X, sp.Y - camPos.Y, sp.Z - camPos.Z
+				local distSq = dx * dx + dy * dy + dz * dz
+				if distSq > 0.0001 then
+					local invDist = 1 / math.sqrt(distSq)
+					local dot = (dx * camLook.X + dy * camLook.Y + dz * camLook.Z) * invDist
+					if dot >= 0.94 then
+						return currentTarget, tChar
+					end
+				end
+			end
+		end
+	end
+
+	-- 3. Screen Middle Dot Projection Cone (~7 degrees) for non-collidable parts or limb gaps
+	local maxDistSq = MAX_DISTANCE * MAX_DISTANCE
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local validEnemy = (plr ~= LocalPlayer) and (not excludedPlayers[plr]) and ((not aimbotTeamCheck) or (not IsTeammate(plr)))
+		local matchTarget = (not targetAimbotEnabled) or (not specificTargetPlayer) or (plr == specificTargetPlayer)
+		if validEnemy and matchTarget then
+			local char = GetCharacterFromPlayer(plr)
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if char and hum and hum.Health > 0 then
+				local checkPart = (aimPartName == "Head" and char:FindFirstChild("Head")) or char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+				if checkPart then
+					local cp = checkPart.Position
+					local dx, dy, dz = cp.X - camPos.X, cp.Y - camPos.Y, cp.Z - camPos.Z
+					local distSq = dx * dx + dy * dy + dz * dz
+					if distSq <= maxDistSq and distSq > 1 then
+						local invDist = 1 / math.sqrt(distSq)
+						local dot = (dx * camLook.X + dy * camLook.Y + dz * camLook.Z) * invDist
+						if dot >= 0.992 and isTargetVisible(checkPart, char) then
+							return plr, char
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return nil, nil
+end
+
 RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, function()
 	local function setAimbotStatusText(txt)
 		if aimbotStatusLabel and aimbotStatusLabel.Text ~= txt then
@@ -4203,97 +4308,83 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 	else
 		lastShiftLook = nil
 	end
-	if not anyAimbotActive then
-		currentTarget = nil
-		if StopAutoShootFiring then StopAutoShootFiring() end
-		setAutoShootStatusText(autoShootEnabled and "Auto Shoot: Ready (Wait Lock)" or "Auto Shoot: OFF")
-		return
-	end
 
-	-- 1. Target Resolution: Mode 2 (Target Specific Player ONLY) vs Mode 1 (Normal Aimbot)
-	if targetAimbotEnabled then
-		local tPlr = specificTargetPlayer
-		if tPlr and tPlr.Parent and tPlr ~= LocalPlayer then
-			local ch = GetCharacterFromPlayer(tPlr)
-			local h = ch and ch:FindFirstChildOfClass("Humanoid")
-			local p = getTargetPart(ch)
-			if ch and h and h.Health > 0 and p and isTargetVisible(p, ch) then
-				currentTarget = tPlr
-			else
-				currentTarget = nil
-			end
-		else
-			currentTarget = nil
-		end
-	else
-		if currentTarget and currentTarget.Parent then
-			local ch = GetCharacterFromPlayer(currentTarget)
-			local h = ch and ch:FindFirstChildOfClass("Humanoid")
-			local p = getTargetPart(ch)
-			local _, onScr, sDist = worldToScreenDistance(p and p.Position or V3_ZERO)
-			if not ch or not h or h.Health <= 0 or not p or not onScr or (fovCircleEnabled and sDist > FOV_RADIUS) or not isTargetVisible(p, ch) or excludedPlayers[currentTarget] or (aimbotTeamCheck and IsTeammate(currentTarget)) then
-				currentTarget = nil
-			end
-		else
-			currentTarget = nil
-		end
-		if not currentTarget then
-			currentTarget = findBestTarget()
-		end
-	end
-
-	-- 2. Ultra-Aggressive Lock & Strict Head-Locked Auto Shoot
-	if currentTarget then
-		local tChar = GetCharacterFromPlayer(currentTarget)
-		local targetPart = getTargetPart(tChar)
-		local headPart = (tChar and tChar:FindFirstChild("Head")) or targetPart
-		if tChar and targetPart and isTargetVisible(targetPart, tChar) then
-			local camPos = cam.CFrame.Position
-			local tVel = targetPart.AssemblyLinearVelocity or V3_ZERO
-			local leadPos = targetPart.Position + (tVel * 0.006)
-			local goalCF = CFrame.new(camPos, leadPos)
-			cam.CFrame = strongLock and goalCF or cam.CFrame:Lerp(goalCF, LERP_ALPHA)
-			setAimbotStatusText("Locked: " .. tostring(currentTarget.DisplayName))
-
-			-- Auto Shoot: Fires when locked onto target (Head/Body), stops immediately behind walls!
-			local shootTargetPart = (aimPartName == "Head" and headPart) or targetPart
-			if autoShootEnabled and shootTargetPart and isTargetVisible(shootTargetPart, tChar) then
-				local sp = shootTargetPart.Position
-				local cp = cam.CFrame.Position
-				local dx, dy, dz = sp.X - cp.X, sp.Y - cp.Y, sp.Z - cp.Z
-				local distSq = dx * dx + dy * dy + dz * dz
-				local canAutoShoot = strongLock
-				if not canAutoShoot and distSq > 0.0001 then
-					local invDist = 1 / math.sqrt(distSq)
-					local lv = cam.CFrame.LookVector
-					local dot = (dx * lv.X + dy * lv.Y + dz * lv.Z) * invDist
-					canAutoShoot = (dot >= 0.94)
-				end
-				if canAutoShoot then
-					setAutoShootStatusText("FIRING -> " .. tostring(currentTarget.DisplayName))
-					if triggerAutoShoot then triggerAutoShoot() end
-				else
-					if StopAutoShootFiring then StopAutoShootFiring() end
-					setAutoShootStatusText("Aligning Target...")
-				end
-			else
-				if StopAutoShootFiring then StopAutoShootFiring() end
-				setAutoShootStatusText(autoShootEnabled and "Stopped (Target Behind Wall)" or "Auto Shoot: OFF")
-			end
-		else
-			currentTarget = nil
-			if StopAutoShootFiring then StopAutoShootFiring() end
-			setAimbotStatusText(targetAimbotEnabled and "Target Behind Wall / Dead" or "Status: Searching...")
-			setAutoShootStatusText(autoShootEnabled and "Stopped (Target Behind Wall)" or "Auto Shoot: OFF")
-		end
-	else
-		if StopAutoShootFiring then StopAutoShootFiring() end
+	-- 1. Aimbot Target Resolution & Camera Snap / Tracking
+	if anyAimbotActive then
 		if targetAimbotEnabled then
-			setAimbotStatusText(specificTargetPlayer and ("Waiting: " .. tostring(specificTargetPlayer.DisplayName)) or "Select a Target Player!")
+			local tPlr = specificTargetPlayer
+			if tPlr and tPlr.Parent and tPlr ~= LocalPlayer then
+				local ch = GetCharacterFromPlayer(tPlr)
+				local h = ch and ch:FindFirstChildOfClass("Humanoid")
+				local p = getTargetPart(ch)
+				if ch and h and h.Health > 0 and p and isTargetVisible(p, ch) then
+					currentTarget = tPlr
+				else
+					currentTarget = nil
+				end
+			else
+				currentTarget = nil
+			end
 		else
-			setAimbotStatusText("Status: Searching...")
+			if currentTarget and currentTarget.Parent then
+				local ch = GetCharacterFromPlayer(currentTarget)
+				local h = ch and ch:FindFirstChildOfClass("Humanoid")
+				local p = getTargetPart(ch)
+				local _, onScr, sDist = worldToScreenDistance(p and p.Position or V3_ZERO)
+				if not ch or not h or h.Health <= 0 or not p or not onScr or (fovCircleEnabled and sDist > FOV_RADIUS) or not isTargetVisible(p, ch) or excludedPlayers[currentTarget] or (aimbotTeamCheck and IsTeammate(currentTarget)) then
+					currentTarget = nil
+				end
+			else
+				currentTarget = nil
+			end
+			if not currentTarget then
+				currentTarget = findBestTarget()
+			end
 		end
-		setAutoShootStatusText(autoShootEnabled and "Auto Shoot: Ready (Wait Lock)" or "Auto Shoot: OFF")
+
+		if currentTarget then
+			local tChar = GetCharacterFromPlayer(currentTarget)
+			local targetPart = getTargetPart(tChar)
+			if tChar and targetPart and isTargetVisible(targetPart, tChar) then
+				local camPos = cam.CFrame.Position
+				local tVel = targetPart.AssemblyLinearVelocity or V3_ZERO
+				local leadPos = targetPart.Position + (tVel * 0.006)
+				local goalCF = CFrame.new(camPos, leadPos)
+				cam.CFrame = strongLock and goalCF or cam.CFrame:Lerp(goalCF, LERP_ALPHA)
+				setAimbotStatusText("Locked: " .. tostring(currentTarget.DisplayName))
+			else
+				currentTarget = nil
+				setAimbotStatusText(targetAimbotEnabled and "Target Behind Wall / Dead" or "Status: Searching...")
+			end
+		else
+			if targetAimbotEnabled then
+				setAimbotStatusText(specificTargetPlayer and ("Waiting: " .. tostring(specificTargetPlayer.DisplayName)) or "Select a Target Player!")
+			else
+				setAimbotStatusText("Status: Searching...")
+			end
+		end
+	else
+		currentTarget = nil
+		setAimbotStatusText("Status: Idle")
+	end
+
+	-- 2. Screen Middle Dot Auto Shoot / Triggerbot (Fires when Middle Dot is on Player, Stops when Off)
+	if autoShootEnabled and not isClosingPermanently then
+		local hitPlr, hitChar = checkScreenMiddleDotTarget(cam)
+		if hitPlr then
+			setAutoShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
+			if triggerAutoShoot then triggerAutoShoot() end
+		else
+			if StopAutoShootFiring then StopAutoShootFiring() end
+			if currentTarget and not isTargetVisible(getTargetPart(GetCharacterFromPlayer(currentTarget)), GetCharacterFromPlayer(currentTarget)) then
+				setAutoShootStatusText("Stopped (Target Behind Wall)")
+			else
+				setAutoShootStatusText("Auto Shoot: Ready (Point at Player)")
+			end
+		end
+	else
+		if StopAutoShootFiring then StopAutoShootFiring() end
+		setAutoShootStatusText("Auto Shoot: OFF")
 	end
 end)
 local lastAirTimeReset = 0 local function landHum(h) h:ChangeState(Enum.HumanoidStateType.Landed)
