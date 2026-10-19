@@ -2155,6 +2155,7 @@ local function SetupTab7()
 			if pair.healthBg then pcall(function() pair.healthBg:Destroy() end) end
 			if pair.shieldBar then pcall(function() pair.shieldBar:Destroy() end) end
 			if pair.shieldBg then pcall(function() pair.shieldBg:Destroy() end) end
+			if pair.hpBillboard then pcall(function() pair.hpBillboard:Destroy() end) end
 			adornmentsCache[plr] = nil
 		end
 		removePlayerHighlight(plr)
@@ -2205,7 +2206,9 @@ local function SetupTab7()
 		end
 	end
 	updateAllAdornments = function()
-		if not Config.ESPEnabled then
+		local espOn = (Config.ESPEnabled == true)
+		local barsOn = (Config.ESPHealthBars ~= false)
+		if not espOn and not barsOn then
 			if next(adornmentsCache) ~= nil then clearAllAdornments() end
 			return
 		end
@@ -2265,30 +2268,49 @@ local function SetupTab7()
 						adornmentsCache[plr] = pair
 					end
 
-					if pair.inner.Adornee ~= root then
-						pair.inner.Adornee = root
-						pair.outline.Adornee = root
+					pair.inner.Visible = espOn
+					pair.outline.Visible = espOn
+					if espOn then
+						if pair.inner.Adornee ~= root then
+							pair.inner.Adornee = root
+							pair.outline.Adornee = root
+						end
+						if pair.inner.Color3 ~= accentCol then pair.inner.Color3 = accentCol end
 					end
-					if pair.inner.Color3 ~= accentCol then pair.inner.Color3 = accentCol end
 
 					local hp, maxHp, shield, maxShield = GetPlayerHealthAndShield(char, hum)
-					if showBars then
+					if barsOn then
+						local cam = workspace.CurrentCamera
+						local camPos = cam and cam.CFrame.Position
+						local dist = camPos and (camPos - root.Position).Magnitude or 40
+						-- Distance-scaled thickness: expands as distance increases so bar never becomes a 1px invisible sliver!
+						local barThick = math.clamp(0.48 + (dist * 0.0055), 0.48, 3.2)
+						local bgThick = barThick + 0.35
+						local xOffsetLeft = -2.5 - (dist * 0.004)
+						local xOffsetRight = 2.5 + (dist * 0.004)
+						local hpPct = math.clamp(hp / maxHp, 0, 1)
+						local barH = math.max(0.22, 5.0 * hpPct)
+
 						pair.healthBg.Visible = true
 						pair.healthBar.Visible = true
 						if pair.healthBg.Adornee ~= root then
 							pair.healthBg.Adornee = root
 							pair.healthBar.Adornee = root
 						end
-						local hpPct = math.clamp(hp / maxHp, 0, 1)
-						local barH = math.max(0.12, 5.0 * hpPct)
-						pair.healthBar.Size = Vector3.new(0.24, barH, 0.24)
-						pair.healthBar.CFrame = CFrame.new(-2.6, -2.5 + (barH * 0.5), 0)
-						if hpPct > 0.6 then
-							pair.healthBar.Color3 = Color3.fromRGB(46, 204, 113)
+						pair.healthBg.Size = Vector3.new(bgThick, 5.3, bgThick)
+						pair.healthBg.CFrame = CFrame.new(xOffsetLeft, 0, 0)
+						pair.healthBg.Transparency = 0.0
+						pair.healthBg.Color3 = Color3.fromRGB(0, 0, 0)
+
+						pair.healthBar.Size = Vector3.new(barThick, barH, barThick)
+						pair.healthBar.CFrame = CFrame.new(xOffsetLeft, -2.5 + (barH * 0.5), 0)
+						pair.healthBar.Transparency = 0.0
+						if hpPct > 0.55 then
+							pair.healthBar.Color3 = Color3.fromRGB(0, 255, 120) -- Neon Emerald
 						elseif hpPct > 0.25 then
-							pair.healthBar.Color3 = Color3.fromRGB(241, 196, 15)
+							pair.healthBar.Color3 = Color3.fromRGB(255, 215, 0) -- Neon Gold
 						else
-							pair.healthBar.Color3 = Color3.fromRGB(231, 76, 60)
+							pair.healthBar.Color3 = Color3.fromRGB(255, 30, 30) -- Neon Crimson
 						end
 
 						local showShield = (shield > 0)
@@ -2300,15 +2322,73 @@ local function SetupTab7()
 								pair.shieldBar.Adornee = root
 							end
 							local sPct = math.clamp(shield / maxShield, 0, 1)
-							local sBarH = math.max(0.12, 5.0 * sPct)
-							pair.shieldBar.Size = Vector3.new(0.24, sBarH, 0.24)
-							pair.shieldBar.CFrame = CFrame.new(2.6, -2.5 + (sBarH * 0.5), 0)
+							local sBarH = math.max(0.22, 5.0 * sPct)
+							pair.shieldBg.Size = Vector3.new(bgThick, 5.3, bgThick)
+							pair.shieldBg.CFrame = CFrame.new(xOffsetRight, 0, 0)
+							pair.shieldBg.Transparency = 0.0
+							pair.shieldBg.Color3 = Color3.fromRGB(0, 0, 0)
+
+							pair.shieldBar.Size = Vector3.new(barThick, sBarH, barThick)
+							pair.shieldBar.CFrame = CFrame.new(xOffsetRight, -2.5 + (sBarH * 0.5), 0)
+							pair.shieldBar.Transparency = 0.0
+							pair.shieldBar.Color3 = Color3.fromRGB(0, 215, 255) -- Electric Cyan
 						end
+
+						-- Overhead BillboardGui for constant, crisp readable health at any distance up to 1200 studs!
+						if not pair.hpBillboard then
+							local bb = Instance.new("BillboardGui")
+							bb.Name = "TR_HealthBillboard"
+							bb.AlwaysOnTop = true
+							bb.Size = UDim2.new(0, 88, 0, 16)
+							bb.StudsOffset = Vector3.new(0, 3.8, 0)
+							bb.DistanceMax = 1200
+							bb.Parent = ScreenGui
+							local bgF = Instance.new("Frame")
+							bgF.Size = UDim2.new(1, 0, 1, 0)
+							bgF.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+							bgF.BackgroundTransparency = 0.2
+							bgF.BorderSizePixel = 0
+							bgF.Parent = bb
+							AddCorner(bgF, 4)
+							local hpFill = Instance.new("Frame")
+							hpFill.Size = UDim2.new(1, 0, 1, 0)
+							hpFill.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+							hpFill.BorderSizePixel = 0
+							hpFill.Parent = bgF
+							AddCorner(hpFill, 4)
+							local txt = Instance.new("TextLabel")
+							txt.Size = UDim2.new(1, 0, 1, 0)
+							txt.BackgroundTransparency = 1
+							txt.Font = Enum.Font.GothamBold
+							txt.TextSize = 11
+							txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+							txt.Parent = bgF
+							pair.hpBillboard = bb
+							pair.hpFill = hpFill
+							pair.hpText = txt
+						end
+						if pair.hpBillboard.Adornee ~= root then
+							pair.hpBillboard.Adornee = root
+						end
+						pair.hpBillboard.Enabled = true
+						pair.hpFill.Size = UDim2.new(hpPct, 0, 1, 0)
+						if hpPct > 0.55 then
+							pair.hpFill.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+						elseif hpPct > 0.25 then
+							pair.hpFill.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
+						else
+							pair.hpFill.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
+						end
+						local sValText = (shield > 0) and string.format(" | %d S", math.floor(shield + 0.5)) or ""
+						pair.hpText.Text = string.format("%d HP%s", math.floor(hp + 0.5), sValText)
 					else
 						pair.healthBg.Visible = false
 						pair.healthBar.Visible = false
 						pair.shieldBg.Visible = false
 						pair.shieldBar.Visible = false
+						if pair.hpBillboard then
+							pair.hpBillboard.Enabled = false
+						end
 					end
 				else
 					if adornmentsCache[plr] then removePlayerAdornments(plr) end
@@ -2654,10 +2734,25 @@ local function SetupTab7()
 	-- Section 2: Player ESP Highlights, 3D Boxes & Health/Shield Bars
 	CreateSectionHeader(Tab7_Visuals, "Player ESP (Chams, 3D Boxes & Health/Shield Bars)", 12)
 	CreateToggle(Tab7_Visuals, "Player Highlight & 3D Box ESP (Chams + Hitbox Boxes)", Config.ESPEnabled, 13, function(state)
-		Config.ESPEnabled = state if not state then clearAllAdornments() else updateAllAdornments() end
-		RefreshESPHighlights() SaveConfig(false) end)
-	CreateToggle(Tab7_Visuals, "ESP Health & Shield Bars (Left/Right Combat Bars)", Config.ESPHealthBars ~= false, 14, function(state)
-		Config.ESPHealthBars = state updateAllAdornments() SaveConfig(false) end)
+		Config.ESPEnabled = state
+		if not state then
+			clearAllHighlights()
+			if not (Config.ESPHealthBars ~= false) then clearAllAdornments() else updateAllAdornments() end
+		else
+			updateAllAdornments()
+		end
+		RefreshESPHighlights()
+		SaveConfig(false)
+	end)
+	CreateToggle(Tab7_Visuals, "Player Health & Shield Bars (Visible At Any Distance | Works Without ESP)", Config.ESPHealthBars ~= false, 14, function(state)
+		Config.ESPHealthBars = state
+		if not state and not Config.ESPEnabled then
+			clearAllAdornments()
+		else
+			updateAllAdornments()
+		end
+		SaveConfig(false)
+	end)
 	CreateToggle(Tab7_Visuals, "Turn On ESP for Teammates (Show Teammate Highlights & Boxes)", espShowTeammates, 15, function(state)
 		espShowTeammates = state Config.ESPShowTeammates = state RefreshESPHighlights() updateAllAdornments()
 		SaveConfig(false) end)
@@ -4054,7 +4149,7 @@ table.insert(Connections, UserInputService.JumpRequest:Connect(function() if Con
 			local v = root.AssemblyLinearVelocity
 			root.AssemblyLinearVelocity = Vector3.new(v.X, jp, v.Z) end end end)) end
 table.insert(Connections, RunService.RenderStepped:Connect(function(dt)
-	if not Config.ESPEnabled and next(adornmentsCache) == nil then return end
+	if not (Config.ESPEnabled or (Config.ESPHealthBars ~= false)) and next(adornmentsCache) == nil then return end
 	lastEspUpdate = lastEspUpdate + dt if lastEspUpdate >= ESP_UPDATE_INTERVAL then lastEspUpdate = 0
 		updateAllAdornments() end end)) local lastShiftLook = nil local function updateShiftLockPre()
 	if CursorUnlockedOverride and not isClosingPermanently then
