@@ -78,9 +78,9 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V99.json", "TRScripts_Config_V98.json", "TRScripts_Config_V97.json",
 	"TRScripts_Config_V96.json", "TRScripts_Config_V95.json", "TRScripts_Config_V94.json",
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
-		Theme = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
+		Theme = "Default", GuiDesign = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
 		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotKeyMode = "Toggle", AimbotBurstDurationMs = 1000, TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
-		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", WallcheckEnabled = true,
+		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", OrbitRadius = 8, OrbitSpeed = 10, AntiKatanaEnabled = true, WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
 		MasterUtilityEnabled = false, MasterFlightEnabled = false, NoclipEnabled = false,
@@ -150,18 +150,84 @@ local Themes = { ["Default"] = {
 		Accent = Color3.fromRGB(195, 58, 132), AccentDark = Color3.fromRGB(125, 32, 84), Stroke = Color3.fromRGB(215, 92, 158),
 		TextPrimary = Color3.fromRGB(245, 230, 240), TextSecondary = Color3.fromRGB(188, 148, 172) } }
 local ThemeObjects = { MainBg = {}, PanelBg = {}, CardBg = {}, Accent = {}, AccentDark = {},
-	Stroke = {}, TextPrimary = {}, TextSecondary = {}, CustomCallbacks = {} } local function GetTheme()
-	return Themes[Config.Theme] or Themes["Default"] end
+	Stroke = {}, TextPrimary = {}, TextSecondary = {}, CustomCallbacks = {} } local LiquidGlassBase = {
+	MainBg = Color3.fromRGB(205, 224, 248),
+	PanelBg = Color3.fromRGB(185, 208, 238),
+	CardBg = Color3.fromRGB(220, 235, 255),
+	Accent = Color3.fromRGB(70, 165, 255),
+	AccentDark = Color3.fromRGB(45, 118, 210),
+	Stroke = Color3.fromRGB(245, 250, 255),
+	TextPrimary = Color3.fromRGB(255, 255, 255),
+	TextSecondary = Color3.fromRGB(222, 238, 255)
+}
+
+local function ComputeEffectiveTheme(themeName, designName)
+	local base = Themes[themeName] or Themes["Default"]
+	designName = designName or Config.GuiDesign or "Default"
+	if designName == "LiquidGlass" then
+		if themeName == "Default" or not themeName then
+			return LiquidGlassBase
+		end
+		-- Other themes add subtle tinted glass shading to Apple Liquid Glass!
+		return {
+			MainBg = LiquidGlassBase.MainBg:Lerp(base.Accent, 0.34),
+			PanelBg = LiquidGlassBase.PanelBg:Lerp(base.Accent, 0.38),
+			CardBg = LiquidGlassBase.CardBg:Lerp(base.Accent, 0.30),
+			Accent = base.Accent:Lerp(Color3.fromRGB(230, 245, 255), 0.16),
+			AccentDark = base.AccentDark:Lerp(Color3.fromRGB(180, 215, 245), 0.18),
+			Stroke = Color3.fromRGB(245, 250, 255):Lerp(base.Stroke, 0.45),
+			TextPrimary = Color3.fromRGB(255, 255, 255),
+			TextSecondary = Color3.fromRGB(235, 242, 252):Lerp(base.TextSecondary, 0.35)
+		}
+	elseif designName == "CyberHud" then
+		local isDef = (themeName == "Default" or not themeName)
+		local acc = isDef and Color3.fromRGB(0, 230, 255) or base.Accent
+		local accDark = isDef and Color3.fromRGB(0, 125, 165) or base.AccentDark
+		local strk = isDef and Color3.fromRGB(0, 255, 235) or base.Stroke
+		return {
+			MainBg = Color3.fromRGB(4, 5, 9),
+			PanelBg = Color3.fromRGB(8, 10, 16):Lerp(acc, 0.08),
+			CardBg = Color3.fromRGB(11, 14, 22):Lerp(acc, 0.12),
+			Accent = acc,
+			AccentDark = accDark,
+			Stroke = strk,
+			TextPrimary = Color3.fromRGB(245, 252, 255),
+			TextSecondary = isDef and Color3.fromRGB(135, 225, 245) or base.TextSecondary
+		}
+	end
+	return base
+end
+
+local function GetTheme()
+	return ComputeEffectiveTheme(Config.Theme or "Default", Config.GuiDesign or "Default")
+end
+
+local ApplyGuiDesignSurface
 local function RegisterThemeObject(instance, prop, themeKey)
 	table.insert(ThemeObjects[themeKey], { Instance = instance, Property = prop })
-	instance[prop] = GetTheme()[themeKey] end local function ApplyTheme(themeName)
-	if not Themes[themeName] then themeName = "Default" end Config.Theme = themeName
-	local active = Themes[themeName] for key, list in pairs(ThemeObjects) do
-		if key ~= "CustomCallbacks" and active[key] then for _, item in ipairs(list) do
+	instance[prop] = GetTheme()[themeKey]
+end
+
+local function ApplyTheme(themeName)
+	if not Themes[themeName] then themeName = "Default" end
+	Config.Theme = themeName
+	savedConfig.Settings.Theme = themeName
+	local active = GetTheme()
+	for key, list in pairs(ThemeObjects) do
+		if key ~= "CustomCallbacks" and active[key] then
+			for _, item in ipairs(list) do
 				if item.Instance and item.Instance.Parent then
 					TweenService:Create(item.Instance, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-						[item.Property] = active[key] }):Play() end end end end
-	for _, fn in ipairs(ThemeObjects.CustomCallbacks) do pcall(fn, active) end SaveConfig(false) end
+						[item.Property] = active[key]
+					}):Play()
+				end
+			end
+		end
+	end
+	if ApplyGuiDesignSurface then pcall(ApplyGuiDesignSurface) end
+	for _, fn in ipairs(ThemeObjects.CustomCallbacks) do pcall(fn, active) end
+	SaveConfig(false)
+end
 local function AddCorner(parent, radius) local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, radius or 6) c.Parent = parent return c end
 local function MakeButton(parent, size, pos, text, bgThemeKey, textSize)
@@ -291,6 +357,9 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 	isMenuVisible = state if SyncAimbotFovCircleVisibility then SyncAimbotFovCircleVisibility() end
 	local animStyle = Config.Animation or "Default"
 	local targetScale = GetTargetWindowScale()
+	local curDesign = Config.GuiDesign or "Default"
+	local targetBgTrans = (curDesign == "LiquidGlass" and 0.44) or (curDesign == "CyberHud" and 0.12) or 0.06
+	local targetStrokeTrans = (curDesign == "LiquidGlass" and 0.12) or (curDesign == "CyberHud" and 0.0) or 0.25
 	MainFrame.Size = UDim2.new(0, CurrentWidth, 0, CurrentHeight)
 	MainFrame.Rotation = 0
 	TopBar.Position = UDim2.new(0, 0, 0, 0)
@@ -307,8 +376,8 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 			MainStroke.Transparency = 0.85
 			local info = TweenInfo.new(0.24, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 			local t1 = TweenService:Create(MainScale, info, { Scale = targetScale })
-			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = 0.06 })
-			local t3 = TweenService:Create(MainStroke, info, { Transparency = 0.25 })
+			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = targetBgTrans })
+			local t3 = TweenService:Create(MainStroke, info, { Transparency = targetStrokeTrans })
 			activeWindowTweens = { t1, t2, t3 }
 			t1:Play() t2:Play() t3:Play()
 			t1.Completed:Connect(function(st)
@@ -323,8 +392,8 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 			local infoPos = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 			local infoStroke = TweenInfo.new(0.28, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 			local t1 = TweenService:Create(MainScale, infoScale, { Scale = targetScale })
-			local t2 = TweenService:Create(MainFrame, infoPos, { Position = RestingPosition, BackgroundTransparency = 0.06 })
-			local t3 = TweenService:Create(MainStroke, infoStroke, { Transparency = 0.25 })
+			local t2 = TweenService:Create(MainFrame, infoPos, { Position = RestingPosition, BackgroundTransparency = targetBgTrans })
+			local t3 = TweenService:Create(MainStroke, infoStroke, { Transparency = targetStrokeTrans })
 			activeWindowTweens = { t1, t2, t3 }
 			t1:Play() t2:Play() t3:Play()
 			t1.Completed:Connect(function(st)
@@ -337,8 +406,8 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 			end
 			local info = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 			local t1 = TweenService:Create(MainScale, info, { Scale = targetScale })
-			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = 0.06 })
-			local t3 = TweenService:Create(MainStroke, info, { Transparency = 0.25 })
+			local t2 = TweenService:Create(MainFrame, info, { Position = RestingPosition, BackgroundTransparency = targetBgTrans })
+			local t3 = TweenService:Create(MainStroke, info, { Transparency = targetStrokeTrans })
 			activeWindowTweens = { t1, t2, t3 } t1:Play() t2:Play() t3:Play() t1.Completed:Connect(function(st)
 				if st == Enum.PlaybackState.Completed and onComplete then onComplete() end end)
 		end
@@ -434,8 +503,191 @@ if isMobileDevice then
 			SetMenuVisible(true)
 		end
 	end)
+
+	-- Mobile-Only On-Screen Quick-Action Buttons (Draggable Floating Combat & Flight Bar)
+	local MobileQuickBar = Instance.new("Frame")
+	MobileQuickBar.Name = "TR_MobileQuickBar"
+	MobileQuickBar.Size = UDim2.new(0, 254, 0, 36)
+	MobileQuickBar.Position = UDim2.new(0.5, -127, 0, 8)
+	MobileQuickBar.BackgroundTransparency = 0.14
+	MobileQuickBar.BorderSizePixel = 0
+	MobileQuickBar.Active = true
+	MobileQuickBar.ZIndex = 48
+	MobileQuickBar.Parent = ScreenGui
+	RegisterThemeObject(MobileQuickBar, "BackgroundColor3", "MainBg")
+	AddCorner(MobileQuickBar, 10)
+	local mqStroke = Instance.new("UIStroke", MobileQuickBar)
+	mqStroke.Thickness = 1.4
+	mqStroke.Transparency = 0.25
+	RegisterThemeObject(mqStroke, "Color", "Accent")
+
+	local mqDragHandle = Instance.new("TextLabel", MobileQuickBar)
+	mqDragHandle.Size = UDim2.new(0, 26, 1, 0)
+	mqDragHandle.Position = UDim2.new(0, 2, 0, 0)
+	mqDragHandle.BackgroundTransparency = 1
+	mqDragHandle.Font = Enum.Font.GothamBold
+	mqDragHandle.TextSize = 13
+	mqDragHandle.Text = E.Grip
+	mqDragHandle.ZIndex = 49
+	RegisterThemeObject(mqDragHandle, "TextColor3", "Accent")
+
+	local mqDragging = false
+	local mqDragStart, mqStartPos = nil, nil
+	MobileQuickBar.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+			mqDragging = true
+			mqDragStart = inp.Position
+			mqStartPos = MobileQuickBar.Position
+			inp.Changed:Connect(function()
+				if inp.UserInputState == Enum.UserInputState.End then
+					mqDragging = false
+				end
+			end)
+		end
+	end)
+	table.insert(Connections, UserInputService.InputChanged:Connect(function(inp)
+		if mqDragging and (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseMovement) then
+			local delta = inp.Position - mqDragStart
+			MobileQuickBar.Position = UDim2.new(
+				mqStartPos.X.Scale, mqStartPos.X.Offset + delta.X,
+				mqStartPos.Y.Scale, mqStartPos.Y.Offset + delta.Y
+			)
+		end
+	end))
+
+	local function CreateMobileQuickBtn(xOffset, labelTxt)
+		local b = Instance.new("TextButton", MobileQuickBar)
+		b.Size = UDim2.new(0, 52, 0, 26)
+		b.Position = UDim2.new(0, xOffset, 0.5, -13)
+		b.BackgroundColor3 = Color3.fromRGB(185, 52, 52)
+		b.BorderSizePixel = 0
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 10
+		b.TextColor3 = Color3.fromRGB(255, 255, 255)
+		b.Text = labelTxt
+		b.ZIndex = 49
+		AddCorner(b, 6)
+		return b
+	end
+
+	local mqAimBtn = CreateMobileQuickBtn(28, "Aim [Q]")
+	local mqTAimBtn = CreateMobileQuickBtn(84, "T-Aim [T]")
+	local mqShootBtn = CreateMobileQuickBtn(140, "Shoot [Z]")
+	local mqFlyBtn = CreateMobileQuickBtn(196, "Fly [E]")
+
+	mqAimBtn.MouseButton1Click:Connect(function()
+		if genv._TR_MobileToggleAimbot then genv._TR_MobileToggleAimbot() end
+	end)
+	mqTAimBtn.MouseButton1Click:Connect(function()
+		if genv._TR_MobileToggleTargetAimbot then genv._TR_MobileToggleTargetAimbot() end
+	end)
+	mqShootBtn.MouseButton1Click:Connect(function()
+		if genv._TR_MobileToggleAutoShoot then genv._TR_MobileToggleAutoShoot() end
+	end)
+	mqFlyBtn.MouseButton1Click:Connect(function()
+		if genv._TR_MobileToggleFlight then genv._TR_MobileToggleFlight() end
+	end)
+
+	genv._TR_UpdateMobileQuickBar = function(aimOn, tAimOn, shootOn, flyOn)
+		local colOn = Color3.fromRGB(46, 204, 113)
+		local colOff = Color3.fromRGB(185, 52, 52)
+		if mqAimBtn and mqAimBtn.Parent then mqAimBtn.BackgroundColor3 = aimOn and colOn or colOff end
+		if mqTAimBtn and mqTAimBtn.Parent then mqTAimBtn.BackgroundColor3 = tAimOn and colOn or colOff end
+		if mqShootBtn and mqShootBtn.Parent then mqShootBtn.BackgroundColor3 = shootOn and colOn or colOff end
+		if mqFlyBtn and mqFlyBtn.Parent then mqFlyBtn.BackgroundColor3 = flyOn and colOn or colOff end
+	end
 end
-MainFrame.BackgroundTransparency = 0.06 MainStroke.Transparency = 0.25 MainFrame.Visible = true
+local MainGlassGrad = Instance.new("UIGradient", MainFrame)
+MainGlassGrad.Rotation = -35
+MainGlassGrad.Enabled = false
+local StrokeGlassGrad = Instance.new("UIGradient", MainStroke)
+StrokeGlassGrad.Rotation = 45
+StrokeGlassGrad.Enabled = false
+
+ApplyGuiDesignSurface = function()
+	local d = Config.GuiDesign or "Default"
+	local eff = GetTheme()
+	if d == "LiquidGlass" then
+		MainFrame.BackgroundTransparency = 0.44
+		TopBar.BackgroundTransparency = 0.48
+		Sidebar.BackgroundTransparency = 0.52
+		ContentContainer.BackgroundTransparency = 0.52
+		MainStroke.Thickness = 1.8
+		MainStroke.Transparency = 0.10
+		MainGlassGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(0.5, eff.MainBg),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(215, 232, 255))
+		})
+		MainGlassGrad.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.0),
+			NumberSequenceKeypoint.new(0.5, 0.12),
+			NumberSequenceKeypoint.new(1, 0.0)
+		})
+		MainGlassGrad.Enabled = true
+		StrokeGlassGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(0.5, eff.Accent),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+		})
+		StrokeGlassGrad.Enabled = true
+		for _, item in ipairs(ThemeObjects.CardBg) do
+			if item.Instance and item.Instance.Parent and item.Instance:IsA("Frame") then
+				item.Instance.BackgroundTransparency = 0.46
+				local st = item.Instance:FindFirstChildOfClass("UIStroke")
+				if st then st.Transparency = 0.18 st.Thickness = 1.3 end
+			end
+		end
+	elseif d == "CyberHud" then
+		MainFrame.BackgroundTransparency = 0.12
+		TopBar.BackgroundTransparency = 0.14
+		Sidebar.BackgroundTransparency = 0.18
+		ContentContainer.BackgroundTransparency = 0.18
+		MainStroke.Thickness = 2.4
+		MainStroke.Transparency = 0.0
+		MainGlassGrad.Enabled = false
+		StrokeGlassGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, eff.Accent),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(1, eff.Stroke)
+		})
+		StrokeGlassGrad.Enabled = true
+		for _, item in ipairs(ThemeObjects.CardBg) do
+			if item.Instance and item.Instance.Parent and item.Instance:IsA("Frame") then
+				item.Instance.BackgroundTransparency = 0.14
+				local st = item.Instance:FindFirstChildOfClass("UIStroke")
+				if st then st.Transparency = 0.10 st.Thickness = 1.4 end
+			end
+		end
+	else
+		MainFrame.BackgroundTransparency = 0.06
+		TopBar.BackgroundTransparency = 0.10
+		Sidebar.BackgroundTransparency = 0.12
+		ContentContainer.BackgroundTransparency = 0.12
+		MainStroke.Thickness = 1.6
+		MainStroke.Transparency = 0.25
+		MainGlassGrad.Enabled = false
+		StrokeGlassGrad.Enabled = false
+		for _, item in ipairs(ThemeObjects.CardBg) do
+			if item.Instance and item.Instance.Parent and item.Instance:IsA("Frame") then
+				item.Instance.BackgroundTransparency = 0.08
+				local st = item.Instance:FindFirstChildOfClass("UIStroke")
+				if st then st.Transparency = 0.60 st.Thickness = 1.0 end
+			end
+		end
+	end
+end
+
+genv._TR_ApplyGuiDesign = function(designName, showNotif)
+	Config.GuiDesign = designName
+	savedConfig.Settings.GuiDesign = designName
+	ApplyTheme(Config.Theme or "Default")
+	if showNotif and NotifyFeatureToggle then
+		local label = (designName == "LiquidGlass" and "GUI: Apple Liquid Glass") or (designName == "CyberHud" and "GUI: Neon Cyber-HUD") or "GUI: Default Classic"
+		NotifyFeatureToggle(label, true)
+	end
+end
+MainFrame.Visible = true
 isMenuVisible = true MinBtn.MouseButton1Click:Connect(function() SetMenuVisible(false) end)
 --==============================================================================
 -- 5. REUSABLE UI COMPONENT FACTORY
@@ -751,7 +1003,61 @@ TryAssignUniqueKeybind = function(keyName, slotId, applyFn, refreshFn, btnObj)
 	SaveConfig(false)
 	return true
 end
-CreateSectionHeader(Tab1_Dashboard, "UI Theme Customizer (6 Dark Themes)", 1)
+CreateSectionHeader(Tab1_Dashboard, "GUI Design Style (1. Default | 2. Apple Liquid Glass | 3. Neon Cyber-HUD)", 1)
+local DesignCard = CreateCard(Tab1_Dashboard, 0, 1)
+DesignCard.AutomaticSize = Enum.AutomaticSize.Y
+local DesignPad = Instance.new("UIPadding")
+DesignPad.PaddingTop = UDim.new(0, 8) DesignPad.PaddingBottom = UDim.new(0, 8)
+DesignPad.PaddingLeft = UDim.new(0, 8) DesignPad.PaddingRight = UDim.new(0, 8)
+DesignPad.Parent = DesignCard
+local DesignGrid = Instance.new("UIGridLayout")
+DesignGrid.CellSize = UDim2.new(0.333, -5, 0, 34)
+DesignGrid.CellPadding = UDim2.new(0, 6, 0, 6)
+DesignGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+DesignGrid.VerticalAlignment = Enum.VerticalAlignment.Center
+DesignGrid.SortOrder = Enum.SortOrder.LayoutOrder
+DesignGrid.Parent = DesignCard
+local DesignButtons = {}
+local DesignOptions = {
+	{ Id = "Default", Label = "1. Default Classic" },
+	{ Id = "LiquidGlass", Label = "2. Apple Liquid Glass" },
+	{ Id = "CyberHud", Label = "3. Neon Cyber-HUD" }
+}
+local ThemeBtnsMap = {}
+local function RefreshDesignButtons()
+	local theme = GetTheme()
+	local curD = Config.GuiDesign or "Default"
+	for id, btn in pairs(DesignButtons) do
+		local active = (id == curD)
+		btn.BackgroundColor3 = active and theme.Accent or theme.PanelBg
+		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or theme.TextPrimary
+		btn.Text = (active and "[ON] " or "") .. (id == "Default" and "1. Default" or (id == "LiquidGlass" and "2. Liquid Glass" or "3. Cyber-HUD"))
+	end
+	if ThemeBtnsMap["Default"] then
+		if curD == "LiquidGlass" then
+			ThemeBtnsMap["Default"].Text = "Liquid Glass (Clear)"
+			ThemeBtnsMap["Default"].BackgroundColor3 = Color3.fromRGB(70, 165, 255)
+		elseif curD == "CyberHud" then
+			ThemeBtnsMap["Default"].Text = "Cyber Neon (Default)"
+			ThemeBtnsMap["Default"].BackgroundColor3 = Color3.fromRGB(0, 210, 235)
+		else
+			ThemeBtnsMap["Default"].Text = "Default"
+			ThemeBtnsMap["Default"].BackgroundColor3 = Themes["Default"].Accent
+		end
+	end
+end
+table.insert(ThemeObjects.CustomCallbacks, RefreshDesignButtons)
+for idx, dOpt in ipairs(DesignOptions) do
+	local DBtn = Instance.new("TextButton")
+	DBtn.LayoutOrder = idx DBtn.Font = Enum.Font.GothamBold DBtn.TextSize = 11
+	DBtn.Text = dOpt.Label DBtn.Parent = DesignCard AddCorner(DBtn, 6)
+	DesignButtons[dOpt.Id] = DBtn
+	DBtn.MouseButton1Click:Connect(function()
+		if genv._TR_ApplyGuiDesign then genv._TR_ApplyGuiDesign(dOpt.Id, true) end
+	end)
+end
+
+CreateSectionHeader(Tab1_Dashboard, "UI Theme Customizer (6 Themes | Shades Liquid Glass & Cyber-HUD)", 2)
 local ThemeCard = CreateCard(Tab1_Dashboard, 0, 2)
 ThemeCard.AutomaticSize = Enum.AutomaticSize.Y
 local ThemePad = Instance.new("UIPadding")
@@ -771,8 +1077,10 @@ for idx, themeName in ipairs(ThemeOrder) do
 	TBtn.Font = Enum.Font.GothamBold TBtn.TextSize = 12
 	TBtn.TextColor3 = Color3.fromRGB(245, 245, 250) TBtn.Text = themeName
 	TBtn.Parent = ThemeCard AddCorner(TBtn, 6)
+	ThemeBtnsMap[themeName] = TBtn
 	TBtn.MouseButton1Click:Connect(function() ApplyTheme(themeName) end)
 end
+RefreshDesignButtons()
 CreateSectionHeader(Tab1_Dashboard, "UI Open & Close Animation (3 Styles)", 3)
 local AnimCard = CreateCard(Tab1_Dashboard, 0, 4)
 AnimCard.AutomaticSize = Enum.AutomaticSize.Y
@@ -1022,7 +1330,7 @@ IsStickingToPlayer = function()
 	return StickTarget ~= nil and StickTarget.Parent ~= nil
 end
 
-CreateSectionHeader(Tab3_Radar, "Stick to Player (10,000+ s/s Lock | Head, Back Side & Bottom)", 1)
+CreateSectionHeader(Tab3_Radar, "Stick & Orbit Player (10,000+ s/s Lock | Head, Back, Bottom & Orbit Strafe)", 1)
 local StickCtrlCard = CreateCard(Tab3_Radar, 0, 2)
 StickCtrlCard.AutomaticSize = Enum.AutomaticSize.Y
 local StickPad = Instance.new("UIPadding")
@@ -1050,8 +1358,8 @@ StickModeRow.BackgroundTransparency = 1
 StickModeRow.LayoutOrder = 2
 StickModeRow.Parent = StickCtrlCard
 local StickModeGrid = Instance.new("UIGridLayout")
-StickModeGrid.CellSize = UDim2.new(0.333, -5, 0, 28)
-StickModeGrid.CellPadding = UDim2.new(0, 6, 0, 4)
+StickModeGrid.CellSize = UDim2.new(0.25, -5, 0, 28)
+StickModeGrid.CellPadding = UDim2.new(0, 5, 0, 4)
 StickModeGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
 StickModeGrid.VerticalAlignment = Enum.VerticalAlignment.Center
 StickModeGrid.SortOrder = Enum.SortOrder.LayoutOrder
@@ -1059,10 +1367,69 @@ StickModeGrid.Parent = StickModeRow
 
 local StickModeBtns = {}
 local StickModesList = {
-	{ Id = "Head", Label = "Part: Head (Top)" },
-	{ Id = "Back", Label = "Part: Back Side" },
+	{ Id = "Head", Label = "Part: Head" },
+	{ Id = "Back", Label = "Part: Back" },
 	{ Id = "Bottom", Label = "Part: Bottom" },
+	{ Id = "Orbit", Label = "Mode: Orbit Strafe" },
 }
+local orbitAngle = 0
+local orbitRadius = math.clamp(tonumber(Config.OrbitRadius) or 8, 2, 50)
+local orbitSpeed = math.clamp(tonumber(Config.OrbitSpeed) or 10, 1, 40)
+
+local OrbitParamsRow = Instance.new("Frame")
+OrbitParamsRow.Size = UDim2.new(1, 0, 0, 28)
+OrbitParamsRow.BackgroundTransparency = 1
+OrbitParamsRow.LayoutOrder = 3
+OrbitParamsRow.Parent = StickCtrlCard
+local OrbitRadLbl = MakeLabel(OrbitParamsRow, UDim2.new(0.26, -4, 1, 0), UDim2.new(0, 0, 0, 0), "Orbit Radius (studs):", Enum.Font.GothamSemibold, 11, "TextSecondary", Enum.TextXAlignment.Left)
+OrbitRadLbl.TextTruncate = Enum.TextTruncate.AtEnd
+local OrbitRadBox = Instance.new("TextBox", OrbitParamsRow)
+OrbitRadBox.Size = UDim2.new(0.22, -6, 0, 26)
+OrbitRadBox.Position = UDim2.new(0.26, 2, 0, 1)
+OrbitRadBox.Text = tostring(orbitRadius)
+OrbitRadBox.PlaceholderText = "Radius (8)"
+OrbitRadBox.ClearTextOnFocus = false
+OrbitRadBox.Font = Enum.Font.GothamSemibold
+OrbitRadBox.TextSize = 11
+RegisterThemeObject(OrbitRadBox, "BackgroundColor3", "PanelBg")
+RegisterThemeObject(OrbitRadBox, "TextColor3", "TextPrimary")
+AddCorner(OrbitRadBox, 6)
+
+local OrbitSpdLbl = MakeLabel(OrbitParamsRow, UDim2.new(0.26, -4, 1, 0), UDim2.new(0.50, 4, 0, 0), "Orbit Speed (rad/s):", Enum.Font.GothamSemibold, 11, "TextSecondary", Enum.TextXAlignment.Left)
+OrbitSpdLbl.TextTruncate = Enum.TextTruncate.AtEnd
+local OrbitSpdBox = Instance.new("TextBox", OrbitParamsRow)
+OrbitSpdBox.Size = UDim2.new(0.22, -6, 0, 26)
+OrbitSpdBox.Position = UDim2.new(0.76, 2, 0, 1)
+OrbitSpdBox.Text = tostring(orbitSpeed)
+OrbitSpdBox.PlaceholderText = "Speed (10)"
+OrbitSpdBox.ClearTextOnFocus = false
+OrbitSpdBox.Font = Enum.Font.GothamSemibold
+OrbitSpdBox.TextSize = 11
+RegisterThemeObject(OrbitSpdBox, "BackgroundColor3", "PanelBg")
+RegisterThemeObject(OrbitSpdBox, "TextColor3", "TextPrimary")
+AddCorner(OrbitSpdBox, 6)
+
+OrbitRadBox.FocusLost:Connect(function()
+	local v = tonumber(OrbitRadBox.Text)
+	if v then
+		orbitRadius = math.clamp(math.floor(v * 10 + 0.5) / 10, 2, 50)
+		Config.OrbitRadius = orbitRadius
+		savedConfig.Settings.OrbitRadius = orbitRadius
+		SaveConfig(false)
+	end
+	OrbitRadBox.Text = tostring(orbitRadius)
+end)
+
+OrbitSpdBox.FocusLost:Connect(function()
+	local v = tonumber(OrbitSpdBox.Text)
+	if v then
+		orbitSpeed = math.clamp(math.floor(v * 10 + 0.5) / 10, 1, 40)
+		Config.OrbitSpeed = orbitSpeed
+		savedConfig.Settings.OrbitSpeed = orbitSpeed
+		SaveConfig(false)
+	end
+	OrbitSpdBox.Text = tostring(orbitSpeed)
+end)
 local function RefreshStickUI()
 	local theme = GetTheme()
 	for id, btn in pairs(StickModeBtns) do
@@ -1111,6 +1478,11 @@ local function ComputeStickCFrame(tChar, tRoot, dt)
 		return baseCF * CFrame.new(0, 4.5, 0), tVel
 	elseif StickMode == "Bottom" then
 		return baseCF * CFrame.new(0, -4.5, 0), tVel
+	elseif StickMode == "Orbit" then
+		orbitAngle = (orbitAngle + (orbitSpeed * math.clamp(dt or 0.016, 0.001, 0.1))) % (math.pi * 2)
+		local tPos = baseCF.Position
+		local orbitPos = tPos + Vector3.new(math.cos(orbitAngle) * orbitRadius, 0.5, math.sin(orbitAngle) * orbitRadius)
+		return CFrame.new(orbitPos, tPos), tVel
 	else
 		return baseCF * CFrame.new(0, 0, 3.2), tVel
 	end
@@ -1427,6 +1799,7 @@ RefreshRadarCards = function()
 			StickBtn.MouseButton2Click:Connect(function()
 				if StickMode == "Head" then StickMode = "Back"
 				elseif StickMode == "Back" then StickMode = "Bottom"
+				elseif StickMode == "Bottom" then StickMode = "Orbit"
 				else StickMode = "Head" end
 				Config.StickMode = StickMode
 				savedConfig.Settings.StickMode = StickMode
@@ -4629,6 +5002,135 @@ local function stepShiftLockCore(cam) UserInputService.MouseBehavior = Enum.Mous
 		hum.CameraOffset = (camDist > 1) and Vector3.new(1.75, 0, 0) or V3_ZERO
 		local lv = cam.CFrame.LookVector local flat = Vector3.new(lv.X, 0, lv.Z) if flat.Magnitude > 0.001 then
 			hum.AutoRotate = false root.CFrame = CFrame.new(root.Position, root.Position + flat.Unit) end end end
+local ContextActionService = game:GetService("ContextActionService")
+local katanaActiveUntil = {}
+local isKatanaBlockingClick = false
+
+local KatanaClickSinkBtn = Instance.new("TextButton")
+KatanaClickSinkBtn.Name = "TR_KatanaClickSink"
+KatanaClickSinkBtn.Size = UDim2.new(1, 0, 1, 0)
+KatanaClickSinkBtn.Position = UDim2.new(0, 0, 0, 0)
+KatanaClickSinkBtn.BackgroundTransparency = 1
+KatanaClickSinkBtn.BorderSizePixel = 0
+KatanaClickSinkBtn.Text = ""
+KatanaClickSinkBtn.AutoButtonColor = false
+KatanaClickSinkBtn.Active = true
+KatanaClickSinkBtn.Visible = false
+KatanaClickSinkBtn.ZIndex = 999999
+KatanaClickSinkBtn.Parent = ScreenGui
+
+local function SetKatanaClickBlockState(shouldBlock)
+	if shouldBlock then
+		if StopAutoShootFiring then StopAutoShootFiring() end
+		if mouse1release then pcall(mouse1release) end
+		local myChar = LocalPlayer.Character
+		local myTool = myChar and myChar:FindFirstChildOfClass("Tool")
+		if myTool then pcall(function() myTool:Deactivate() end) end
+		if not isKatanaBlockingClick then
+			isKatanaBlockingClick = true
+			KatanaClickSinkBtn.Visible = true
+			pcall(function()
+				ContextActionService:BindActionAtPriority("TR_KatanaClickBlock", function()
+					if mouse1release then pcall(mouse1release) end
+					return Enum.ContextActionResult.Sink
+				end, false, Enum.ContextActionPriority.High.Value + 5000, Enum.UserInputType.MouseButton1, Enum.UserInputType.Touch)
+			end)
+		end
+	else
+		if isKatanaBlockingClick then
+			isKatanaBlockingClick = false
+			KatanaClickSinkBtn.Visible = false
+			pcall(function()
+				ContextActionService:UnbindAction("TR_KatanaClickBlock")
+			end)
+		end
+	end
+end
+
+local function CheckRawEnemyKatanaActive(plr, char)
+	if not char then return false end
+	-- 1. Check Attributes on Character and Player
+	for _, attrName in ipairs({ "Deflect", "Deflecting", "IsDeflecting", "KatanaDeflect", "Parry", "Parrying", "Reflect", "Reflecting", "Blocking", "Counter" }) do
+		if char:GetAttribute(attrName) == true or (plr and plr:GetAttribute(attrName) == true) then
+			return true
+		end
+	end
+	for _, wAttr in ipairs({ "Weapon", "EquippedWeapon", "CurrentWeapon", "Equipped", "Tool" }) do
+		local wv = char:GetAttribute(wAttr) or (plr and plr:GetAttribute(wAttr))
+		if type(wv) == "string" and (wv:lower():find("katana") or wv:lower():find("deflect")) then
+			return true
+		end
+	end
+	-- 2. Check Playing AnimationTracks on Humanoid / Animator for Katana / Deflect / Parry / Spin
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		local animator = hum:FindFirstChildOfClass("Animator") or hum
+		local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
+		if ok and type(tracks) == "table" then
+			for _, tr in ipairs(tracks) do
+				if tr.IsPlaying then
+					local tName = tostring(tr.Name or ""):lower()
+					local aName = tostring((tr.Animation and tr.Animation.Name) or ""):lower()
+					if tName:find("katana") or tName:find("deflect") or tName:find("parry") or tName:find("reflect") or aName:find("katana") or aName:find("deflect") or aName:find("parry") or aName:find("reflect") then
+						return true
+					end
+				end
+			end
+		end
+	end
+	-- 3. Check Equipped Tool / Model / Highlight / Deflect Effects inside Character
+	for _, ch in ipairs(char:GetChildren()) do
+		local cn = ch.Name:lower()
+		if ch:IsA("Highlight") and ch.Enabled and ch.Name ~= "AssetHighlight" and ch.Name ~= "TR_ESP_Highlight" and not ch.Name:find("^HL_") then
+			if cn:find("deflect") or cn:find("katana") or cn:find("parry") or cn:find("reflect") or cn:find("block") then
+				return true
+			end
+		elseif ch:IsA("Tool") and (cn:find("katana") or cn:find("deflect") or cn:find("parry")) then
+			return true
+		elseif (ch:IsA("Model") or ch:IsA("BasePart") or ch:IsA("Folder")) and (cn:find("katana") or cn:find("deflect") or cn:find("parry")) then
+			if cn:find("deflect") or cn:find("parry") then return true end
+			if ch:IsA("BasePart") and ch.Transparency < 0.9 then return true end
+			for _, sub in ipairs(ch:GetDescendants()) do
+				local sn = sub.Name:lower()
+				if (sub:IsA("ParticleEmitter") or sub:IsA("Beam") or sub:IsA("Trail") or sub:IsA("Highlight")) and sub.Enabled then
+					return true
+				elseif sub:IsA("Sound") and sub.IsPlaying and (sn:find("deflect") or sn:find("katana") or sn:find("spin") or sn:find("parry") or sn:find("slash")) then
+					return true
+				elseif sub:IsA("BasePart") and sub.Transparency < 0.9 then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function IsEnemyUsingKatana(plr, char)
+	if Config.AntiKatanaEnabled == false or not plr then return false end
+	char = char or GetCharacterFromPlayer(plr)
+	local now = os.clock()
+	if CheckRawEnemyKatanaActive(plr, char) then
+		katanaActiveUntil[plr] = now + 0.25
+		return true
+	end
+	local exp = katanaActiveUntil[plr]
+	if exp and now < exp then
+		return true
+	end
+	return false
+end
+
+genv._TR_MobileToggleAimbot = function() if toggleAimbot then toggleAimbot() end end
+genv._TR_MobileToggleTargetAimbot = function() if toggleTargetAimbot then toggleTargetAimbot() end end
+genv._TR_MobileToggleAutoShoot = function() if toggleAutoShoot then toggleAutoShoot() end end
+genv._TR_MobileToggleFlight = function()
+	if not masterFlightEnabled then
+		masterFlightEnabled = true
+		savedConfig.Settings.MasterFlightEnabled = true
+	end
+	if toggleFlightState then toggleFlightState() end
+end
+
 local function getValidEnemyHitboxFromInstance(hitInstance)
 	if not hitInstance then return nil, nil end
 	if hitInstance:FindFirstAncestorOfClass("Accessory") or hitInstance:FindFirstAncestorOfClass("Tool") then
@@ -4756,14 +5258,26 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		lastShiftLook = nil
 	end
 
+	if genv._TR_UpdateMobileQuickBar then
+		pcall(genv._TR_UpdateMobileQuickBar, aimbotEnabled, targetAimbotEnabled, (autoShootEnabled or aimbotAutoShootEnabled), (isFlightActive and isFlightActive() or false))
+	end
+
 	-- When Aimbot [Q]/[T] is OFF:
-	-- Mode 2 (Aimbot-Lock Auto Shoot [V]) is strictly inactive; Mode 1 (Normal Auto Shoot [Z]) works via Screen Middle Dot!
+	-- Mode 2 (Aimbot-Lock Auto Shoot [V]) is strictly inactive; Mode 1 (Normal Auto Shoot [Z]) + Anti-Katana Left-Click Blocker work via Screen Middle Dot!
 	if not anyAimbotActive then
 		currentTarget = nil
+		local hitPlr, hitChar = checkScreenMiddleDotRay(cam)
+		if hitPlr and IsEnemyUsingKatana(hitPlr, hitChar) then
+			SetKatanaClickBlockState(true)
+			setAimbotStatusText("KATANA BLOCK: " .. tostring(hitPlr.DisplayName))
+			setNormalShootStatusText("BLOCKED (Katana Active!)")
+			setAimbotShootStatusText(aimbotAutoShootEnabled and "Standby (Need Aimbot [Q])" or "Aimbot Shoot: OFF")
+			return
+		end
+		SetKatanaClickBlockState(false)
 		setAimbotStatusText("Status: Idle")
 		setAimbotShootStatusText(aimbotAutoShootEnabled and "Standby (Need Aimbot [Q])" or "Aimbot Shoot: OFF")
 		if autoShootEnabled and not isClosingPermanently then
-			local hitPlr = checkScreenMiddleDotRay(cam)
 			if hitPlr then
 				setNormalShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
 				if triggerAutoShoot then triggerAutoShoot() end
@@ -4823,6 +5337,14 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 			local leadPos = targetPart.Position + (tVel * 0.006)
 			local goalCF = CFrame.new(camPos, leadPos)
 			cam.CFrame = strongLock and goalCF or cam.CFrame:Lerp(goalCF, LERP_ALPHA)
+			if IsEnemyUsingKatana(currentTarget, tChar) then
+				SetKatanaClickBlockState(true)
+				setAimbotStatusText("KATANA BLOCK: " .. tostring(currentTarget.DisplayName))
+				setNormalShootStatusText(autoShootEnabled and "BLOCKED (Katana Active!)" or "Normal Shoot: OFF")
+				setAimbotShootStatusText(aimbotAutoShootEnabled and "BLOCKED (Katana Active!)" or "Aimbot Shoot: OFF")
+				return
+			end
+			SetKatanaClickBlockState(false)
 			setAimbotStatusText("Locked: " .. tostring(currentTarget.DisplayName))
 
 			if (autoShootEnabled or aimbotAutoShootEnabled) and lockPart and isTargetVisible(lockPart, tChar) then
@@ -4864,6 +5386,7 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 			end
 		else
 			currentTarget = nil
+			SetKatanaClickBlockState(false)
 			if StopAutoShootFiring then StopAutoShootFiring() end
 			setAimbotStatusText(targetAimbotEnabled and "Target Behind Wall / Dead" or "Status: Searching...")
 			setNormalShootStatusText(autoShootEnabled and "Stopped (Behind Wall)" or "Normal Shoot: OFF")
@@ -4877,9 +5400,16 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		end
 		-- Mode 2 (Aimbot-Lock Auto Shoot) MUST NOT fire when Aimbot has no locked target!
 		setAimbotShootStatusText(aimbotAutoShootEnabled and "Waiting Aimbot Lock..." or "Aimbot Shoot: OFF")
+		-- Check if crosshair is on a Katana-using enemy even when Aimbot is still searching
+		local hitPlr, hitChar = checkScreenMiddleDotRay(cam)
+		if hitPlr and IsEnemyUsingKatana(hitPlr, hitChar) then
+			SetKatanaClickBlockState(true)
+			setNormalShootStatusText("BLOCKED (Katana Active!)")
+			return
+		end
+		SetKatanaClickBlockState(false)
 		-- Mode 1 (Normal Auto Shoot) still fires if Screen Middle Dot is on an enemy!
 		if autoShootEnabled and not isClosingPermanently then
-			local hitPlr = checkScreenMiddleDotRay(cam)
 			if hitPlr then
 				setNormalShootStatusText("FIRING -> " .. tostring(hitPlr.DisplayName))
 				if triggerAutoShoot then triggerAutoShoot() end
@@ -5060,6 +5590,7 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 local function ShutdownInstance(immediate) if isClosingPermanently then return end
 	FlingActive, aimbotEnabled, targetAimbotEnabled, autoShootEnabled, aimbotAutoShootEnabled, currentTarget, masterFlightEnabled = false, false, false, false, false, nil, false
 	if StopAutoShootFiring then pcall(StopAutoShootFiring) end
+	pcall(function() game:GetService("ContextActionService"):UnbindAction("TR_KatanaClickBlock") end)
 	if SetStickTarget then pcall(SetStickTarget, nil) end
 	pcall(function() RunService:UnbindFromRenderStep("TR_Stick_Step") end)
 	genv.TR_AntiCheatActive = false pcall(StopFling) pcall(stopFlight) if stopFreecam then pcall(stopFreecam) end
@@ -5121,3 +5652,4 @@ for _, addonFile in ipairs({ "TRScripts_Part2.lua", "TRScripts_Part3.lua", "TRSc
 
 end
 SetupRemainingTabsAndLoops()
+if ApplyGuiDesignSurface then pcall(ApplyGuiDesignSurface) end
