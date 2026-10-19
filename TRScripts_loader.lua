@@ -1558,7 +1558,8 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 	end
 
 	local moveVector = Vector3.zero
-	local camCF = camera.CFrame
+	local activeCam = workspace.CurrentCamera or camera
+	local camCF = activeCam.CFrame
 
 	if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVector = moveVector + camCF.LookVector end
 	if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVector = moveVector - camCF.LookVector end
@@ -1570,6 +1571,26 @@ table.insert(Connections, RunService.Heartbeat:Connect(function(deltaTime)
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
 			moveVector = moveVector - Vector3.new(0, 1, 0)
 		end
+	end
+
+	if moveVector.Magnitude == 0 then
+		local moveDir = hum.MoveDirection
+		if moveDir and moveDir.Magnitude > 0.01 then
+			local flatLook = Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z)
+			local flatRight = Vector3.new(camCF.RightVector.X, 0, camCF.RightVector.Z)
+			if flatLook.Magnitude > 0.001 and flatRight.Magnitude > 0.001 then
+				flatLook = flatLook.Unit
+				flatRight = flatRight.Unit
+				local forwardInput = moveDir:Dot(flatLook)
+				local rightInput = moveDir:Dot(flatRight)
+				moveVector = moveVector + (camCF.LookVector * forwardInput) + (camCF.RightVector * rightInput)
+			else
+				moveVector = moveVector + moveDir
+			end
+		end
+	end
+	if hum.Jump then
+		moveVector = moveVector + Vector3.new(0, 1, 0)
 	end
 
 	local currentFlySpeed = savedConfig.Settings.FlySpeed or 50
