@@ -476,7 +476,145 @@ local function CreateSectionHeader(parent, title, order) local Header = Instance
 	Card.BorderSizePixel = 0 Card.ClipsDescendants = true Card.Parent = parent RegisterThemeObject(Card, "BackgroundColor3", "CardBg")
 	AddCorner(Card, 8) local Stroke = Instance.new("UIStroke") Stroke.Thickness = 1
 	Stroke.Transparency = 0.6 Stroke.Parent = Card RegisterThemeObject(Stroke, "Color", "Stroke")
-	return Card end local function CreateToggle(parent, labelText, initialValue, order, callback)
+	return Card end local RightNotifHolder = Instance.new("Frame")
+RightNotifHolder.Name = "TR_RightNotifications"
+RightNotifHolder.AnchorPoint = Vector2.new(1, 1)
+RightNotifHolder.Position = UDim2.new(1, -14, 1, -18)
+RightNotifHolder.Size = UDim2.new(0, 236, 1, -80)
+RightNotifHolder.BackgroundTransparency = 1
+RightNotifHolder.BorderSizePixel = 0
+RightNotifHolder.ZIndex = 90
+RightNotifHolder.Parent = ScreenGui
+local RightNotifLayout = Instance.new("UIListLayout")
+RightNotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+RightNotifLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+RightNotifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+RightNotifLayout.Padding = UDim.new(0, 6)
+RightNotifLayout.Parent = RightNotifHolder
+local activeFeatureNotifs = {}
+local notifCounter = 0
+
+local function NotifyFeatureToggle(rawName, isEnabled)
+	if isClosingPermanently or not ScreenGui or not ScreenGui.Parent then return end
+	local cleanName = tostring(rawName or "Feature"):gsub("%s*%b()$", "")
+	if cleanName == "" then cleanName = tostring(rawName or "Feature") end
+	local stateBool = (isEnabled == true)
+	local statusColor = stateBool and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
+	local statusText = stateBool and "ON" or "OFF"
+	local theme = GetTheme()
+	local existing = activeFeatureNotifs[cleanName]
+	if existing and existing.Slot and existing.Slot.Parent then
+		existing.Token = existing.Token + 1
+		local myToken = existing.Token
+		existing.Bar.BackgroundColor3 = statusColor
+		existing.Stroke.Color = statusColor
+		existing.Badge.BackgroundColor3 = statusColor
+		existing.Badge.Text = statusText
+		existing.Title.Text = cleanName
+		pcall(function()
+			TweenService:Create(existing.Inner, TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Position = UDim2.new(0, 0, 0, 0) }):Play()
+		end)
+		task.delay(1.85, function()
+			if activeFeatureNotifs[cleanName] == existing and existing.Token == myToken then
+				activeFeatureNotifs[cleanName] = nil
+				if existing.Inner and existing.Inner.Parent then
+					local tw = TweenService:Create(existing.Inner, TweenInfo.new(0.20, Enum.EasingStyle.Quint, Enum.EasingDirection.In), { Position = UDim2.new(1, 250, 0, 0) })
+					tw:Play()
+					tw.Completed:Connect(function()
+						if existing.Slot and existing.Slot.Parent then existing.Slot:Destroy() end
+					end)
+				elseif existing.Slot and existing.Slot.Parent then
+					existing.Slot:Destroy()
+				end
+			end
+		end)
+		return
+	end
+
+	notifCounter = notifCounter + 1
+	local slot = Instance.new("Frame")
+	slot.Size = UDim2.new(0, 232, 0, 38)
+	slot.BackgroundTransparency = 1
+	slot.BorderSizePixel = 0
+	slot.LayoutOrder = notifCounter
+	slot.ZIndex = 91
+	slot.Parent = RightNotifHolder
+
+	local inner = Instance.new("Frame")
+	inner.Size = UDim2.new(1, 0, 1, 0)
+	inner.Position = UDim2.new(1, 250, 0, 0)
+	inner.BackgroundColor3 = theme.MainBg
+	inner.BackgroundTransparency = 0.06
+	inner.BorderSizePixel = 0
+	inner.ZIndex = 91
+	inner.Parent = slot
+	AddCorner(inner, 8)
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 1.3
+	stroke.Transparency = 0.2
+	stroke.Color = statusColor
+	stroke.Parent = inner
+
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.new(0, 4, 1, -12)
+	bar.Position = UDim2.new(0, 6, 0, 6)
+	bar.BackgroundColor3 = statusColor
+	bar.BorderSizePixel = 0
+	bar.ZIndex = 92
+	bar.Parent = inner
+	AddCorner(bar, 4)
+
+	local titleLbl = Instance.new("TextLabel")
+	titleLbl.Size = UDim2.new(1, -68, 1, 0)
+	titleLbl.Position = UDim2.new(0, 16, 0, 0)
+	titleLbl.BackgroundTransparency = 1
+	titleLbl.Font = Enum.Font.GothamBold
+	titleLbl.TextSize = 12
+	titleLbl.TextColor3 = theme.TextPrimary
+	titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+	titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	titleLbl.Text = cleanName
+	titleLbl.ZIndex = 92
+	titleLbl.Parent = inner
+
+	local badge = Instance.new("TextLabel")
+	badge.Size = UDim2.new(0, 42, 0, 22)
+	badge.Position = UDim2.new(1, -50, 0.5, -11)
+	badge.BackgroundColor3 = statusColor
+	badge.BorderSizePixel = 0
+	badge.Font = Enum.Font.GothamBold
+	badge.TextSize = 11
+	badge.TextColor3 = Color3.fromRGB(255, 255, 255)
+	badge.Text = statusText
+	badge.ZIndex = 92
+	badge.Parent = inner
+	AddCorner(badge, 6)
+
+	local entry = { Slot = slot, Inner = inner, Bar = bar, Stroke = stroke, Badge = badge, Title = titleLbl, Token = 1 }
+	activeFeatureNotifs[cleanName] = entry
+
+	pcall(function()
+		TweenService:Create(inner, TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Position = UDim2.new(0, 0, 0, 0) }):Play()
+	end)
+
+	task.delay(1.85, function()
+		if activeFeatureNotifs[cleanName] == entry and entry.Token == 1 then
+			activeFeatureNotifs[cleanName] = nil
+			if inner and inner.Parent then
+				local tw = TweenService:Create(inner, TweenInfo.new(0.20, Enum.EasingStyle.Quint, Enum.EasingDirection.In), { Position = UDim2.new(1, 250, 0, 0) })
+				tw:Play()
+				tw.Completed:Connect(function()
+					if slot and slot.Parent then slot:Destroy() end
+				end)
+			elseif slot and slot.Parent then
+				slot:Destroy()
+			end
+		end
+	end)
+end
+
+local function CreateToggle(parent, labelText, initialValue, order, callback)
 	local Card = CreateCard(parent, 42, order)
 	local Label = MakeLabel(Card, UDim2.new(1, -110, 1, 0), UDim2.new(0, 14, 0, 0), labelText, Enum.Font.GothamSemibold, 13, "TextPrimary", Enum.TextXAlignment.Left)
 	local ToggleBtn = MakeButton(Card, UDim2.new(0, 84, 0, 28), UDim2.new(1, -96, 0.5, -14), "OFF", nil, 12)
@@ -485,7 +623,7 @@ local function CreateSectionHeader(parent, title, order) local Header = Instance
 		ToggleBtn.BackgroundColor3 = state and theme.Accent or theme.PanelBg end
 	table.insert(ThemeObjects.CustomCallbacks, UpdateToggleVisual) UpdateToggleVisual()
 	local function SetState(newState, triggerCallback) state = newState and true or false
-		UpdateToggleVisual() if triggerCallback ~= false and callback then pcall(callback, state) end end
+		UpdateToggleVisual() if triggerCallback ~= false then NotifyFeatureToggle(labelText, state) if callback then pcall(callback, state) end end end
 	ToggleBtn.MouseButton1Click:Connect(function() SetState(not state, true) end)
 	return { SetState = SetState, GetState = function() return state end, Card = Card } end
 local function CreateSlider(parent, labelText, minVal, maxVal, initialVal, order, callback)
@@ -712,7 +850,7 @@ RefreshMouseLockUI = function() local k = Config.MouseLockKeybind or "None"
 	mouseLockToggleBtn.Text = "Mouse Lock [" .. k .. "]: " .. (CursorUnlockedOverride and "ON" or "OFF")
 	mouseLockToggleBtn.BackgroundColor3 = CursorUnlockedOverride and Color3.fromRGB(38, 168, 92) or Color3.fromRGB(185, 52, 52)
 	mouseLockStatusLbl.Text = CursorUnlockedOverride and "Shift Lock: ACTIVE" or "Shift Lock: INACTIVE" end
-SetMouseLockState = function(newState) CursorUnlockedOverride = newState and true or false
+SetMouseLockState = function(newState) local prevML = CursorUnlockedOverride CursorUnlockedOverride = newState and true or false if prevML ~= CursorUnlockedOverride and not isClosingPermanently then NotifyFeatureToggle("Mouse Lock", CursorUnlockedOverride) end
 	RefreshMouseLockUI() if CursorUnlockedOverride then pcall(function() player.DevEnableMouseLock = true
 			UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.CameraRelative
 			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter end) else pcall(function()
@@ -1015,6 +1153,7 @@ SetStickTarget = function(targetPlr)
 		StickTarget = nil
 		pcall(function() RunService:UnbindFromRenderStep("TR_Stick_Step") end)
 		if wasSticking then
+			NotifyFeatureToggle("Player Stick", false)
 			local myChar = GetCharacterFromPlayer(player)
 			local myRoot = GetRootPart(myChar)
 			if myRoot then
@@ -1030,6 +1169,7 @@ SetStickTarget = function(targetPlr)
 		return false
 	end
 	StickTarget = targetPlr
+	NotifyFeatureToggle("Stick: " .. tostring(targetPlr.DisplayName), true)
 	pcall(function() RunService:UnbindFromRenderStep("TR_Stick_Step") end)
 	RunService:BindToRenderStep("TR_Stick_Step", Enum.RenderPriority.Character.Value + 1, function(dt)
 		StepStickEngine(dt)
@@ -1061,7 +1201,9 @@ SpectatingTarget = nil
 local specYaw, specPitch, specDist = 0, -math.rad(15), 14
 SetSpectateTarget = function(targetPlr)
 	if not targetPlr or targetPlr == player then
+		local wasSpec = (SpectatingTarget ~= nil)
 		SpectatingTarget = nil
+		if wasSpec then NotifyFeatureToggle("Spectate Player", false) end
 		pcall(function() RunService:UnbindFromRenderStep("TR_Spectate_Step") end)
 		pcall(function()
 			local cam = workspace.CurrentCamera
@@ -1501,10 +1643,12 @@ toggleFlightState = function()
 	else
 		startFlight()
 	end
+	NotifyFeatureToggle("Flight", keyFlying)
 end
 
 masterFlightToggleBtn.MouseButton1Click:Connect(function()
 	masterFlightEnabled = not masterFlightEnabled
+	NotifyFeatureToggle("Master Flight Switch", masterFlightEnabled)
 	savedConfig.Settings.MasterFlightEnabled = masterFlightEnabled
 	if syncAllSystems then syncAllSystems() end
 	masterFlightToggleBtn.BackgroundColor3 = masterFlightEnabled and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(231, 76, 60)
@@ -1844,6 +1988,7 @@ local function startFreecam()
 end
 toggleFreecamState = function()
 	if freecamEnabled then stopFreecam() else startFreecam() end
+	NotifyFeatureToggle("Freecam", freecamEnabled)
 end
 freecamToggleBtn.MouseButton1Click:Connect(toggleFreecamState)
 freecamKeyAssignBtn.MouseButton1Click:Connect(function()
@@ -2029,7 +2174,7 @@ local function Message(title, text, timeLen) pcall(function() StarterGui:SetCore
 			workspace.FallenPartsDestroyHeight = genv.FPDH end end end local function StartFling()
 	if FlingActive then return end if CountSelectedTargets() == 0 then
 		statusLabel.Text = "No targets selected!" task.delay(1, UpdateStatus) return end
-	RunNetworkPauseBypass() FlingActive = true UpdateStatus()
+	RunNetworkPauseBypass() FlingActive = true UpdateStatus() NotifyFeatureToggle("Target Fling", true)
 	Message("T.R Fling", "Started multi-target fling & bypass engine.", 2) task.spawn(function()
 		while FlingActive do local validTargets = {} for name, targetPlayer in pairs(SelectedTargets) do
 				if targetPlayer and targetPlayer.Parent then table.insert(validTargets, targetPlayer) else
@@ -2037,7 +2182,7 @@ local function Message(title, text, timeLen) pcall(function() StarterGui:SetCore
 						PlayerCheckboxes[name].Check.Visible = false end end end
 			for _, targetPlayer in ipairs(validTargets) do if FlingActive then SkidFling(targetPlayer)
 					task.wait(0.05) else break end end task.wait(0.2) end end) end StopFling = function()
-	if not FlingActive then return end FlingActive = false UpdateStatus()
+	if not FlingActive then return end FlingActive = false UpdateStatus() NotifyFeatureToggle("Target Fling", false)
 	Message("T.R Fling", "Fling engine stopped.", 2) end startButton.MouseButton1Click:Connect(StartFling)
 stopButton.MouseButton1Click:Connect(StopFling)
 selectAllButton.MouseButton1Click:Connect(function() ToggleAllPlayers(true) end)
@@ -2868,6 +3013,7 @@ local function SetupTab7()
 			Config.AimbotEnabled = true
 			savedConfig.Settings.AimbotEnabled = false
 			aimbotBurstEndTime = os.clock() + durSec
+			NotifyFeatureToggle("Button Aimbot (" .. tostring(aimbotBurstDurationMs) .. "ms)", true)
 			if targetAimbotEnabled then
 				targetAimbotEnabled = false
 				Config.TargetAimbotEnabled = false
@@ -2882,6 +3028,7 @@ local function SetupTab7()
 					aimbotBurstEndTime = 0
 					currentTarget = nil
 					if aimbotAutoShootEnabled and StopAutoShootFiring then StopAutoShootFiring() end
+					NotifyFeatureToggle("Button Aimbot", false)
 					if aimbotStatusLabel then aimbotStatusLabel.Text = "Status: Idle (" .. tostring(aimbotBurstDurationMs) .. "ms Ended)" end
 					RefreshAimbotVisuals()
 				end
@@ -2889,6 +3036,7 @@ local function SetupTab7()
 		else
 			aimbotBurstEndTime = 0
 			aimbotEnabled = not aimbotEnabled
+			NotifyFeatureToggle("Normal Aimbot", aimbotEnabled)
 			Config.AimbotEnabled = aimbotEnabled
 			savedConfig.Settings.AimbotEnabled = aimbotEnabled
 			if aimbotEnabled and targetAimbotEnabled then
@@ -2946,6 +3094,7 @@ local function SetupTab7()
 
 	toggleTargetAimbot = function()
 		targetAimbotEnabled = not targetAimbotEnabled
+		NotifyFeatureToggle("Target Aimbot", targetAimbotEnabled)
 		Config.TargetAimbotEnabled = targetAimbotEnabled
 		savedConfig.Settings.TargetAimbotEnabled = targetAimbotEnabled
 		if targetAimbotEnabled and aimbotEnabled then
@@ -2965,6 +3114,7 @@ local function SetupTab7()
 	-- Mutual Exclusivity: Normal Auto Shoot [Z] vs Aimbot-Lock Auto Shoot [V]
 	toggleAutoShoot = function()
 		autoShootEnabled = not autoShootEnabled
+		NotifyFeatureToggle("Normal Auto Shoot", autoShootEnabled)
 		Config.AutoShootEnabled = autoShootEnabled
 		savedConfig.Settings.AutoShootEnabled = autoShootEnabled
 		if autoShootEnabled and aimbotAutoShootEnabled then
@@ -2981,6 +3131,7 @@ local function SetupTab7()
 
 	toggleAimbotAutoShoot = function()
 		aimbotAutoShootEnabled = not aimbotAutoShootEnabled
+		NotifyFeatureToggle("Aimbot Auto Shoot", aimbotAutoShootEnabled)
 		Config.AimbotAutoShootEnabled = aimbotAutoShootEnabled
 		savedConfig.Settings.AimbotAutoShootEnabled = aimbotAutoShootEnabled
 		if aimbotAutoShootEnabled and autoShootEnabled then
@@ -3482,11 +3633,13 @@ table.insert(ThemeObjects.CustomCallbacks, RefreshAllDetectorThemes)
 
 local function ToggleDetectorState()
 	detectorEnabled = not detectorEnabled
+	NotifyFeatureToggle("Hacker Detector", detectorEnabled)
 	RefreshDetectorControlVisuals()
 end
 DetectorToggleBtn.MouseButton1Click:Connect(ToggleDetectorState)
 NotifToggleBtn.MouseButton1Click:Connect(function()
 	notificationsEnabled = not notificationsEnabled
+	NotifyFeatureToggle("Detector Alerts", notificationsEnabled)
 	RefreshDetectorControlVisuals()
 end)
 
@@ -4588,6 +4741,7 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 		aimbotBurstEndTime = 0
 		currentTarget = nil
 		if aimbotAutoShootEnabled and StopAutoShootFiring then StopAutoShootFiring() end
+		NotifyFeatureToggle("Button Aimbot", false)
 		setAimbotStatusText("Status: Idle (" .. tostring(aimbotBurstDurationMs) .. "ms Ended)")
 		if RefreshAimbotVisuals then pcall(RefreshAimbotVisuals) end
 	end
