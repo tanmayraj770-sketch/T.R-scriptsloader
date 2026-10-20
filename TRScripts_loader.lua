@@ -2782,7 +2782,7 @@ local lastAutoShoot = 0
 local isAutoShootingActive = false
 local lastMiddleDotTarget, lastMiddleDotTime = nil, 0
 local currentTarget, lastEspUpdate = nil, 0
-local excludedPlayers, characterCache, adornmentsCache = {}, {}, {}
+local excludedPlayers, characterCache, adornmentsCache, katanaActiveUntil = {}, {}, {}, {}
 local guiFovCircle = nil
 local MAX_DISTANCE = 650
 local wallcheckEnabled = (Config.WallcheckEnabled ~= false)
@@ -3235,7 +3235,8 @@ local function SetupTab7()
 							pair.hpFill.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
 						end
 						local sValText = (shield > 0) and string.format(" | %d S", math.floor(shield + 0.5)) or ""
-						pair.hpText.Text = string.format("%d HP%s", math.floor(hp + 0.5), sValText)
+						local katTag = (katanaActiveUntil and katanaActiveUntil[plr] and os.clock() < katanaActiveUntil[plr]) and "[KATANA] " or ""
+						pair.hpText.Text = string.format("%s%d HP%s", katTag, math.floor(hp + 0.5), sValText)
 					else
 						pair.healthBg.Visible = false
 						pair.healthBar.Visible = false
@@ -3410,6 +3411,10 @@ local function SetupTab7()
 		SaveConfig(false) end)
 	CreateToggle(Tab7_Visuals, "Raycast Wallcheck (Stop Aim & Auto-Shoot Behind Walls)", wallcheckEnabled, 8, function(state)
 		wallcheckEnabled = state Config.WallcheckEnabled = state SaveConfig(false) end)
+	CreateToggle(Tab7_Visuals, "Enemy Katana Auto-Alert & Deflect Blocker (Notify + Stop Shoot)", Config.AntiKatanaEnabled ~= false, 8, function(state)
+		Config.AntiKatanaEnabled = state savedConfig.Settings.AntiKatanaEnabled = state
+		if not state then SetKatanaClickBlockState(false) if KatanaWarnBanner then KatanaWarnBanner.Visible = false end end
+		SaveConfig(false) end)
 	CreateToggle(Tab7_Visuals, "Only Aim at Enemies (Ignore Teammates in Normal Aimbot)", aimbotTeamCheck, 9, function(state)
 		aimbotTeamCheck = state Config.AimbotTeamCheck = state
 		if state and currentTarget and IsTeammate(currentTarget) then currentTarget = nil end SaveConfig(false)
@@ -5203,7 +5208,6 @@ local function stepShiftLockCore(cam) UserInputService.MouseBehavior = Enum.Mous
 		local lv = cam.CFrame.LookVector local flat = Vector3.new(lv.X, 0, lv.Z) if flat.Magnitude > 0.001 then
 			hum.AutoRotate = false root.CFrame = CFrame.new(root.Position, root.Position + flat.Unit) end end end
 local ContextActionService = game:GetService("ContextActionService")
-local katanaActiveUntil = {}
 local isKatanaBlockingClick = false
 
 local KatanaClickSinkBtn = Instance.new("TextButton")
@@ -5247,6 +5251,32 @@ local function SetKatanaClickBlockState(shouldBlock)
 	end
 end
 
+local KatanaWarnBanner = Instance.new("Frame")
+KatanaWarnBanner.Name = "TR_KatanaWarnBanner"
+KatanaWarnBanner.AnchorPoint = Vector2.new(0.5, 0)
+KatanaWarnBanner.Position = UDim2.new(0.5, 0, 0, 48)
+KatanaWarnBanner.Size = UDim2.new(0, 290, 0, 30)
+KatanaWarnBanner.BackgroundColor3 = Color3.fromRGB(28, 10, 14)
+KatanaWarnBanner.BackgroundTransparency = 0.12
+KatanaWarnBanner.BorderSizePixel = 0
+KatanaWarnBanner.Visible = false
+KatanaWarnBanner.ZIndex = 88
+KatanaWarnBanner.Parent = ScreenGui
+AddCorner(KatanaWarnBanner, 8)
+local kwStroke = Instance.new("UIStroke", KatanaWarnBanner)
+kwStroke.Thickness = 1.6
+kwStroke.Color = Color3.fromRGB(255, 65, 65)
+local KatanaWarnText = Instance.new("TextLabel", KatanaWarnBanner)
+KatanaWarnText.Size = UDim2.new(1, -16, 1, 0)
+KatanaWarnText.Position = UDim2.new(0, 8, 0, 0)
+KatanaWarnText.BackgroundTransparency = 1
+KatanaWarnText.Font = Enum.Font.GothamBold
+KatanaWarnText.TextSize = 12
+KatanaWarnText.TextColor3 = Color3.fromRGB(255, 220, 90)
+KatanaWarnText.TextTruncate = Enum.TextTruncate.AtEnd
+KatanaWarnText.Text = ""
+KatanaWarnText.ZIndex = 89
+
 local function CheckRawEnemyKatanaActive(plr, char)
 	if not char then return false end
 	-- 1. Check Attributes on Character and Player
@@ -5255,7 +5285,7 @@ local function CheckRawEnemyKatanaActive(plr, char)
 			return true
 		end
 	end
-	for _, wAttr in ipairs({ "Weapon", "EquippedWeapon", "CurrentWeapon", "Equipped", "Tool" }) do
+	for _, wAttr in ipairs({ "Weapon", "EquippedWeapon", "CurrentWeapon", "Equipped", "Tool", "ActiveWeapon", "HeldWeapon" }) do
 		local wv = char:GetAttribute(wAttr) or (plr and plr:GetAttribute(wAttr))
 		if type(wv) == "string" and (wv:lower():find("katana") or wv:lower():find("deflect")) then
 			return true
@@ -5278,26 +5308,25 @@ local function CheckRawEnemyKatanaActive(plr, char)
 			end
 		end
 	end
-	-- 3. Check Equipped Tool / Model / Highlight / Deflect Effects inside Character
-	for _, ch in ipairs(char:GetChildren()) do
-		local cn = ch.Name:lower()
-		if ch:IsA("Highlight") and ch.Enabled and ch.Name ~= "AssetHighlight" and ch.Name ~= "TR_ESP_Highlight" and not ch.Name:find("^HL_") then
-			if cn:find("deflect") or cn:find("katana") or cn:find("parry") or cn:find("reflect") or cn:find("block") then
+	-- 3. Check Equipped Tool / Model / Nested Weapon Folders / Welds / Highlight / Deflect Effects inside Character
+	for _, desc in ipairs(char:GetDescendants()) do
+		local dn = desc.Name:lower()
+		if dn:find("katana") or dn:find("deflect") or dn:find("parry") then
+			if desc:IsA("Tool") then
 				return true
-			end
-		elseif ch:IsA("Tool") and (cn:find("katana") or cn:find("deflect") or cn:find("parry")) then
-			return true
-		elseif (ch:IsA("Model") or ch:IsA("BasePart") or ch:IsA("Folder")) and (cn:find("katana") or cn:find("deflect") or cn:find("parry")) then
-			if cn:find("deflect") or cn:find("parry") then return true end
-			if ch:IsA("BasePart") and ch.Transparency < 0.9 then return true end
-			for _, sub in ipairs(ch:GetDescendants()) do
-				local sn = sub.Name:lower()
-				if (sub:IsA("ParticleEmitter") or sub:IsA("Beam") or sub:IsA("Trail") or sub:IsA("Highlight")) and sub.Enabled then
-					return true
-				elseif sub:IsA("Sound") and sub.IsPlaying and (sn:find("deflect") or sn:find("katana") or sn:find("spin") or sn:find("parry") or sn:find("slash")) then
-					return true
-				elseif sub:IsA("BasePart") and sub.Transparency < 0.9 then
-					return true
+			elseif desc:IsA("Highlight") and desc.Enabled and desc.Name ~= "AssetHighlight" and desc.Name ~= "TR_ESP_Highlight" and not desc.Name:find("^HL_") then
+				return true
+			elseif (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) and desc.Enabled then
+				return true
+			elseif desc:IsA("Sound") and desc.IsPlaying then
+				return true
+			elseif desc:IsA("BasePart") and desc.Transparency < 0.9 then
+				return true
+			elseif desc:IsA("Model") then
+				for _, sub in ipairs(desc:GetDescendants()) do
+					if sub:IsA("BasePart") and sub.Transparency < 0.9 then
+						return true
+					end
 				end
 			end
 		end
@@ -5413,8 +5442,67 @@ local function EnforceLockedCamera()
 	end
 end
 
+local enemyKatanaNotifiedState = {}
+local lastKatanaScanTime = 0
+
+local function ScanEnemiesForKatanaEquip()
+	if isClosingPermanently or Config.AntiKatanaEnabled == false then
+		if KatanaWarnBanner and KatanaWarnBanner.Visible then KatanaWarnBanner.Visible = false end
+		return
+	end
+	local now = os.clock()
+	if now - lastKatanaScanTime < 0.14 then return end
+	lastKatanaScanTime = now
+
+	local myChar = LocalPlayer.Character
+	local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar.PrimaryPart)
+	local myPos = myRoot and myRoot.Position
+	local closestKatanaPlr, closestKatanaDist = nil, math.huge
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and not excludedPlayers[plr] and ((not aimbotTeamCheck) or (not IsTeammate(plr))) then
+			local char = GetCharacterFromPlayer(plr)
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+			local dist = (myPos and root) and (root.Position - myPos).Magnitude or 0
+			local isAlive = (char and hum and hum.Health > 0 and dist <= MAX_DISTANCE)
+			local hasKatana = isAlive and IsEnemyUsingKatana(plr, char) or false
+
+			if hasKatana then
+				if dist < closestKatanaDist then
+					closestKatanaDist = dist
+					closestKatanaPlr = plr
+				end
+				if not enemyKatanaNotifiedState[plr] then
+					enemyKatanaNotifiedState[plr] = true
+					if NotifyFeatureToggle then
+						NotifyFeatureToggle("KATANA: " .. tostring(plr.DisplayName), true)
+					end
+				end
+			elseif enemyKatanaNotifiedState[plr] then
+				enemyKatanaNotifiedState[plr] = nil
+				if NotifyFeatureToggle then
+					NotifyFeatureToggle("KATANA: " .. tostring(plr.DisplayName), false)
+				end
+			end
+		elseif enemyKatanaNotifiedState[plr] then
+			enemyKatanaNotifiedState[plr] = nil
+		end
+	end
+
+	if closestKatanaPlr then
+		KatanaWarnBanner.Visible = true
+		KatanaWarnText.Text = string.format("[!] KATANA EQUIPPED: %s (%d studs)", tostring(closestKatanaPlr.DisplayName), math.floor(closestKatanaDist + 0.5))
+	else
+		KatanaWarnBanner.Visible = false
+	end
+end
+
 table.insert(Connections, RunService.RenderStepped:Connect(EnforceLockedCamera))
-table.insert(Connections, RunService.Heartbeat:Connect(EnforceLockedCamera))
+table.insert(Connections, RunService.Heartbeat:Connect(function()
+	EnforceLockedCamera()
+	ScanEnemiesForKatanaEquip()
+end))
 
 RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, function()
 	local function setAimbotStatusText(txt)
