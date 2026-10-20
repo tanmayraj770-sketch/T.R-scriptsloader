@@ -80,7 +80,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", GuiDesign = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
 		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotKeyMode = "Toggle", AimbotBurstDurationMs = 1000, TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
-		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", OrbitRadius = 8, OrbitSpeed = 10, AntiKatanaEnabled = true, FloatingIconEnabled = true, WallcheckEnabled = true,
+		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", OrbitRadius = 8, OrbitSpeed = 10, AntiKatanaEnabled = true, FloatingIconEnabled = true, FloatingIconLocked = false, WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
 		MasterUtilityEnabled = false, MasterFlightEnabled = false, NoclipEnabled = false,
@@ -351,21 +351,46 @@ elseif Config.FloatingIconEnabled == nil then
 	savedConfig.Settings.FloatingIconEnabled = true
 end
 local FloatingPill = nil
+local isFloatingPillLocked = (Config.FloatingIconLocked == true)
 local FloatPillScale, FloatOuterHalo, FloatHaloStroke, FloatHaloGrad = nil, nil, nil, nil
 local FloatPillGrad, FloatPillStroke, FloatPillStrokeGrad, FloatPillTopSpec, FloatPillBotGlow = nil, nil, nil, nil, nil
-local FloatLeftPod, FloatLeftPodStroke, FloatPillDivider, FloatEmblemPod, FloatEmblemGrad, FloatEmblemStroke = nil, nil, nil, nil, nil, nil
+local FloatLeftPod, FloatLeftPodStroke, FloatPillDivider, FloatRightDivider, FloatEmblemPod, FloatEmblemGrad, FloatEmblemStroke = nil, nil, nil, nil, nil, nil, nil
 local FloatDragIcon, FloatScriptIcon, FloatTitleLbl, FloatTitleGrad, FloatSubLbl, FloatStatusDot, FloatStatusStroke = nil, nil, nil, nil, nil, nil, nil
+local FloatLockBtn, FloatLockStroke = nil, nil
 local function SyncFloatingPillState()
 	if not FloatingPill then return end
 	local eff = GetTheme()
+	local lockedCol = Color3.fromRGB(245, 166, 35)
 	if FloatSubLbl then
-		FloatSubLbl.Text = isMenuVisible and "HUB ACTIVE | V95" or "TAP TO OPEN HUB"
-		FloatSubLbl.TextColor3 = isMenuVisible and eff.TextSecondary or eff.Accent
+		if isFloatingPillLocked then
+			FloatSubLbl.Text = isMenuVisible and "POS LOCKED | ACTIVE" or "POS LOCKED | OPEN"
+			FloatSubLbl.TextColor3 = lockedCol
+		else
+			FloatSubLbl.Text = isMenuVisible and "HUB ACTIVE | V95" or "TAP TO OPEN HUB"
+			FloatSubLbl.TextColor3 = isMenuVisible and eff.TextSecondary or eff.Accent
+		end
 	end
 	if FloatStatusDot then
 		local dotCol = isMenuVisible and Color3.fromRGB(46, 213, 115) or eff.Accent
 		FloatStatusDot.BackgroundColor3 = dotCol
 		if FloatStatusStroke then FloatStatusStroke.Color = dotCol end
+	end
+	if FloatDragIcon then
+		FloatDragIcon.TextTransparency = isFloatingPillLocked and 0.58 or 0.0
+		FloatDragIcon.TextColor3 = isFloatingPillLocked and eff.TextSecondary or eff.Accent
+	end
+	if FloatLeftPodStroke then
+		FloatLeftPodStroke.Color = isFloatingPillLocked and eff.Stroke or eff.Accent
+		FloatLeftPodStroke.Transparency = isFloatingPillLocked and 0.72 or 0.45
+	end
+	if FloatLockBtn then
+		FloatLockBtn.Text = isFloatingPillLocked and utf8.char(0x1F512) or utf8.char(0x1F513)
+		FloatLockBtn.BackgroundColor3 = isFloatingPillLocked and eff.PanelBg:Lerp(lockedCol, 0.35) or eff.PanelBg
+		FloatLockBtn.TextColor3 = isFloatingPillLocked and Color3.fromRGB(255, 220, 110) or eff.Accent
+	end
+	if FloatLockStroke then
+		FloatLockStroke.Color = isFloatingPillLocked and lockedCol or eff.Accent
+		FloatLockStroke.Transparency = isFloatingPillLocked and 0.15 or 0.45
 	end
 end
 local function UpdateFloatingPillVisibility()
@@ -499,8 +524,8 @@ do
 	-- Upper-Middle Screen Spawn Position (Centered Horizontally at Top of Screen)
 	FloatingPill = Instance.new("Frame")
 	FloatingPill.Name = "TR_FloatingPill"
-	FloatingPill.Size = UDim2.new(0, 204, 0, 44)
-	FloatingPill.Position = UDim2.new(0.5, -102, 0, 10)
+	FloatingPill.Size = UDim2.new(0, 238, 0, 44)
+	FloatingPill.Position = UDim2.new(0.5, -119, 0, 10)
 	FloatingPill.BackgroundTransparency = 0.08
 	FloatingPill.BorderSizePixel = 0
 	FloatingPill.Active = true
@@ -666,8 +691,8 @@ do
 	-- Dual-Line Styled Title & Live Status Subtitle
 	FloatTitleLbl = Instance.new("TextLabel", FloatingPill)
 	FloatTitleLbl.Name = "ScriptTitle"
-	FloatTitleLbl.Size = UDim2.new(1, -106, 0, 18)
-	FloatTitleLbl.Position = UDim2.new(0, 86, 0, 6)
+	FloatTitleLbl.Size = UDim2.new(1, -142, 0, 18)
+	FloatTitleLbl.Position = UDim2.new(0, 85, 0, 6)
 	FloatTitleLbl.BackgroundTransparency = 1
 	FloatTitleLbl.Font = Enum.Font.GothamBold
 	FloatTitleLbl.TextSize = 14
@@ -681,8 +706,8 @@ do
 
 	FloatSubLbl = Instance.new("TextLabel", FloatingPill)
 	FloatSubLbl.Name = "ScriptSubStatus"
-	FloatSubLbl.Size = UDim2.new(1, -106, 0, 13)
-	FloatSubLbl.Position = UDim2.new(0, 86, 0, 23)
+	FloatSubLbl.Size = UDim2.new(1, -142, 0, 13)
+	FloatSubLbl.Position = UDim2.new(0, 85, 0, 23)
 	FloatSubLbl.BackgroundTransparency = 1
 	FloatSubLbl.Font = Enum.Font.GothamBold
 	FloatSubLbl.TextSize = 9
@@ -692,11 +717,11 @@ do
 	FloatSubLbl.ZIndex = 52
 	RegisterThemeObject(FloatSubLbl, "TextColor3", "TextSecondary")
 
-	-- Live Glowing Status Indicator Dot on Right Edge
+	-- Live Glowing Status Indicator Dot
 	FloatStatusDot = Instance.new("Frame", FloatingPill)
 	FloatStatusDot.Name = "LiveStatusDot"
 	FloatStatusDot.Size = UDim2.new(0, 7, 0, 7)
-	FloatStatusDot.Position = UDim2.new(1, -15, 0.5, -3)
+	FloatStatusDot.Position = UDim2.new(1, -55, 0.5, -3)
 	FloatStatusDot.BackgroundColor3 = Color3.fromRGB(46, 213, 115)
 	FloatStatusDot.BorderSizePixel = 0
 	FloatStatusDot.ZIndex = 53
@@ -707,10 +732,47 @@ do
 	FloatStatusStroke.Transparency = 0.55
 	FloatStatusStroke.Color = Color3.fromRGB(46, 213, 115)
 
-	-- Interactive HitBox with Spring Hover/Press Micro-Animations
+	-- Right Feathered Vertical Divider (Separating Lock Position Button)
+	FloatRightDivider = Instance.new("Frame", FloatingPill)
+	FloatRightDivider.Name = "RightVerticalDivider"
+	FloatRightDivider.Size = UDim2.new(0, 1, 1, -10)
+	FloatRightDivider.Position = UDim2.new(1, -44, 0, 5)
+	FloatRightDivider.BackgroundTransparency = 0.25
+	FloatRightDivider.BorderSizePixel = 0
+	FloatRightDivider.ZIndex = 52
+	RegisterThemeObject(FloatRightDivider, "BackgroundColor3", "Stroke")
+	local rDivGrad = Instance.new("UIGradient", FloatRightDivider)
+	rDivGrad.Rotation = 90
+	rDivGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.90),
+		NumberSequenceKeypoint.new(0.5, 0.05),
+		NumberSequenceKeypoint.new(1, 0.90)
+	})
+
+	-- Dedicated Position Lock / Unlock Button inside Floating Pill
+	FloatLockBtn = Instance.new("TextButton", FloatingPill)
+	FloatLockBtn.Name = "PositionLockBtn"
+	FloatLockBtn.Size = UDim2.new(0, 32, 0, 32)
+	FloatLockBtn.Position = UDim2.new(1, -38, 0.5, -16)
+	FloatLockBtn.BackgroundTransparency = 0.45
+	FloatLockBtn.BorderSizePixel = 0
+	FloatLockBtn.Font = Enum.Font.GothamBold
+	FloatLockBtn.TextSize = 14
+	FloatLockBtn.Text = isFloatingPillLocked and utf8.char(0x1F512) or utf8.char(0x1F513)
+	FloatLockBtn.AutoButtonColor = false
+	FloatLockBtn.ZIndex = 57
+	RegisterThemeObject(FloatLockBtn, "BackgroundColor3", "PanelBg")
+	local lockBtnCorner = Instance.new("UICorner", FloatLockBtn)
+	lockBtnCorner.CornerRadius = UDim.new(1, 0)
+	FloatLockStroke = Instance.new("UIStroke", FloatLockBtn)
+	FloatLockStroke.Thickness = 1.2
+	FloatLockStroke.Transparency = 0.40
+	RegisterThemeObject(FloatLockStroke, "Color", "Accent")
+
+	-- Interactive HitBox (Covers Left & Center Compartments) with Spring Hover/Press Micro-Animations
 	local FloatHitBox = Instance.new("TextButton", FloatingPill)
 	FloatHitBox.Name = "HitBox"
-	FloatHitBox.Size = UDim2.new(1, 0, 1, 0)
+	FloatHitBox.Size = UDim2.new(1, -44, 1, 0)
 	FloatHitBox.Position = UDim2.new(0, 0, 0, 0)
 	FloatHitBox.BackgroundTransparency = 1
 	FloatHitBox.Text = ""
@@ -719,6 +781,21 @@ do
 
 	local floatDragging, floatMoved = false, false
 	local floatDragStart, floatStartPos = nil, nil
+
+	FloatLockBtn.MouseButton1Click:Connect(function()
+		isFloatingPillLocked = not isFloatingPillLocked
+		Config.FloatingIconLocked = isFloatingPillLocked
+		savedConfig.Settings.FloatingIconLocked = isFloatingPillLocked
+		if isFloatingPillLocked then
+			floatDragging = false
+		end
+		SyncFloatingPillState()
+		SaveConfig(false)
+		if NotifyFeatureToggle then
+			NotifyFeatureToggle("Floating Icon Position Lock", isFloatingPillLocked)
+		end
+	end)
+
 	FloatHitBox.MouseEnter:Connect(function()
 		if not floatDragging and FloatPillScale then
 			TweenService:Create(FloatPillScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.05 }):Play()
@@ -731,10 +808,14 @@ do
 	end)
 	FloatHitBox.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-			floatDragging = true
 			floatMoved = false
-			floatDragStart = inp.Position
-			floatStartPos = FloatingPill.Position
+			if not isFloatingPillLocked then
+				floatDragging = true
+				floatDragStart = inp.Position
+				floatStartPos = FloatingPill.Position
+			else
+				floatDragging = false
+			end
 			if FloatPillScale then
 				TweenService:Create(FloatPillScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.95 }):Play()
 			end
@@ -749,7 +830,7 @@ do
 		end
 	end)
 	table.insert(Connections, UserInputService.InputChanged:Connect(function(inp)
-		if floatDragging and (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseMovement) then
+		if floatDragging and not isFloatingPillLocked and (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseMovement) then
 			local delta = inp.Position - floatDragStart
 			if delta.Magnitude > 5 then floatMoved = true end
 			FloatingPill.Position = UDim2.new(
