@@ -80,7 +80,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", GuiDesign = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
 		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotKeyMode = "Toggle", AimbotBurstDurationMs = 1000, TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
-		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", OrbitRadius = 8, OrbitSpeed = 10, AntiKatanaEnabled = true, FloatingIconEnabled = true, FloatingIconLocked = false, WallcheckEnabled = true,
+		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", OrbitRadius = 8, OrbitSpeed = 10, AntiKatanaEnabled = true, FloatingIconEnabled = true, FloatingIconLocked = false, MobileFloatStyle = "Pill", WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
 		MasterUtilityEnabled = false, MasterFlightEnabled = false, NoclipEnabled = false,
@@ -360,57 +360,79 @@ elseif Config.FloatingIconEnabled == nil then
 	savedConfig.Settings.FloatingIconEnabled = true
 end
 local FloatingPill = nil
+local MobileSquareIcon = nil
 local isFloatingPillLocked = (Config.FloatingIconLocked == true)
 local FloatPillScale, FloatOuterHalo, FloatHaloStroke, FloatHaloGrad = nil, nil, nil, nil
 local FloatPillGrad, FloatPillStroke, FloatPillStrokeGrad, FloatPillTopSpec, FloatPillBotGlow = nil, nil, nil, nil, nil
 local FloatLeftPod, FloatLeftPodStroke, FloatPillDivider, FloatRightDivider, FloatEmblemPod, FloatEmblemGrad, FloatEmblemStroke = nil, nil, nil, nil, nil, nil, nil
 local FloatDragIcon, FloatScriptIcon, FloatTitleLbl, FloatTitleGrad, FloatSubLbl, FloatStatusDot, FloatStatusStroke = nil, nil, nil, nil, nil, nil, nil
 local FloatLockBtn, FloatLockStroke = nil, nil
+local SquareCorner, SquareScale, SquareOuterHalo, SquareHaloStroke, SquareHaloGrad = nil, nil, nil, nil, nil
+local SquareBgGrad, SquareStroke, SquareStrokeGrad, SquareTopSpec, SquareBotGlow = nil, nil, nil, nil, nil
+local SquareInnerShade, SquareTitleLbl, SquareTitleGrad, SquareStatusDot, SquareLockBtn, SquareLockStroke = nil, nil, nil, nil, nil, nil
 local function SyncFloatingPillState()
-	if not FloatingPill then return end
 	local eff = GetTheme()
 	local lockedCol = Color3.fromRGB(245, 166, 35)
-	if FloatSubLbl then
-		if isFloatingPillLocked then
-			FloatSubLbl.Text = isMenuVisible and "POS LOCKED | ACTIVE" or "POS LOCKED | OPEN"
-			FloatSubLbl.TextColor3 = lockedCol
-		else
-			FloatSubLbl.Text = isMenuVisible and "HUB ACTIVE | V95" or "TAP TO OPEN HUB"
-			FloatSubLbl.TextColor3 = isMenuVisible and eff.TextSecondary or eff.Accent
+	local dotCol = isMenuVisible and Color3.fromRGB(46, 213, 115) or eff.Accent
+	if FloatingPill then
+		if FloatSubLbl then
+			if isFloatingPillLocked then
+				FloatSubLbl.Text = isMenuVisible and "POS LOCKED | ACTIVE" or "POS LOCKED | OPEN"
+				FloatSubLbl.TextColor3 = lockedCol
+			else
+				FloatSubLbl.Text = isMenuVisible and "HUB ACTIVE | V95" or "TAP TO OPEN HUB"
+				FloatSubLbl.TextColor3 = isMenuVisible and eff.TextSecondary or eff.Accent
+			end
+		end
+		if FloatStatusDot then
+			FloatStatusDot.BackgroundColor3 = dotCol
+			if FloatStatusStroke then FloatStatusStroke.Color = dotCol end
+		end
+		if FloatDragIcon then
+			FloatDragIcon.TextTransparency = isFloatingPillLocked and 0.58 or 0.0
+			FloatDragIcon.TextColor3 = isFloatingPillLocked and eff.TextSecondary or eff.Accent
+		end
+		if FloatLeftPodStroke then
+			FloatLeftPodStroke.Color = isFloatingPillLocked and eff.Stroke or eff.Accent
+			FloatLeftPodStroke.Transparency = isFloatingPillLocked and 0.72 or 0.45
+		end
+		if FloatLockBtn then
+			FloatLockBtn.Text = isFloatingPillLocked and utf8.char(0x1F512) or utf8.char(0x1F513)
+			FloatLockBtn.BackgroundColor3 = isFloatingPillLocked and eff.PanelBg:Lerp(lockedCol, 0.35) or eff.PanelBg
+			FloatLockBtn.TextColor3 = isFloatingPillLocked and Color3.fromRGB(255, 220, 110) or eff.Accent
+		end
+		if FloatLockStroke then
+			FloatLockStroke.Color = isFloatingPillLocked and lockedCol or eff.Accent
+			FloatLockStroke.Transparency = isFloatingPillLocked and 0.15 or 0.45
 		end
 	end
-	if FloatStatusDot then
-		local dotCol = isMenuVisible and Color3.fromRGB(46, 213, 115) or eff.Accent
-		FloatStatusDot.BackgroundColor3 = dotCol
-		if FloatStatusStroke then FloatStatusStroke.Color = dotCol end
-	end
-	if FloatDragIcon then
-		FloatDragIcon.TextTransparency = isFloatingPillLocked and 0.58 or 0.0
-		FloatDragIcon.TextColor3 = isFloatingPillLocked and eff.TextSecondary or eff.Accent
-	end
-	if FloatLeftPodStroke then
-		FloatLeftPodStroke.Color = isFloatingPillLocked and eff.Stroke or eff.Accent
-		FloatLeftPodStroke.Transparency = isFloatingPillLocked and 0.72 or 0.45
-	end
-	if FloatLockBtn then
-		FloatLockBtn.Text = isFloatingPillLocked and utf8.char(0x1F512) or utf8.char(0x1F513)
-		FloatLockBtn.BackgroundColor3 = isFloatingPillLocked and eff.PanelBg:Lerp(lockedCol, 0.35) or eff.PanelBg
-		FloatLockBtn.TextColor3 = isFloatingPillLocked and Color3.fromRGB(255, 220, 110) or eff.Accent
-	end
-	if FloatLockStroke then
-		FloatLockStroke.Color = isFloatingPillLocked and lockedCol or eff.Accent
-		FloatLockStroke.Transparency = isFloatingPillLocked and 0.15 or 0.45
+	if MobileSquareIcon then
+		if SquareStatusDot then
+			SquareStatusDot.BackgroundColor3 = dotCol
+		end
+		if SquareLockBtn then
+			SquareLockBtn.Text = isFloatingPillLocked and utf8.char(0x1F512) or utf8.char(0x1F513)
+			SquareLockBtn.BackgroundColor3 = isFloatingPillLocked and eff.PanelBg:Lerp(lockedCol, 0.40) or eff.PanelBg
+			SquareLockBtn.TextColor3 = isFloatingPillLocked and Color3.fromRGB(255, 220, 110) or eff.Accent
+		end
+		if SquareLockStroke then
+			SquareLockStroke.Color = isFloatingPillLocked and lockedCol or eff.Accent
+		end
 	end
 end
 local function UpdateFloatingPillVisibility()
 	if not FloatingPill then return end
 	if isClosingPermanently then
 		FloatingPill.Visible = false
+		if MobileSquareIcon then MobileSquareIcon.Visible = false end
 		return
 	end
 	if isMobileDevice then
-		FloatingPill.Visible = true
+		local useSquare = (Config.MobileFloatStyle == "Square")
+		FloatingPill.Visible = not useSquare
+		if MobileSquareIcon then MobileSquareIcon.Visible = useSquare end
 	else
+		if MobileSquareIcon then MobileSquareIcon.Visible = false end
 		FloatingPill.Visible = (Config.FloatingIconEnabled ~= false)
 	end
 	SyncFloatingPillState()
@@ -857,15 +879,24 @@ do
 	-- Throttled Iridescent Border Shimmer Animation (20Hz Integer-Quantized for Zero UI Redraw Lag)
 	local lastPillShimTime, lastPillRotInt = 0, -1
 	table.insert(Connections, RunService.Heartbeat:Connect(function()
-		if FloatingPill and FloatingPill.Visible and not isClosingPermanently then
+		if isClosingPermanently then return end
+		local pillVis = (FloatingPill and FloatingPill.Visible)
+		local sqVis = (MobileSquareIcon and MobileSquareIcon.Visible)
+		if pillVis or sqVis then
 			local now = os.clock()
 			if now - lastPillShimTime < 0.05 then return end
 			lastPillShimTime = now
 			local rot = math.floor((now * 42) % 360)
 			if rot ~= lastPillRotInt then
 				lastPillRotInt = rot
-				if FloatPillStrokeGrad then FloatPillStrokeGrad.Rotation = rot end
-				if FloatHaloGrad then FloatHaloGrad.Rotation = (rot + 180) % 360 end
+				if pillVis then
+					if FloatPillStrokeGrad then FloatPillStrokeGrad.Rotation = rot end
+					if FloatHaloGrad then FloatHaloGrad.Rotation = (rot + 180) % 360 end
+				end
+				if sqVis then
+					if SquareStrokeGrad then SquareStrokeGrad.Rotation = rot end
+					if SquareHaloGrad then SquareHaloGrad.Rotation = (rot + 180) % 360 end
+				end
 			end
 		end
 	end))
@@ -873,6 +904,211 @@ do
 	UpdateFloatingPillVisibility()
 end
 if isMobileDevice then
+	-- Option 2 (Mobile-Only): Compact Square Shaded "T.R" Floating Icon (Syncs with GUI Design & Theme)
+	MobileSquareIcon = Instance.new("Frame")
+	MobileSquareIcon.Name = "TR_MobileSquareIcon"
+	MobileSquareIcon.Size = UDim2.new(0, 38, 0, 38)
+	MobileSquareIcon.Position = UDim2.new(0.5, -19, 0, 10)
+	MobileSquareIcon.BackgroundTransparency = 0.06
+	MobileSquareIcon.BorderSizePixel = 0
+	MobileSquareIcon.Active = true
+	MobileSquareIcon.ClipsDescendants = false
+	MobileSquareIcon.Visible = false
+	MobileSquareIcon.ZIndex = 50
+	MobileSquareIcon.Parent = ScreenGui
+	RegisterThemeObject(MobileSquareIcon, "BackgroundColor3", "MainBg")
+	SquareCorner = Instance.new("UICorner", MobileSquareIcon)
+	SquareCorner.CornerRadius = UDim.new(0, 10)
+
+	SquareScale = Instance.new("UIScale", MobileSquareIcon)
+	SquareScale.Scale = 1
+
+	SquareOuterHalo = Instance.new("Frame", MobileSquareIcon)
+	SquareOuterHalo.Name = "TR_SquareOuterHalo"
+	SquareOuterHalo.Size = UDim2.new(1, 6, 1, 6)
+	SquareOuterHalo.Position = UDim2.new(0, -3, 0, -3)
+	SquareOuterHalo.BackgroundTransparency = 1
+	SquareOuterHalo.BorderSizePixel = 0
+	SquareOuterHalo.ZIndex = 49
+	local sqHaloCorner = Instance.new("UICorner", SquareOuterHalo)
+	sqHaloCorner.CornerRadius = UDim.new(0, 12)
+	SquareHaloStroke = Instance.new("UIStroke", SquareOuterHalo)
+	SquareHaloStroke.Thickness = 2.6
+	SquareHaloStroke.Transparency = 0.62
+	SquareHaloStroke.Color = Color3.fromRGB(255, 255, 255)
+	SquareHaloGrad = Instance.new("UIGradient", SquareHaloStroke)
+	SquareHaloGrad.Rotation = 0
+
+	SquareBgGrad = Instance.new("UIGradient", MobileSquareIcon)
+	SquareBgGrad.Rotation = 135
+	SquareBgGrad.Enabled = true
+
+	SquareStroke = Instance.new("UIStroke", MobileSquareIcon)
+	SquareStroke.Thickness = 2.0
+	SquareStroke.Transparency = 0.04
+	SquareStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	SquareStroke.Color = Color3.fromRGB(255, 255, 255)
+	SquareStrokeGrad = Instance.new("UIGradient", SquareStroke)
+	SquareStrokeGrad.Rotation = 45
+	SquareStrokeGrad.Enabled = true
+
+	-- Inner Shaded Recessed Core & Specular Glint
+	SquareInnerShade = Instance.new("Frame", MobileSquareIcon)
+	SquareInnerShade.Name = "InnerShade"
+	SquareInnerShade.Size = UDim2.new(1, -6, 1, -6)
+	SquareInnerShade.Position = UDim2.new(0, 3, 0, 3)
+	SquareInnerShade.BackgroundTransparency = 0.45
+	SquareInnerShade.BorderSizePixel = 0
+	SquareInnerShade.ZIndex = 51
+	RegisterThemeObject(SquareInnerShade, "BackgroundColor3", "PanelBg")
+	local sqInCorner = Instance.new("UICorner", SquareInnerShade)
+	sqInCorner.CornerRadius = UDim.new(0, 7)
+	local sqInGrad = Instance.new("UIGradient", SquareInnerShade)
+	sqInGrad.Rotation = -45
+	sqInGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.25),
+		NumberSequenceKeypoint.new(0.5, 0.65),
+		NumberSequenceKeypoint.new(1, 0.20)
+	})
+
+	SquareTopSpec = Instance.new("Frame", MobileSquareIcon)
+	SquareTopSpec.Name = "TR_SquareTopSpec"
+	SquareTopSpec.Size = UDim2.new(1, -12, 0, 1)
+	SquareTopSpec.Position = UDim2.new(0, 6, 0, 2)
+	SquareTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	SquareTopSpec.BackgroundTransparency = 0.15
+	SquareTopSpec.BorderSizePixel = 0
+	SquareTopSpec.ZIndex = 53
+	local sqSpecGrad = Instance.new("UIGradient", SquareTopSpec)
+	sqSpecGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.85),
+		NumberSequenceKeypoint.new(0.5, 0.0),
+		NumberSequenceKeypoint.new(1, 0.85)
+	})
+
+	SquareBotGlow = Instance.new("Frame", MobileSquareIcon)
+	SquareBotGlow.Name = "TR_SquareBotGlow"
+	SquareBotGlow.Size = UDim2.new(1, -14, 0, 2)
+	SquareBotGlow.Position = UDim2.new(0, 7, 1, -3)
+	SquareBotGlow.BackgroundTransparency = 0.25
+	SquareBotGlow.BorderSizePixel = 0
+	SquareBotGlow.ZIndex = 53
+	RegisterThemeObject(SquareBotGlow, "BackgroundColor3", "Accent")
+	local sqBotGrad = Instance.new("UIGradient", SquareBotGlow)
+	sqBotGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.90),
+		NumberSequenceKeypoint.new(0.5, 0.05),
+		NumberSequenceKeypoint.new(1, 0.90)
+	})
+
+	-- Bold Shaded "T.R" Monogram Text
+	SquareTitleLbl = Instance.new("TextLabel", MobileSquareIcon)
+	SquareTitleLbl.Name = "TRLabel"
+	SquareTitleLbl.Size = UDim2.new(1, 0, 1, -2)
+	SquareTitleLbl.Position = UDim2.new(0, 0, 0, 0)
+	SquareTitleLbl.BackgroundTransparency = 1
+	SquareTitleLbl.Font = Enum.Font.GothamBold
+	SquareTitleLbl.TextSize = 14
+	SquareTitleLbl.Text = "T.R"
+	SquareTitleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+	SquareTitleLbl.ZIndex = 54
+	SquareTitleGrad = Instance.new("UIGradient", SquareTitleLbl)
+	SquareTitleGrad.Rotation = 90
+
+	-- Live Status Micro-Dot in Top-Right Corner
+	SquareStatusDot = Instance.new("Frame", MobileSquareIcon)
+	SquareStatusDot.Name = "StatusDot"
+	SquareStatusDot.Size = UDim2.new(0, 5, 0, 5)
+	SquareStatusDot.Position = UDim2.new(1, -8, 0, 4)
+	SquareStatusDot.BackgroundColor3 = Color3.fromRGB(46, 213, 115)
+	SquareStatusDot.BorderSizePixel = 0
+	SquareStatusDot.ZIndex = 55
+	local sqDotCorner = Instance.new("UICorner", SquareStatusDot)
+	sqDotCorner.CornerRadius = UDim.new(1, 0)
+
+	-- Mini Position Lock Badge Button in Bottom-Right Corner of Square
+	SquareLockBtn = Instance.new("TextButton", MobileSquareIcon)
+	SquareLockBtn.Name = "MiniLockBtn"
+	SquareLockBtn.Size = UDim2.new(0, 15, 0, 15)
+	SquareLockBtn.Position = UDim2.new(1, -13, 1, -13)
+	SquareLockBtn.BackgroundTransparency = 0.15
+	SquareLockBtn.BorderSizePixel = 0
+	SquareLockBtn.Font = Enum.Font.GothamBold
+	SquareLockBtn.TextSize = 8
+	SquareLockBtn.Text = isFloatingPillLocked and utf8.char(0x1F512) or utf8.char(0x1F513)
+	SquareLockBtn.AutoButtonColor = false
+	SquareLockBtn.ZIndex = 57
+	RegisterThemeObject(SquareLockBtn, "BackgroundColor3", "PanelBg")
+	local sqLockCorner = Instance.new("UICorner", SquareLockBtn)
+	sqLockCorner.CornerRadius = UDim.new(1, 0)
+	SquareLockStroke = Instance.new("UIStroke", SquareLockBtn)
+	SquareLockStroke.Thickness = 1.0
+	SquareLockStroke.Transparency = 0.30
+	RegisterThemeObject(SquareLockStroke, "Color", "Accent")
+
+	local SquareHitBox = Instance.new("TextButton", MobileSquareIcon)
+	SquareHitBox.Name = "HitBox"
+	SquareHitBox.Size = UDim2.new(1, 0, 1, 0)
+	SquareHitBox.Position = UDim2.new(0, 0, 0, 0)
+	SquareHitBox.BackgroundTransparency = 1
+	SquareHitBox.Text = ""
+	SquareHitBox.AutoButtonColor = false
+	SquareHitBox.ZIndex = 55
+
+	local sqDragging, sqMoved = false, false
+	local sqDragStart, sqStartPos = nil, nil
+
+	SquareLockBtn.MouseButton1Click:Connect(function()
+		isFloatingPillLocked = not isFloatingPillLocked
+		Config.FloatingIconLocked = isFloatingPillLocked
+		savedConfig.Settings.FloatingIconLocked = isFloatingPillLocked
+		if isFloatingPillLocked then sqDragging = false end
+		SyncFloatingPillState()
+		SaveConfig(false)
+		if NotifyFeatureToggle then
+			NotifyFeatureToggle("Floating Icon Position Lock", isFloatingPillLocked)
+		end
+	end)
+
+	SquareHitBox.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+			sqMoved = false
+			if not isFloatingPillLocked then
+				sqDragging = true
+				sqDragStart = inp.Position
+				sqStartPos = MobileSquareIcon.Position
+			else
+				sqDragging = false
+			end
+			if SquareScale then
+				TweenService:Create(SquareScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.92 }):Play()
+			end
+			inp.Changed:Connect(function()
+				if inp.UserInputState == Enum.UserInputState.End then
+					sqDragging = false
+					if SquareScale then
+						TweenService:Create(SquareScale, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+					end
+				end
+			end)
+		end
+	end)
+	table.insert(Connections, UserInputService.InputChanged:Connect(function(inp)
+		if sqDragging and not isFloatingPillLocked and (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseMovement) then
+			local delta = inp.Position - sqDragStart
+			if delta.Magnitude > 5 then sqMoved = true end
+			MobileSquareIcon.Position = UDim2.new(
+				sqStartPos.X.Scale, sqStartPos.X.Offset + delta.X,
+				sqStartPos.Y.Scale, sqStartPos.Y.Offset + delta.Y
+			)
+		end
+	end))
+	SquareHitBox.MouseButton1Click:Connect(function()
+		if not sqMoved then
+			SetMenuVisible(not isMenuVisible)
+		end
+	end)
+	UpdateFloatingPillVisibility()
 
 	-- Mobile-Only On-Screen Quick-Action Buttons (Draggable Floating Combat & Flight Bar)
 	local MobileQuickBar = Instance.new("Frame")
@@ -1390,6 +1626,124 @@ ApplyGuiDesignSurface = function()
 			if FloatScriptIcon then FloatScriptIcon.TextColor3 = Color3.fromRGB(255, 255, 255) end
 		end
 	end
+
+	-- Synchronize Option 2 Mobile Mini Square "T.R" Icon with active Theme and GUI Design Style
+	if MobileSquareIcon and MobileSquareIcon.Parent then
+		MobileSquareIcon.BackgroundColor3 = eff.MainBg
+		if SquareInnerShade then SquareInnerShade.BackgroundColor3 = eff.PanelBg end
+		if SquareBotGlow then SquareBotGlow.BackgroundColor3 = eff.Accent end
+		if SquareHaloGrad then
+			SquareHaloGrad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, eff.Accent),
+				ColorSequenceKeypoint.new(0.5, eff.Stroke),
+				ColorSequenceKeypoint.new(1, eff.Accent)
+			})
+		end
+		if SquareTitleGrad then
+			SquareTitleGrad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0.55, eff.TextPrimary:Lerp(eff.Accent, 0.28)),
+				ColorSequenceKeypoint.new(1, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35))
+			})
+		end
+		if d == "LiquidGlass" then
+			MobileSquareIcon.BackgroundTransparency = 0.42
+			if SquareCorner then SquareCorner.CornerRadius = UDim.new(0, 11) end
+			if SquareInnerShade then SquareInnerShade.BackgroundTransparency = 0.56 end
+			if SquareHaloStroke then SquareHaloStroke.Transparency = 0.56 end
+			if SquareBgGrad then
+				SquareBgGrad.Rotation = -42
+				SquareBgGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(Color3.fromRGB(255, 255, 255), 0.40)),
+					ColorSequenceKeypoint.new(0.5, eff.MainBg:Lerp(eff.Accent, 0.22)),
+					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(Color3.fromRGB(210, 235, 255), 0.32))
+				})
+				SquareBgGrad.Enabled = true
+			end
+			if SquareStroke then
+				SquareStroke.Thickness = 1.9
+				SquareStroke.Transparency = 0.04
+				SquareStroke.Color = Color3.fromRGB(255, 255, 255)
+			end
+			if SquareStrokeGrad then
+				SquareStrokeGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)),
+					ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.75, eff.Stroke),
+					ColorSequenceKeypoint.new(1, eff.Accent)
+				})
+				SquareStrokeGrad.Enabled = true
+			end
+			if SquareTopSpec then
+				SquareTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				SquareTopSpec.BackgroundTransparency = 0.08
+			end
+		elseif d == "CyberHud" then
+			MobileSquareIcon.BackgroundTransparency = 0.05
+			if SquareCorner then SquareCorner.CornerRadius = UDim.new(0, 6) end
+			if SquareInnerShade then SquareInnerShade.BackgroundTransparency = 0.32 end
+			if SquareHaloStroke then SquareHaloStroke.Transparency = 0.42 end
+			if SquareBgGrad then
+				SquareBgGrad.Rotation = 135
+				SquareBgGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(14, 18, 32):Lerp(eff.Accent, 0.28)),
+					ColorSequenceKeypoint.new(0.5, Color3.fromRGB(5, 6, 12)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(18, 10, 32):Lerp(eff.Stroke, 0.28))
+				})
+				SquareBgGrad.Enabled = true
+			end
+			if SquareStroke then
+				SquareStroke.Thickness = 2.2
+				SquareStroke.Transparency = 0.0
+				SquareStroke.Color = Color3.fromRGB(255, 255, 255)
+			end
+			if SquareStrokeGrad then
+				SquareStrokeGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.Accent),
+					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.7, eff.Stroke),
+					ColorSequenceKeypoint.new(1, eff.Accent)
+				})
+				SquareStrokeGrad.Enabled = true
+			end
+			if SquareTopSpec then
+				SquareTopSpec.BackgroundColor3 = eff.Accent
+				SquareTopSpec.BackgroundTransparency = 0.08
+			end
+		else
+			MobileSquareIcon.BackgroundTransparency = 0.06
+			if SquareCorner then SquareCorner.CornerRadius = UDim.new(0, 9) end
+			if SquareInnerShade then SquareInnerShade.BackgroundTransparency = 0.42 end
+			if SquareHaloStroke then SquareHaloStroke.Transparency = 0.60 end
+			if SquareBgGrad then
+				SquareBgGrad.Rotation = 135
+				SquareBgGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(eff.Accent, 0.26)),
+					ColorSequenceKeypoint.new(0.55, eff.MainBg),
+					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(eff.AccentDark, 0.34))
+				})
+				SquareBgGrad.Enabled = true
+			end
+			if SquareStroke then
+				SquareStroke.Thickness = 2.0
+				SquareStroke.Transparency = 0.02
+				SquareStroke.Color = Color3.fromRGB(255, 255, 255)
+			end
+			if SquareStrokeGrad then
+				SquareStrokeGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(130, 240, 255), 0.38)),
+					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.7, eff.Accent),
+					ColorSequenceKeypoint.new(1, eff.AccentDark)
+				})
+				SquareStrokeGrad.Enabled = true
+			end
+			if SquareTopSpec then
+				SquareTopSpec.BackgroundColor3 = eff.Stroke:Lerp(Color3.fromRGB(255, 255, 255), 0.5)
+				SquareTopSpec.BackgroundTransparency = 0.22
+			end
+		end
+	end
 end
 
 genv._TR_ApplyGuiDesign = function(designName, showNotif)
@@ -1905,6 +2259,53 @@ FloatPillToggleCtrl = CreateToggle(Tab1_Dashboard, "Floating Hub Pill Icon (Mobi
 	UpdateFloatingPillVisibility()
 	SaveConfig(false)
 end)
+if isMobileDevice then
+	local MobFloatStyleCard = CreateCard(Tab1_Dashboard, 0, 8)
+	MobFloatStyleCard.AutomaticSize = Enum.AutomaticSize.Y
+	local mfsPad = Instance.new("UIPadding", MobFloatStyleCard)
+	mfsPad.PaddingTop = UDim.new(0, 8) mfsPad.PaddingBottom = UDim.new(0, 8)
+	mfsPad.PaddingLeft = UDim.new(0, 8) mfsPad.PaddingRight = UDim.new(0, 8)
+	local mfsGrid = Instance.new("UIGridLayout", MobFloatStyleCard)
+	mfsGrid.CellSize = UDim2.new(0.5, -5, 0, 32)
+	mfsGrid.CellPadding = UDim2.new(0, 8, 0, 6)
+	mfsGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	mfsGrid.VerticalAlignment = Enum.VerticalAlignment.Center
+	mfsGrid.SortOrder = Enum.SortOrder.LayoutOrder
+	local MobStyleBtns = {}
+	local MobStyleOpts = {
+		{ Id = "Pill", Label = "1. Default Pill Icon" },
+		{ Id = "Square", Label = "2. Mini Square [T.R]" }
+	}
+	local function RefreshMobStyleBtns()
+		local th = GetTheme()
+		local curS = Config.MobileFloatStyle or "Pill"
+		for id, b in pairs(MobStyleBtns) do
+			local act = (id == curS)
+			b.BackgroundColor3 = act and th.Accent or th.PanelBg
+			b.TextColor3 = act and Color3.fromRGB(255, 255, 255) or th.TextPrimary
+			b.Text = (act and "[ON] " or "") .. (id == "Pill" and "1. Default Pill" or "2. Mini Square [T.R]")
+		end
+	end
+	table.insert(ThemeObjects.CustomCallbacks, RefreshMobStyleBtns)
+	for idx, sOpt in ipairs(MobStyleOpts) do
+		local sb = Instance.new("TextButton", MobFloatStyleCard)
+		sb.LayoutOrder = idx sb.Font = Enum.Font.GothamBold sb.TextSize = 11
+		sb.Text = sOpt.Label AddCorner(sb, 6)
+		MobStyleBtns[sOpt.Id] = sb
+		sb.MouseButton1Click:Connect(function()
+			Config.MobileFloatStyle = sOpt.Id
+			savedConfig.Settings.MobileFloatStyle = sOpt.Id
+			RefreshMobStyleBtns()
+			UpdateFloatingPillVisibility()
+			if ApplyGuiDesignSurface then pcall(ApplyGuiDesignSurface) end
+			SaveConfig(false)
+			if NotifyFeatureToggle then
+				NotifyFeatureToggle("Mobile Icon: " .. (sOpt.Id == "Square" and "Mini Square (T.R)" or "Default Pill"), true)
+			end
+		end)
+	end
+	RefreshMobStyleBtns()
+end
 CreateSectionHeader(Tab1_Dashboard, "Protection & Physics Stabilizers", 9)
 CreateToggle(Tab1_Dashboard, "Anti-AFK Protection (VirtualUser Idle Bypass)", Config.AntiAFK, 10, function(state)
 	Config.AntiAFK = state SaveConfig(false) end)
