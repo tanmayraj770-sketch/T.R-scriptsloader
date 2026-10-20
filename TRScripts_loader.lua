@@ -150,15 +150,16 @@ local Themes = { ["Default"] = {
 		Accent = Color3.fromRGB(195, 58, 132), AccentDark = Color3.fromRGB(125, 32, 84), Stroke = Color3.fromRGB(215, 92, 158),
 		TextPrimary = Color3.fromRGB(245, 230, 240), TextSecondary = Color3.fromRGB(188, 148, 172) } }
 local ThemeObjects = { MainBg = {}, PanelBg = {}, CardBg = {}, Accent = {}, AccentDark = {},
-	Stroke = {}, TextPrimary = {}, TextSecondary = {}, CustomCallbacks = {} } local LiquidGlassBase = {
-	MainBg = Color3.fromRGB(205, 224, 248),
-	PanelBg = Color3.fromRGB(185, 208, 238),
-	CardBg = Color3.fromRGB(220, 235, 255),
-	Accent = Color3.fromRGB(70, 165, 255),
-	AccentDark = Color3.fromRGB(45, 118, 210),
-	Stroke = Color3.fromRGB(245, 250, 255),
+	Stroke = {}, TextPrimary = {}, TextSecondary = {}, CustomCallbacks = {} } -- Realistic Apple OS (visionOS / iOS 26 / macOS Tahoe) Optical Smoked-Crystal Glass Base
+local LiquidGlassBase = {
+	MainBg = Color3.fromRGB(34, 46, 68),
+	PanelBg = Color3.fromRGB(48, 64, 92),
+	CardBg = Color3.fromRGB(62, 82, 116),
+	Accent = Color3.fromRGB(68, 178, 255),
+	AccentDark = Color3.fromRGB(38, 124, 215),
+	Stroke = Color3.fromRGB(242, 249, 255),
 	TextPrimary = Color3.fromRGB(255, 255, 255),
-	TextSecondary = Color3.fromRGB(222, 238, 255)
+	TextSecondary = Color3.fromRGB(205, 226, 250)
 }
 
 local function ComputeEffectiveTheme(themeName, designName)
@@ -168,31 +169,31 @@ local function ComputeEffectiveTheme(themeName, designName)
 		if themeName == "Default" or not themeName then
 			return LiquidGlassBase
 		end
-		-- Other themes add subtle tinted glass shading to Apple Liquid Glass!
+		-- Other themes infuse subtle colored glass shading into the realistic Apple Liquid Glass crystal!
 		return {
-			MainBg = LiquidGlassBase.MainBg:Lerp(base.Accent, 0.34),
-			PanelBg = LiquidGlassBase.PanelBg:Lerp(base.Accent, 0.38),
+			MainBg = LiquidGlassBase.MainBg:Lerp(base.Accent, 0.32),
+			PanelBg = LiquidGlassBase.PanelBg:Lerp(base.Accent, 0.36),
 			CardBg = LiquidGlassBase.CardBg:Lerp(base.Accent, 0.30),
-			Accent = base.Accent:Lerp(Color3.fromRGB(230, 245, 255), 0.16),
-			AccentDark = base.AccentDark:Lerp(Color3.fromRGB(180, 215, 245), 0.18),
-			Stroke = Color3.fromRGB(245, 250, 255):Lerp(base.Stroke, 0.45),
+			Accent = base.Accent:Lerp(Color3.fromRGB(225, 242, 255), 0.18),
+			AccentDark = base.AccentDark:Lerp(Color3.fromRGB(170, 210, 245), 0.16),
+			Stroke = Color3.fromRGB(245, 250, 255):Lerp(base.Stroke, 0.38),
 			TextPrimary = Color3.fromRGB(255, 255, 255),
-			TextSecondary = Color3.fromRGB(235, 242, 252):Lerp(base.TextSecondary, 0.35)
+			TextSecondary = Color3.fromRGB(220, 234, 250):Lerp(base.TextSecondary, 0.30)
 		}
 	elseif designName == "CyberHud" then
 		local isDef = (themeName == "Default" or not themeName)
-		local acc = isDef and Color3.fromRGB(0, 230, 255) or base.Accent
-		local accDark = isDef and Color3.fromRGB(0, 125, 165) or base.AccentDark
-		local strk = isDef and Color3.fromRGB(0, 255, 235) or base.Stroke
+		local acc = isDef and Color3.fromRGB(0, 242, 255) or base.Accent
+		local accDark = isDef and Color3.fromRGB(0, 130, 175) or base.AccentDark
+		local strk = isDef and Color3.fromRGB(190, 55, 255) or base.Stroke
 		return {
-			MainBg = Color3.fromRGB(4, 5, 9),
-			PanelBg = Color3.fromRGB(8, 10, 16):Lerp(acc, 0.08),
-			CardBg = Color3.fromRGB(11, 14, 22):Lerp(acc, 0.12),
+			MainBg = Color3.fromRGB(5, 6, 12),
+			PanelBg = Color3.fromRGB(9, 11, 20):Lerp(acc, 0.10),
+			CardBg = Color3.fromRGB(13, 16, 28):Lerp(acc, 0.14),
 			Accent = acc,
 			AccentDark = accDark,
 			Stroke = strk,
-			TextPrimary = Color3.fromRGB(245, 252, 255),
-			TextSecondary = isDef and Color3.fromRGB(135, 225, 245) or base.TextSecondary
+			TextPrimary = Color3.fromRGB(245, 253, 255),
+			TextSecondary = isDef and Color3.fromRGB(135, 230, 250) or base.TextSecondary
 		}
 	end
 	return base
@@ -358,8 +359,12 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 	local animStyle = Config.Animation or "Default"
 	local targetScale = GetTargetWindowScale()
 	local curDesign = Config.GuiDesign or "Default"
-	local targetBgTrans = (curDesign == "LiquidGlass" and 0.44) or (curDesign == "CyberHud" and 0.12) or 0.06
-	local targetStrokeTrans = (curDesign == "LiquidGlass" and 0.12) or (curDesign == "CyberHud" and 0.0) or 0.25
+	local targetBgTrans = (curDesign == "LiquidGlass" and 0.56) or (curDesign == "CyberHud" and 0.08) or 0.06
+	local targetStrokeTrans = (curDesign == "LiquidGlass" and 0.08) or (curDesign == "CyberHud" and 0.0) or 0.25
+	pcall(function()
+		local blur = Lighting:FindFirstChild("TR_LiquidGlassBlur")
+		if blur then blur.Enabled = (state == true and curDesign == "LiquidGlass" and not isClosingPermanently) end
+	end)
 	MainFrame.Size = UDim2.new(0, CurrentWidth, 0, CurrentHeight)
 	MainFrame.Rotation = 0
 	TopBar.Position = UDim2.new(0, 0, 0, 0)
@@ -598,81 +603,276 @@ if isMobileDevice then
 	end
 end
 local MainGlassGrad = Instance.new("UIGradient", MainFrame)
-MainGlassGrad.Rotation = -35
+MainGlassGrad.Rotation = -38
 MainGlassGrad.Enabled = false
 local StrokeGlassGrad = Instance.new("UIGradient", MainStroke)
-StrokeGlassGrad.Rotation = 45
+StrokeGlassGrad.Rotation = 35
 StrokeGlassGrad.Enabled = false
+
+-- Layer 1: Apple OS Top Specular Rim Reflection Bar (Overhead Curved Glass Glint)
+local LiquidTopSpecular = Instance.new("Frame", MainFrame)
+LiquidTopSpecular.Name = "TR_LiquidTopSpecular"
+LiquidTopSpecular.Size = UDim2.new(1, -24, 0, 2)
+LiquidTopSpecular.Position = UDim2.new(0, 12, 0, 1)
+LiquidTopSpecular.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+LiquidTopSpecular.BackgroundTransparency = 0.15
+LiquidTopSpecular.BorderSizePixel = 0
+LiquidTopSpecular.ZIndex = 20
+LiquidTopSpecular.Visible = false
+local TopSpecGrad = Instance.new("UIGradient", LiquidTopSpecular)
+TopSpecGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0.85),
+	NumberSequenceKeypoint.new(0.22, 0.05),
+	NumberSequenceKeypoint.new(0.5, 0.0),
+	NumberSequenceKeypoint.new(0.78, 0.05),
+	NumberSequenceKeypoint.new(1, 0.85)
+})
+
+-- Layer 2: Apple OS Diagonal Caustic Glass Sheen Overlay (Refractive Surface Specular Band)
+local LiquidCausticOverlay = Instance.new("Frame", MainFrame)
+LiquidCausticOverlay.Name = "TR_LiquidCausticOverlay"
+LiquidCausticOverlay.Size = UDim2.new(1, 0, 1, 0)
+LiquidCausticOverlay.Position = UDim2.new(0, 0, 0, 0)
+LiquidCausticOverlay.BackgroundColor3 = Color3.fromRGB(240, 248, 255)
+LiquidCausticOverlay.BackgroundTransparency = 0.76
+LiquidCausticOverlay.BorderSizePixel = 0
+LiquidCausticOverlay.Active = false
+LiquidCausticOverlay.ZIndex = 1
+LiquidCausticOverlay.Visible = false
+AddCorner(LiquidCausticOverlay, 16)
+local CausticGrad = Instance.new("UIGradient", LiquidCausticOverlay)
+CausticGrad.Rotation = -42
+CausticGrad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+	ColorSequenceKeypoint.new(0.35, Color3.fromRGB(220, 238, 255)),
+	ColorSequenceKeypoint.new(0.7, Color3.fromRGB(180, 210, 245)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(250, 253, 255))
+})
+CausticGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0.10),
+	NumberSequenceKeypoint.new(0.25, 0.65),
+	NumberSequenceKeypoint.new(0.48, 0.30),
+	NumberSequenceKeypoint.new(0.72, 0.78),
+	NumberSequenceKeypoint.new(1, 0.22)
+})
+
+-- Layer 3: Cyber-HUD Top & Bottom Neon Laser Emitter Bars
+local CyberTopLaser = Instance.new("Frame", MainFrame)
+CyberTopLaser.Name = "TR_CyberTopLaser"
+CyberTopLaser.Size = UDim2.new(1, -16, 0, 2)
+CyberTopLaser.Position = UDim2.new(0, 8, 0, 43)
+CyberTopLaser.BackgroundColor3 = Color3.fromRGB(0, 242, 255)
+CyberTopLaser.BorderSizePixel = 0
+CyberTopLaser.ZIndex = 20
+CyberTopLaser.Visible = false
+local CyberTopLaserGrad = Instance.new("UIGradient", CyberTopLaser)
+CyberTopLaserGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0.75),
+	NumberSequenceKeypoint.new(0.5, 0.0),
+	NumberSequenceKeypoint.new(1, 0.75)
+})
+
+local CyberBottomLaser = Instance.new("Frame", MainFrame)
+CyberBottomLaser.Name = "TR_CyberBottomLaser"
+CyberBottomLaser.Size = UDim2.new(1, -40, 0, 2)
+CyberBottomLaser.Position = UDim2.new(0, 20, 1, -3)
+CyberBottomLaser.BackgroundColor3 = Color3.fromRGB(190, 55, 255)
+CyberBottomLaser.BorderSizePixel = 0
+CyberBottomLaser.ZIndex = 20
+CyberBottomLaser.Visible = false
+local CyberBottomLaserGrad = Instance.new("UIGradient", CyberBottomLaser)
+CyberBottomLaserGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0.85),
+	NumberSequenceKeypoint.new(0.5, 0.0),
+	NumberSequenceKeypoint.new(1, 0.85)
+})
+
+-- Layer 4: Subtle Optical Depth-of-Field Glass Blur in Lighting (Active only when LiquidGlass GUI is Open)
+local LiquidBlurEffect = nil
+pcall(function()
+	LiquidBlurEffect = Lighting:FindFirstChild("TR_LiquidGlassBlur") or Instance.new("BlurEffect")
+	LiquidBlurEffect.Name = "TR_LiquidGlassBlur"
+	LiquidBlurEffect.Size = 6
+	LiquidBlurEffect.Enabled = false
+	LiquidBlurEffect.Parent = Lighting
+end)
 
 ApplyGuiDesignSurface = function()
 	local d = Config.GuiDesign or "Default"
 	local eff = GetTheme()
+	local mainCorner = MainFrame:FindFirstChildOfClass("UICorner")
+	local topCorner = TopBar:FindFirstChildOfClass("UICorner")
+	local sideCorner = Sidebar:FindFirstChildOfClass("UICorner")
+	local contentCorner = ContentContainer:FindFirstChildOfClass("UICorner")
+
 	if d == "LiquidGlass" then
-		MainFrame.BackgroundTransparency = 0.44
-		TopBar.BackgroundTransparency = 0.48
-		Sidebar.BackgroundTransparency = 0.52
-		ContentContainer.BackgroundTransparency = 0.52
+		-- Authentic Apple OS (visionOS / iOS 26) Spatial Frosted Liquid Glass
+		MainFrame.BackgroundTransparency = 0.56
+		TopBar.BackgroundTransparency = 0.62
+		Sidebar.BackgroundTransparency = 0.64
+		ContentContainer.BackgroundTransparency = 0.64
 		MainStroke.Thickness = 1.8
-		MainStroke.Transparency = 0.10
+		MainStroke.Transparency = 0.08
+		if mainCorner then mainCorner.CornerRadius = UDim.new(0, 16) end
+		if topCorner then topCorner.CornerRadius = UDim.new(0, 16) end
+		if sideCorner then sideCorner.CornerRadius = UDim.new(0, 14) end
+		if contentCorner then contentCorner.CornerRadius = UDim.new(0, 14) end
+
+		LiquidTopSpecular.Visible = true
+		LiquidCausticOverlay.Visible = true
+		LiquidCausticOverlay.BackgroundColor3 = (Config.Theme == "Default" or not Config.Theme) and Color3.fromRGB(235, 245, 255) or eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.65)
+		CyberTopLaser.Visible = false
+		CyberBottomLaser.Visible = false
+		if LiquidBlurEffect then LiquidBlurEffect.Enabled = (isMenuVisible == true and not isClosingPermanently) end
+
+		MainGlassGrad.Rotation = -38
 		MainGlassGrad.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-			ColorSequenceKeypoint.new(0.5, eff.MainBg),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(215, 232, 255))
+			ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(Color3.fromRGB(255, 255, 255), 0.32)),
+			ColorSequenceKeypoint.new(0.45, eff.MainBg),
+			ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(Color3.fromRGB(210, 232, 255), 0.25))
 		})
 		MainGlassGrad.Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0.0),
-			NumberSequenceKeypoint.new(0.5, 0.12),
+			NumberSequenceKeypoint.new(0.5, 0.08),
 			NumberSequenceKeypoint.new(1, 0.0)
 		})
 		MainGlassGrad.Enabled = true
+
+		-- Apple Specular Rim Lighting (Bright White Top-Left & Bottom-Right Glint, Soft Refractive Mid)
+		StrokeGlassGrad.Rotation = 35
 		StrokeGlassGrad.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-			ColorSequenceKeypoint.new(0.5, eff.Accent),
+			ColorSequenceKeypoint.new(0.35, eff.Stroke),
+			ColorSequenceKeypoint.new(0.65, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.55)),
 			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
 		})
+		StrokeGlassGrad.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.0),
+			NumberSequenceKeypoint.new(0.45, 0.35),
+			NumberSequenceKeypoint.new(0.75, 0.25),
+			NumberSequenceKeypoint.new(1, 0.05)
+		})
 		StrokeGlassGrad.Enabled = true
+
 		for _, item in ipairs(ThemeObjects.CardBg) do
-			if item.Instance and item.Instance.Parent and item.Instance:IsA("Frame") then
-				item.Instance.BackgroundTransparency = 0.46
-				local st = item.Instance:FindFirstChildOfClass("UIStroke")
-				if st then st.Transparency = 0.18 st.Thickness = 1.3 end
+			if item.Instance and item.Instance.Parent then
+				if item.Instance:IsA("Frame") then
+					item.Instance.BackgroundTransparency = 0.54
+					local cc = item.Instance:FindFirstChildOfClass("UICorner")
+					if cc then cc.CornerRadius = UDim.new(0, 11) end
+					local st = item.Instance:FindFirstChildOfClass("UIStroke")
+					if st then st.Transparency = 0.24 st.Thickness = 1.2 end
+				elseif item.Instance:IsA("GuiButton") then
+					item.Instance.BackgroundTransparency = 0.42
+				end
+			end
+		end
+		for _, item in ipairs(ThemeObjects.PanelBg) do
+			if item.Instance and item.Instance.Parent and item.Instance ~= TopBar and item.Instance ~= Sidebar and item.Instance ~= ContentContainer then
+				if item.Instance:IsA("GuiObject") then
+					item.Instance.BackgroundTransparency = 0.48
+				end
 			end
 		end
 	elseif d == "CyberHud" then
-		MainFrame.BackgroundTransparency = 0.12
-		TopBar.BackgroundTransparency = 0.14
-		Sidebar.BackgroundTransparency = 0.18
-		ContentContainer.BackgroundTransparency = 0.18
-		MainStroke.Thickness = 2.4
+		-- Quantum Holographic Cyberpunk HUD (Deep Obsidian Carbon + Dual-Tone Glowing Neon Lasers)
+		MainFrame.BackgroundTransparency = 0.08
+		TopBar.BackgroundTransparency = 0.10
+		Sidebar.BackgroundTransparency = 0.14
+		ContentContainer.BackgroundTransparency = 0.14
+		MainStroke.Thickness = 2.5
 		MainStroke.Transparency = 0.0
-		MainGlassGrad.Enabled = false
+		if mainCorner then mainCorner.CornerRadius = UDim.new(0, 6) end
+		if topCorner then topCorner.CornerRadius = UDim.new(0, 6) end
+		if sideCorner then sideCorner.CornerRadius = UDim.new(0, 5) end
+		if contentCorner then contentCorner.CornerRadius = UDim.new(0, 5) end
+
+		LiquidTopSpecular.Visible = false
+		LiquidCausticOverlay.Visible = false
+		CyberTopLaser.Visible = true
+		CyberBottomLaser.Visible = true
+		CyberTopLaser.BackgroundColor3 = eff.Accent
+		CyberBottomLaser.BackgroundColor3 = eff.Stroke
+		if LiquidBlurEffect then LiquidBlurEffect.Enabled = false end
+
+		MainGlassGrad.Rotation = 25
+		MainGlassGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 14, 26):Lerp(eff.Accent, 0.12)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(5, 6, 12)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 10, 28):Lerp(eff.Stroke, 0.14))
+		})
+		MainGlassGrad.Transparency = NumberSequence.new(0)
+		MainGlassGrad.Enabled = true
+
+		StrokeGlassGrad.Rotation = 45
 		StrokeGlassGrad.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, eff.Accent),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-			ColorSequenceKeypoint.new(1, eff.Stroke)
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(0.65, eff.Stroke),
+			ColorSequenceKeypoint.new(1, eff.Accent)
 		})
+		StrokeGlassGrad.Transparency = NumberSequence.new(0)
 		StrokeGlassGrad.Enabled = true
+
 		for _, item in ipairs(ThemeObjects.CardBg) do
-			if item.Instance and item.Instance.Parent and item.Instance:IsA("Frame") then
-				item.Instance.BackgroundTransparency = 0.14
-				local st = item.Instance:FindFirstChildOfClass("UIStroke")
-				if st then st.Transparency = 0.10 st.Thickness = 1.4 end
+			if item.Instance and item.Instance.Parent then
+				if item.Instance:IsA("Frame") then
+					item.Instance.BackgroundTransparency = 0.10
+					local cc = item.Instance:FindFirstChildOfClass("UICorner")
+					if cc then cc.CornerRadius = UDim.new(0, 4) end
+					local st = item.Instance:FindFirstChildOfClass("UIStroke")
+					if st then st.Transparency = 0.04 st.Thickness = 1.5 end
+				elseif item.Instance:IsA("GuiButton") then
+					item.Instance.BackgroundTransparency = 0.06
+				end
+			end
+		end
+		for _, item in ipairs(ThemeObjects.PanelBg) do
+			if item.Instance and item.Instance.Parent and item.Instance ~= TopBar and item.Instance ~= Sidebar and item.Instance ~= ContentContainer then
+				if item.Instance:IsA("GuiObject") then
+					item.Instance.BackgroundTransparency = 0.12
+				end
 			end
 		end
 	else
+		-- 1. Default Classic Dark Glassmorphic GUI
 		MainFrame.BackgroundTransparency = 0.06
 		TopBar.BackgroundTransparency = 0.10
 		Sidebar.BackgroundTransparency = 0.12
 		ContentContainer.BackgroundTransparency = 0.12
 		MainStroke.Thickness = 1.6
 		MainStroke.Transparency = 0.25
+		if mainCorner then mainCorner.CornerRadius = UDim.new(0, 12) end
+		if topCorner then topCorner.CornerRadius = UDim.new(0, 12) end
+		if sideCorner then sideCorner.CornerRadius = UDim.new(0, 10) end
+		if contentCorner then contentCorner.CornerRadius = UDim.new(0, 10) end
+
+		LiquidTopSpecular.Visible = false
+		LiquidCausticOverlay.Visible = false
+		CyberTopLaser.Visible = false
+		CyberBottomLaser.Visible = false
+		if LiquidBlurEffect then LiquidBlurEffect.Enabled = false end
 		MainGlassGrad.Enabled = false
 		StrokeGlassGrad.Enabled = false
+
 		for _, item in ipairs(ThemeObjects.CardBg) do
-			if item.Instance and item.Instance.Parent and item.Instance:IsA("Frame") then
-				item.Instance.BackgroundTransparency = 0.08
-				local st = item.Instance:FindFirstChildOfClass("UIStroke")
-				if st then st.Transparency = 0.60 st.Thickness = 1.0 end
+			if item.Instance and item.Instance.Parent then
+				if item.Instance:IsA("Frame") then
+					item.Instance.BackgroundTransparency = 0.08
+					local cc = item.Instance:FindFirstChildOfClass("UICorner")
+					if cc then cc.CornerRadius = UDim.new(0, 8) end
+					local st = item.Instance:FindFirstChildOfClass("UIStroke")
+					if st then st.Transparency = 0.60 st.Thickness = 1.0 end
+				elseif item.Instance:IsA("GuiButton") then
+					item.Instance.BackgroundTransparency = 0.0
+				end
+			end
+		end
+		for _, item in ipairs(ThemeObjects.PanelBg) do
+			if item.Instance and item.Instance.Parent and item.Instance ~= TopBar and item.Instance ~= Sidebar and item.Instance ~= ContentContainer then
+				if item.Instance:IsA("GuiObject") then
+					item.Instance.BackgroundTransparency = 0.15
+				end
 			end
 		end
 	end
@@ -683,7 +883,7 @@ genv._TR_ApplyGuiDesign = function(designName, showNotif)
 	savedConfig.Settings.GuiDesign = designName
 	ApplyTheme(Config.Theme or "Default")
 	if showNotif and NotifyFeatureToggle then
-		local label = (designName == "LiquidGlass" and "GUI: Apple Liquid Glass") or (designName == "CyberHud" and "GUI: Neon Cyber-HUD") or "GUI: Default Classic"
+		local label = (designName == "LiquidGlass" and "GUI: Apple Liquid Glass") or (designName == "CyberHud" and "GUI: Quantum Cyber-HUD") or "GUI: Default Classic"
 		NotifyFeatureToggle(label, true)
 	end
 end
