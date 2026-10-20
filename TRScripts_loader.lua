@@ -80,7 +80,7 @@ local CONFIG_FILENAME = "TRScripts_Config_V100.json" local FALLBACK_FILES = {
 	"TRScripts_Config_V93.json", "TRScripts_Config_V92.json" } local DefaultConfig = { Settings = {
 		Theme = "Default", GuiDesign = "Default", Animation = "Default", WindowWidth = 760, WindowHeight = 480, WalkSpeed = 18, JumpPower = 50, FOV = 70,
 		FlySpeed = 100, FlyKeybind = "E", FreecamSpeed = 60, FreecamKeybind = "C", MouseLockKeybind = "M", AimbotKeybind = "Q", AimbotKeyMode = "Toggle", AimbotBurstDurationMs = 1000, TargetAimbotKeybind = "T", AutoShootKeybind = "Z", AimbotAutoShootKeybind = "V", AimbotAutoShootEnabled = false, AutoShootDelayMs = 25, ESPHealthBars = true, AimbotFOVRadius = 200,
-		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", OrbitRadius = 8, OrbitSpeed = 10, AntiKatanaEnabled = true, WallcheckEnabled = true,
+		AimbotFOVCircleEnabled = true, AimbotEnabled = false, TargetAimbotEnabled = false, StrongLock = true, StickMode = "Back", OrbitRadius = 8, OrbitSpeed = 10, AntiKatanaEnabled = true, FloatingIconEnabled = true, WallcheckEnabled = true,
 		AimbotTeamCheck = true, AutoShootEnabled = false, InfiniteJump = false, SpiderClimb = false,
 		ItemMagnetEnabled = false, ItemMagnetRadius = 60, ESPShowTeammates = false, AimPartName = "Head",
 		MasterUtilityEnabled = false, MasterFlightEnabled = false, NoclipEnabled = false,
@@ -343,7 +343,27 @@ ContentContainer.Position = UDim2.new(0, 200, 0, 50) ContentContainer.Background
 ContentContainer.BorderSizePixel = 0 ContentContainer.Parent = MainFrame
 RegisterThemeObject(ContentContainer, "BackgroundColor3", "PanelBg") AddCorner(ContentContainer, 10)
 local isMobileDevice = UserInputService.TouchEnabled and (not UserInputService.KeyboardEnabled or (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.Y <= 520))
-local MobileFloatBtn = nil
+if isMobileDevice then
+	Config.FloatingIconEnabled = true
+	savedConfig.Settings.FloatingIconEnabled = true
+elseif Config.FloatingIconEnabled == nil then
+	Config.FloatingIconEnabled = true
+	savedConfig.Settings.FloatingIconEnabled = true
+end
+local FloatingPill = nil
+local FloatPillGrad, FloatPillStroke, FloatPillStrokeGrad, FloatPillTopSpec, FloatPillDivider, FloatDragIcon, FloatScriptIcon, FloatTitleLbl = nil, nil, nil, nil, nil, nil, nil, nil
+local function UpdateFloatingPillVisibility()
+	if not FloatingPill then return end
+	if isClosingPermanently then
+		FloatingPill.Visible = false
+		return
+	end
+	if isMobileDevice then
+		FloatingPill.Visible = true
+	else
+		FloatingPill.Visible = (Config.FloatingIconEnabled ~= false)
+	end
+end
 local function GetTargetWindowScale()
 	if not isMobileDevice then return 1 end
 	local cam = workspace.CurrentCamera
@@ -372,7 +392,7 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 	ContentContainer.Position = UDim2.new(0, 200, 0, 50)
 	MainStroke.Thickness = 1.6
 	if state then
-		if MobileFloatBtn then MobileFloatBtn.Visible = false end
+		UpdateFloatingPillVisibility()
 		MainFrame.Visible = true
 		if animStyle == "Windows" then
 			MainScale.Scale = targetScale * 0.88
@@ -418,7 +438,7 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 		end
 	else
 		draggingGui, resizingMode = false, nil
-		if MobileFloatBtn and not isClosingPermanently then MobileFloatBtn.Visible = true end
+		UpdateFloatingPillVisibility()
 		if animStyle == "Windows" then
 			local info = TweenInfo.new(0.18, Enum.EasingStyle.Cubic, Enum.EasingDirection.In)
 			local t1 = TweenService:Create(MainScale, info, { Scale = targetScale * 0.88 })
@@ -458,34 +478,112 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 		end
 	end end
 MainScale.Scale = GetTargetWindowScale()
-if isMobileDevice then
-	MobileFloatBtn = Instance.new("TextButton")
-	MobileFloatBtn.Name = "TR_MobileFloatBtn"
-	MobileFloatBtn.Size = UDim2.new(0, 48, 0, 48)
-	MobileFloatBtn.Position = UDim2.new(0, 18, 0.5, -24)
-	MobileFloatBtn.BackgroundTransparency = 0.08
-	MobileFloatBtn.BorderSizePixel = 0
-	MobileFloatBtn.Font = Enum.Font.GothamBold
-	MobileFloatBtn.TextSize = 13
-	MobileFloatBtn.Text = E.Bolt .. " T.R"
-	MobileFloatBtn.Visible = false
-	MobileFloatBtn.ZIndex = 50
-	MobileFloatBtn.Parent = ScreenGui
-	RegisterThemeObject(MobileFloatBtn, "BackgroundColor3", "MainBg")
-	RegisterThemeObject(MobileFloatBtn, "TextColor3", "Accent")
-	AddCorner(MobileFloatBtn, 14)
-	local floatStroke = Instance.new("UIStroke", MobileFloatBtn)
-	floatStroke.Thickness = 2
-	floatStroke.Transparency = 0.15
-	RegisterThemeObject(floatStroke, "Color", "Accent")
+do
+	FloatingPill = Instance.new("Frame")
+	FloatingPill.Name = "TR_FloatingPill"
+	FloatingPill.Size = UDim2.new(0, 184, 0, 42)
+	FloatingPill.Position = isMobileDevice and UDim2.new(0, 18, 0.5, -21) or UDim2.new(0, 22, 0, 18)
+	FloatingPill.BackgroundTransparency = 0.08
+	FloatingPill.BorderSizePixel = 0
+	FloatingPill.Active = true
+	FloatingPill.ClipsDescendants = true
+	FloatingPill.ZIndex = 50
+	FloatingPill.Parent = ScreenGui
+	RegisterThemeObject(FloatingPill, "BackgroundColor3", "MainBg")
+	local pillCorner = Instance.new("UICorner", FloatingPill)
+	pillCorner.CornerRadius = UDim.new(1, 0)
+
+	FloatPillGrad = Instance.new("UIGradient", FloatingPill)
+	FloatPillGrad.Rotation = 18
+	FloatPillGrad.Enabled = false
+
+	FloatPillStroke = Instance.new("UIStroke", FloatingPill)
+	FloatPillStroke.Thickness = 2.2
+	FloatPillStroke.Transparency = 0.05
+	FloatPillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	RegisterThemeObject(FloatPillStroke, "Color", "Accent")
+
+	FloatPillStrokeGrad = Instance.new("UIGradient", FloatPillStroke)
+	FloatPillStrokeGrad.Rotation = 0
+	FloatPillStrokeGrad.Enabled = true
+
+	FloatPillTopSpec = Instance.new("Frame", FloatingPill)
+	FloatPillTopSpec.Name = "TR_PillTopSpec"
+	FloatPillTopSpec.Size = UDim2.new(1, -36, 0, 1)
+	FloatPillTopSpec.Position = UDim2.new(0, 18, 0, 1)
+	FloatPillTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	FloatPillTopSpec.BackgroundTransparency = 0.20
+	FloatPillTopSpec.BorderSizePixel = 0
+	FloatPillTopSpec.ZIndex = 53
+	FloatPillTopSpec.Visible = false
+	local pillSpecGrad = Instance.new("UIGradient", FloatPillTopSpec)
+	pillSpecGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.9),
+		NumberSequenceKeypoint.new(0.5, 0.0),
+		NumberSequenceKeypoint.new(1, 0.9)
+	})
+
+	FloatDragIcon = Instance.new("TextLabel", FloatingPill)
+	FloatDragIcon.Name = "DragArrowIcon"
+	FloatDragIcon.Size = UDim2.new(0, 42, 1, 0)
+	FloatDragIcon.Position = UDim2.new(0, 0, 0, 0)
+	FloatDragIcon.BackgroundTransparency = 1
+	FloatDragIcon.Font = Enum.Font.GothamBold
+	FloatDragIcon.TextSize = 16
+	FloatDragIcon.Text = utf8.char(0x2725)
+	FloatDragIcon.ZIndex = 52
+	RegisterThemeObject(FloatDragIcon, "TextColor3", "Accent")
+
+	FloatPillDivider = Instance.new("Frame", FloatingPill)
+	FloatPillDivider.Name = "VerticalDivider"
+	FloatPillDivider.Size = UDim2.new(0, 1, 1, 0)
+	FloatPillDivider.Position = UDim2.new(0, 42, 0, 0)
+	FloatPillDivider.BackgroundTransparency = 0.55
+	FloatPillDivider.BorderSizePixel = 0
+	FloatPillDivider.ZIndex = 52
+	RegisterThemeObject(FloatPillDivider, "BackgroundColor3", "Stroke")
+
+	FloatScriptIcon = Instance.new("TextLabel", FloatingPill)
+	FloatScriptIcon.Name = "ScriptEmblem"
+	FloatScriptIcon.Size = UDim2.new(0, 22, 1, 0)
+	FloatScriptIcon.Position = UDim2.new(0, 50, 0, 0)
+	FloatScriptIcon.BackgroundTransparency = 1
+	FloatScriptIcon.Font = Enum.Font.GothamBold
+	FloatScriptIcon.TextSize = 15
+	FloatScriptIcon.Text = E.Bolt
+	FloatScriptIcon.ZIndex = 52
+	RegisterThemeObject(FloatScriptIcon, "TextColor3", "Accent")
+
+	FloatTitleLbl = Instance.new("TextLabel", FloatingPill)
+	FloatTitleLbl.Name = "ScriptTitle"
+	FloatTitleLbl.Size = UDim2.new(1, -80, 1, 0)
+	FloatTitleLbl.Position = UDim2.new(0, 74, 0, 0)
+	FloatTitleLbl.BackgroundTransparency = 1
+	FloatTitleLbl.Font = Enum.Font.GothamBold
+	FloatTitleLbl.TextSize = 14
+	FloatTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+	FloatTitleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	FloatTitleLbl.Text = "T.R Scripts"
+	FloatTitleLbl.ZIndex = 52
+	RegisterThemeObject(FloatTitleLbl, "TextColor3", "TextPrimary")
+
+	local FloatHitBox = Instance.new("TextButton", FloatingPill)
+	FloatHitBox.Name = "HitBox"
+	FloatHitBox.Size = UDim2.new(1, 0, 1, 0)
+	FloatHitBox.Position = UDim2.new(0, 0, 0, 0)
+	FloatHitBox.BackgroundTransparency = 1
+	FloatHitBox.Text = ""
+	FloatHitBox.AutoButtonColor = false
+	FloatHitBox.ZIndex = 54
+
 	local floatDragging, floatMoved = false, false
 	local floatDragStart, floatStartPos = nil, nil
-	MobileFloatBtn.InputBegan:Connect(function(inp)
+	FloatHitBox.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
 			floatDragging = true
 			floatMoved = false
 			floatDragStart = inp.Position
-			floatStartPos = MobileFloatBtn.Position
+			floatStartPos = FloatingPill.Position
 			inp.Changed:Connect(function()
 				if inp.UserInputState == Enum.UserInputState.End then
 					floatDragging = false
@@ -496,18 +594,21 @@ if isMobileDevice then
 	table.insert(Connections, UserInputService.InputChanged:Connect(function(inp)
 		if floatDragging and (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseMovement) then
 			local delta = inp.Position - floatDragStart
-			if delta.Magnitude > 6 then floatMoved = true end
-			MobileFloatBtn.Position = UDim2.new(
+			if delta.Magnitude > 5 then floatMoved = true end
+			FloatingPill.Position = UDim2.new(
 				floatStartPos.X.Scale, floatStartPos.X.Offset + delta.X,
 				floatStartPos.Y.Scale, floatStartPos.Y.Offset + delta.Y
 			)
 		end
 	end))
-	MobileFloatBtn.MouseButton1Click:Connect(function()
+	FloatHitBox.MouseButton1Click:Connect(function()
 		if not floatMoved then
-			SetMenuVisible(true)
+			SetMenuVisible(not isMenuVisible)
 		end
 	end)
+	UpdateFloatingPillVisibility()
+end
+if isMobileDevice then
 
 	-- Mobile-Only On-Screen Quick-Action Buttons (Draggable Floating Combat & Flight Bar)
 	local MobileQuickBar = Instance.new("Frame")
@@ -874,6 +975,119 @@ ApplyGuiDesignSurface = function()
 					item.Instance.BackgroundTransparency = 0.15
 				end
 			end
+		end
+	end
+
+	-- Synchronize Floating Pill Icon (Both Mobile & PC) with active Theme and GUI Design Style
+	if FloatingPill and FloatingPill.Parent then
+		FloatingPill.BackgroundColor3 = eff.MainBg
+		if FloatTitleLbl then FloatTitleLbl.TextColor3 = eff.TextPrimary end
+		if d == "LiquidGlass" then
+			FloatingPill.BackgroundTransparency = 0.48
+			if FloatPillGrad then
+				FloatPillGrad.Rotation = -32
+				FloatPillGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(Color3.fromRGB(255, 255, 255), 0.36)),
+					ColorSequenceKeypoint.new(0.5, eff.MainBg),
+					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(Color3.fromRGB(210, 235, 255), 0.28))
+				})
+				FloatPillGrad.Enabled = true
+			end
+			if FloatPillStroke then
+				FloatPillStroke.Thickness = 2.0
+				FloatPillStroke.Transparency = 0.04
+				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
+			end
+			if FloatPillStrokeGrad then
+				FloatPillStrokeGrad.Rotation = 12
+				FloatPillStrokeGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)),
+					ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(1, eff.Stroke)
+				})
+				FloatPillStrokeGrad.Enabled = true
+			end
+			if FloatPillTopSpec then
+				FloatPillTopSpec.Visible = true
+				FloatPillTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				FloatPillTopSpec.BackgroundTransparency = 0.15
+			end
+			if FloatPillDivider then
+				FloatPillDivider.BackgroundColor3 = eff.Stroke
+				FloatPillDivider.BackgroundTransparency = 0.42
+			end
+			if FloatDragIcon then FloatDragIcon.TextColor3 = eff.Accent end
+			if FloatScriptIcon then FloatScriptIcon.TextColor3 = eff.Accent end
+		elseif d == "CyberHud" then
+			FloatingPill.BackgroundTransparency = 0.06
+			if FloatPillGrad then
+				FloatPillGrad.Rotation = 20
+				FloatPillGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 16, 28):Lerp(eff.Accent, 0.18)),
+					ColorSequenceKeypoint.new(0.55, Color3.fromRGB(5, 6, 12)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 10, 28):Lerp(eff.Stroke, 0.18))
+				})
+				FloatPillGrad.Enabled = true
+			end
+			if FloatPillStroke then
+				FloatPillStroke.Thickness = 2.4
+				FloatPillStroke.Transparency = 0.0
+				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
+			end
+			if FloatPillStrokeGrad then
+				FloatPillStrokeGrad.Rotation = 18
+				FloatPillStrokeGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.Accent),
+					ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.8, eff.Stroke),
+					ColorSequenceKeypoint.new(1, eff.Accent)
+				})
+				FloatPillStrokeGrad.Enabled = true
+			end
+			if FloatPillTopSpec then
+				FloatPillTopSpec.Visible = true
+				FloatPillTopSpec.BackgroundColor3 = eff.Accent
+				FloatPillTopSpec.BackgroundTransparency = 0.12
+			end
+			if FloatPillDivider then
+				FloatPillDivider.BackgroundColor3 = eff.Accent
+				FloatPillDivider.BackgroundTransparency = 0.35
+			end
+			if FloatDragIcon then FloatDragIcon.TextColor3 = eff.Accent end
+			if FloatScriptIcon then FloatScriptIcon.TextColor3 = eff.Stroke end
+		else
+			FloatingPill.BackgroundTransparency = 0.08
+			if FloatPillGrad then
+				FloatPillGrad.Rotation = 0
+				FloatPillGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(eff.PanelBg, 0.35)),
+					ColorSequenceKeypoint.new(1, eff.MainBg)
+				})
+				FloatPillGrad.Enabled = true
+			end
+			if FloatPillStroke then
+				FloatPillStroke.Thickness = 2.2
+				FloatPillStroke.Transparency = 0.04
+				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
+			end
+			if FloatPillStrokeGrad then
+				FloatPillStrokeGrad.Rotation = 0
+				FloatPillStrokeGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(110, 235, 255), 0.32)),
+					ColorSequenceKeypoint.new(0.55, eff.Accent),
+					ColorSequenceKeypoint.new(1, eff.AccentDark)
+				})
+				FloatPillStrokeGrad.Enabled = true
+			end
+			if FloatPillTopSpec then
+				FloatPillTopSpec.Visible = false
+			end
+			if FloatPillDivider then
+				FloatPillDivider.BackgroundColor3 = eff.Stroke
+				FloatPillDivider.BackgroundTransparency = 0.55
+			end
+			if FloatDragIcon then FloatDragIcon.TextColor3 = eff.Accent end
+			if FloatScriptIcon then FloatScriptIcon.TextColor3 = eff.Accent end
 		end
 	end
 end
@@ -1372,10 +1586,29 @@ end) mouseLockKeyAssignBtn.MouseButton1Click:Connect(function()
 		TryAssignUniqueKeybind(keyName, "MouseLock", function(val) Config.MouseLockKeybind = val end, RefreshMouseLockUI, mouseLockKeyAssignBtn) end end)
 mouseLockKeyDeleteBtn.MouseButton1Click:Connect(function() Config.MouseLockKeybind = "None"
 	ActiveKeybindCaptureCallback = nil RefreshMouseLockUI() SaveConfig(false) end) RefreshMouseLockUI()
-CreateSectionHeader(Tab1_Dashboard, "Protection & Physics Stabilizers", 8)
-CreateToggle(Tab1_Dashboard, "Anti-AFK Protection (VirtualUser Idle Bypass)", Config.AntiAFK, 9, function(state)
+local FloatPillToggleCtrl
+FloatPillToggleCtrl = CreateToggle(Tab1_Dashboard, "Floating Hub Pill Icon (Mobile: Always ON | PC: Toggle)", isMobileDevice or (Config.FloatingIconEnabled ~= false), 8, function(state)
+	if isMobileDevice then
+		Config.FloatingIconEnabled = true
+		savedConfig.Settings.FloatingIconEnabled = true
+		if not state and FloatPillToggleCtrl then
+			task.defer(function()
+				FloatPillToggleCtrl.SetState(true, false)
+				if NotifyFeatureToggle then NotifyFeatureToggle("Floating Pill (Mobile: Always ON)", true) end
+			end)
+		end
+		UpdateFloatingPillVisibility()
+		return
+	end
+	Config.FloatingIconEnabled = state
+	savedConfig.Settings.FloatingIconEnabled = state
+	UpdateFloatingPillVisibility()
+	SaveConfig(false)
+end)
+CreateSectionHeader(Tab1_Dashboard, "Protection & Physics Stabilizers", 9)
+CreateToggle(Tab1_Dashboard, "Anti-AFK Protection (VirtualUser Idle Bypass)", Config.AntiAFK, 10, function(state)
 	Config.AntiAFK = state SaveConfig(false) end)
-CreateToggle(Tab1_Dashboard, "Super Anti-Fling Shield (No-Collide Players + Velocity Lock)", Config.AntiFlingEnabled ~= false, 10, function(state)
+CreateToggle(Tab1_Dashboard, "Super Anti-Fling Shield (No-Collide Players + Velocity Lock)", Config.AntiFlingEnabled ~= false, 11, function(state)
 	Config.AntiFlingEnabled = state if not state then lastSafeAntiFlingCF = nil pcall(function()
 			for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and plr.Character then
 					for _, part in ipairs(plr.Character:GetDescendants()) do
@@ -1386,7 +1619,7 @@ genv.TR_AntiCheatActive = (Config.AntiCheatBypass ~= false) local function Disab
 	-- to prevent games from detecting missing heartbeats and kicking after 5 seconds.
 	-- Metamethod spoofing on __index safely handles property inquiries.
 end
-CreateToggle(Tab1_Dashboard, "Undetected Anti-Cheat Bypass (Fly, Speed, Jump & Teleport)", Config.AntiCheatBypass ~= false, 11, function(state)
+CreateToggle(Tab1_Dashboard, "Undetected Anti-Cheat Bypass (Fly, Speed, Jump & Teleport)", Config.AntiCheatBypass ~= false, 12, function(state)
 	Config.AntiCheatBypass = state genv.TR_AntiCheatActive = state
 	if state then DisableAntiCheatSignals(player.Character) end SaveConfig(false) end)
 if Config.AntiCheatBypass ~= false then DisableAntiCheatSignals(player.Character) end
