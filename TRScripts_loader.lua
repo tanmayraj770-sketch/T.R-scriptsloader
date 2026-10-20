@@ -199,8 +199,17 @@ local function ComputeEffectiveTheme(themeName, designName)
 	return base
 end
 
+local cachedEffectiveTheme, cachedEffThemeName, cachedEffDesignName = nil, nil, nil
 local function GetTheme()
-	return ComputeEffectiveTheme(Config.Theme or "Default", Config.GuiDesign or "Default")
+	local tName = Config.Theme or "Default"
+	local dName = Config.GuiDesign or "Default"
+	if cachedEffectiveTheme and cachedEffThemeName == tName and cachedEffDesignName == dName then
+		return cachedEffectiveTheme
+	end
+	cachedEffThemeName = tName
+	cachedEffDesignName = dName
+	cachedEffectiveTheme = ComputeEffectiveTheme(tName, dName)
+	return cachedEffectiveTheme
 end
 
 local ApplyGuiDesignSurface
@@ -845,12 +854,19 @@ do
 		end
 	end)
 
-	-- Continuous Smooth Iridescent Border Shimmer Animation
+	-- Throttled Iridescent Border Shimmer Animation (20Hz Integer-Quantized for Zero UI Redraw Lag)
+	local lastPillShimTime, lastPillRotInt = 0, -1
 	table.insert(Connections, RunService.Heartbeat:Connect(function()
 		if FloatingPill and FloatingPill.Visible and not isClosingPermanently then
-			local rot = (os.clock() * 42) % 360
-			if FloatPillStrokeGrad then FloatPillStrokeGrad.Rotation = rot end
-			if FloatHaloGrad then FloatHaloGrad.Rotation = (rot + 180) % 360 end
+			local now = os.clock()
+			if now - lastPillShimTime < 0.05 then return end
+			lastPillShimTime = now
+			local rot = math.floor((now * 42) % 360)
+			if rot ~= lastPillRotInt then
+				lastPillRotInt = rot
+				if FloatPillStrokeGrad then FloatPillStrokeGrad.Rotation = rot end
+				if FloatHaloGrad then FloatHaloGrad.Rotation = (rot + 180) % 360 end
+			end
 		end
 	end))
 
@@ -1969,7 +1985,25 @@ GetRootPart = function(character)
 	end
 	if not char then return nil end
 	return char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") or char:FindFirstChildWhichIsA("BasePart")
-end freezePosition = nil
+end
+local cachedBasePartsChar, cachedBasePartsList, cachedBasePartsTime = nil, {}, 0
+local function GetCachedCharBaseParts(char)
+	if not char then return {} end
+	local now = os.clock()
+	if char == cachedBasePartsChar and (now - cachedBasePartsTime < 0.5) then
+		return cachedBasePartsList
+	end
+	cachedBasePartsChar = char
+	cachedBasePartsTime = now
+	table.clear(cachedBasePartsList)
+	for _, ch in ipairs(char:GetChildren()) do
+		if ch:IsA("BasePart") and ch.Name ~= "TR_FakeFloor" then
+			table.insert(cachedBasePartsList, ch)
+		end
+	end
+	return cachedBasePartsList
+end
+freezePosition = nil
 SafeTeleportToCoords = function(x, y, z) pcall(function() local char = player.Character
 		local root = GetRootPart(char) local hum = char and char:FindFirstChildOfClass("Humanoid") if root then
 			pcall(function() CoreGui.RobloxGui["CoreScripts/NetworkPause"]:Destroy() end)
@@ -2216,8 +2250,8 @@ local function StepStickEngine(dt)
 	local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
 	if not myChar or not myRoot then return end
 
-	for _, part in ipairs(myChar:GetChildren()) do
-		if part:IsA("BasePart") and part.CanCollide then
+	for _, part in ipairs(GetCachedCharBaseParts(myChar)) do
+		if part.CanCollide then
 			part.CanCollide = false
 		end
 	end
@@ -2272,9 +2306,6 @@ UnstickTopBtn.MouseButton1Click:Connect(function()
 	SetStickTarget(nil)
 end)
 table.insert(Connections, RunService.Stepped:Connect(function(_, dt)
-	if StickTarget then StepStickEngine(dt) end
-end))
-table.insert(Connections, RunService.Heartbeat:Connect(function(dt)
 	if StickTarget then StepStickEngine(dt) end
 end))
 RefreshStickUI()
@@ -3577,6 +3608,13 @@ local function SetupTab7()
 			end
 		end
 	end
+	local COL_ESP_BLACK = Color3.fromRGB(0, 0, 0)
+	local COL_ESP_DARKBG = Color3.fromRGB(15, 15, 20)
+	local COL_HP_HIGH = Color3.fromRGB(0, 255, 120)
+	local COL_HP_MID = Color3.fromRGB(255, 215, 0)
+	local COL_HP_LOW = Color3.fromRGB(255, 30, 30)
+	local COL_SHIELD_CYAN = Color3.fromRGB(0, 215, 255)
+	local COL_ESP_WHITE = Color3.fromRGB(255, 255, 255)
 	updateAllAdornments = function()
 		local espOn = (Config.ESPEnabled == true)
 		local barsOn = (Config.ESPHealthBars ~= false)
@@ -3588,7 +3626,9 @@ local function SetupTab7()
 		for plr in pairs(adornmentsCache) do
 			if not plr or not plr.Parent or excludedPlayers[plr] then removePlayerAdornments(plr) end
 		end
-		local showBars = (Config.ESPHealthBars ~= false)
+		local cam = workspace.CurrentCamera
+		local camPos = cam and cam.CFrame.Position
+		local nowClock = os.clock()
 		for _, plr in ipairs(Players:GetPlayers()) do
 			local allowTeam = espShowTeammates or not IsTeammate(plr)
 			if plr ~= LocalPlayer and not excludedPlayers[plr] and allowTeam then
@@ -3650,60 +3690,64 @@ local function SetupTab7()
 						if pair.inner.Color3 ~= accentCol then pair.inner.Color3 = accentCol end
 					end
 
-					local hp, maxHp, shield, maxShield = GetPlayerHealthAndShield(char, hum)
 					if barsOn then
-						local cam = workspace.CurrentCamera
-						local camPos = cam and cam.CFrame.Position
+						local hp, maxHp, shield, maxShield = GetPlayerHealthAndShield(char, hum)
 						local dist = camPos and (camPos - root.Position).Magnitude or 40
-						-- Distance-scaled thickness: expands as distance increases so bar never becomes a 1px invisible sliver!
-						local barThick = math.clamp(0.48 + (dist * 0.0055), 0.48, 3.2)
-						local bgThick = barThick + 0.35
-						local xOffsetLeft = -2.5 - (dist * 0.004)
-						local xOffsetRight = 2.5 + (dist * 0.004)
+						local distBucket = math.floor(dist * 0.25)
+						local hpInt = math.floor(hp + 0.5)
+						local maxHpInt = math.floor(maxHp + 0.5)
+						local shieldInt = math.floor(shield + 0.5)
 						local hpPct = math.clamp(hp / maxHp, 0, 1)
-						local barH = math.max(0.22, 5.0 * hpPct)
+						local hpCol = (hpPct > 0.55 and COL_HP_HIGH) or (hpPct > 0.25 and COL_HP_MID) or COL_HP_LOW
 
-						pair.healthBg.Visible = true
-						pair.healthBar.Visible = true
+						if not pair.healthBg.Visible then
+							pair.healthBg.Visible = true
+							pair.healthBar.Visible = true
+							pair.healthBg.Transparency = 0.0
+							pair.healthBg.Color3 = COL_ESP_BLACK
+							pair.healthBar.Transparency = 0.0
+						end
 						if pair.healthBg.Adornee ~= root then
 							pair.healthBg.Adornee = root
 							pair.healthBar.Adornee = root
 						end
-						pair.healthBg.Size = Vector3.new(bgThick, 5.3, bgThick)
-						pair.healthBg.CFrame = CFrame.new(xOffsetLeft, 0, 0)
-						pair.healthBg.Transparency = 0.0
-						pair.healthBg.Color3 = Color3.fromRGB(0, 0, 0)
-
-						pair.healthBar.Size = Vector3.new(barThick, barH, barThick)
-						pair.healthBar.CFrame = CFrame.new(xOffsetLeft, -2.5 + (barH * 0.5), 0)
-						pair.healthBar.Transparency = 0.0
-						if hpPct > 0.55 then
-							pair.healthBar.Color3 = Color3.fromRGB(0, 255, 120) -- Neon Emerald
-						elseif hpPct > 0.25 then
-							pair.healthBar.Color3 = Color3.fromRGB(255, 215, 0) -- Neon Gold
-						else
-							pair.healthBar.Color3 = Color3.fromRGB(255, 30, 30) -- Neon Crimson
+						if pair.lastDistBucket ~= distBucket or pair.lastHpInt ~= hpInt or pair.lastMaxHpInt ~= maxHpInt then
+							local barThick = math.clamp(0.48 + (dist * 0.0055), 0.48, 3.2)
+							local bgThick = barThick + 0.35
+							local xOffsetLeft = -2.5 - (dist * 0.004)
+							local barH = math.max(0.22, 5.0 * hpPct)
+							pair.healthBg.Size = Vector3.new(bgThick, 5.3, bgThick)
+							pair.healthBg.CFrame = CFrame.new(xOffsetLeft, 0, 0)
+							pair.healthBar.Size = Vector3.new(barThick, barH, barThick)
+							pair.healthBar.CFrame = CFrame.new(xOffsetLeft, -2.5 + (barH * 0.5), 0)
+							pair.healthBar.Color3 = hpCol
 						end
 
-						local showShield = (shield > 0)
-						pair.shieldBg.Visible = showShield
-						pair.shieldBar.Visible = showShield
+						local showShield = (shieldInt > 0)
+						if pair.shieldBg.Visible ~= showShield then
+							pair.shieldBg.Visible = showShield
+							pair.shieldBar.Visible = showShield
+						end
 						if showShield then
 							if pair.shieldBg.Adornee ~= root then
 								pair.shieldBg.Adornee = root
 								pair.shieldBar.Adornee = root
 							end
-							local sPct = math.clamp(shield / maxShield, 0, 1)
-							local sBarH = math.max(0.22, 5.0 * sPct)
-							pair.shieldBg.Size = Vector3.new(bgThick, 5.3, bgThick)
-							pair.shieldBg.CFrame = CFrame.new(xOffsetRight, 0, 0)
-							pair.shieldBg.Transparency = 0.0
-							pair.shieldBg.Color3 = Color3.fromRGB(0, 0, 0)
-
-							pair.shieldBar.Size = Vector3.new(barThick, sBarH, barThick)
-							pair.shieldBar.CFrame = CFrame.new(xOffsetRight, -2.5 + (sBarH * 0.5), 0)
-							pair.shieldBar.Transparency = 0.0
-							pair.shieldBar.Color3 = Color3.fromRGB(0, 215, 255) -- Electric Cyan
+							if pair.lastDistBucket ~= distBucket or pair.lastShieldInt ~= shieldInt then
+								local barThick = math.clamp(0.48 + (dist * 0.0055), 0.48, 3.2)
+								local bgThick = barThick + 0.35
+								local xOffsetRight = 2.5 + (dist * 0.004)
+								local sPct = math.clamp(shield / maxShield, 0, 1)
+								local sBarH = math.max(0.22, 5.0 * sPct)
+								pair.shieldBg.Size = Vector3.new(bgThick, 5.3, bgThick)
+								pair.shieldBg.CFrame = CFrame.new(xOffsetRight, 0, 0)
+								pair.shieldBg.Transparency = 0.0
+								pair.shieldBg.Color3 = COL_ESP_BLACK
+								pair.shieldBar.Size = Vector3.new(barThick, sBarH, barThick)
+								pair.shieldBar.CFrame = CFrame.new(xOffsetRight, -2.5 + (sBarH * 0.5), 0)
+								pair.shieldBar.Transparency = 0.0
+								pair.shieldBar.Color3 = COL_SHIELD_CYAN
+							end
 						end
 
 						-- Overhead BillboardGui for constant, crisp readable health at any distance up to 1200 studs!
@@ -3717,14 +3761,14 @@ local function SetupTab7()
 							bb.Parent = ScreenGui
 							local bgF = Instance.new("Frame")
 							bgF.Size = UDim2.new(1, 0, 1, 0)
-							bgF.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+							bgF.BackgroundColor3 = COL_ESP_BLACK
 							bgF.BackgroundTransparency = 0.2
 							bgF.BorderSizePixel = 0
 							bgF.Parent = bb
 							AddCorner(bgF, 4)
 							local hpFill = Instance.new("Frame")
 							hpFill.Size = UDim2.new(1, 0, 1, 0)
-							hpFill.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+							hpFill.BackgroundColor3 = COL_HP_HIGH
 							hpFill.BorderSizePixel = 0
 							hpFill.Parent = bgF
 							AddCorner(hpFill, 4)
@@ -3733,7 +3777,7 @@ local function SetupTab7()
 							txt.BackgroundTransparency = 1
 							txt.Font = Enum.Font.GothamBold
 							txt.TextSize = 11
-							txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+							txt.TextColor3 = COL_ESP_WHITE
 							txt.Parent = bgF
 							pair.hpBillboard = bb
 							pair.hpFill = hpFill
@@ -3742,18 +3786,19 @@ local function SetupTab7()
 						if pair.hpBillboard.Adornee ~= root then
 							pair.hpBillboard.Adornee = root
 						end
-						pair.hpBillboard.Enabled = true
-						pair.hpFill.Size = UDim2.new(hpPct, 0, 1, 0)
-						if hpPct > 0.55 then
-							pair.hpFill.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
-						elseif hpPct > 0.25 then
-							pair.hpFill.BackgroundColor3 = Color3.fromRGB(255, 215, 0)
-						else
-							pair.hpFill.BackgroundColor3 = Color3.fromRGB(255, 30, 30)
+						if not pair.hpBillboard.Enabled then pair.hpBillboard.Enabled = true end
+						local katTag = (katanaActiveUntil and katanaActiveUntil[plr] and nowClock < katanaActiveUntil[plr]) and "[KATANA] " or ""
+						if pair.lastHpInt ~= hpInt or pair.lastMaxHpInt ~= maxHpInt or pair.lastShieldInt ~= shieldInt or pair.lastKatTag ~= katTag then
+							pair.hpFill.Size = UDim2.new(hpPct, 0, 1, 0)
+							pair.hpFill.BackgroundColor3 = hpCol
+							local sValText = (shieldInt > 0) and string.format(" | %d S", shieldInt) or ""
+							pair.hpText.Text = string.format("%s%d HP%s", katTag, hpInt, sValText)
+							pair.lastKatTag = katTag
 						end
-						local sValText = (shield > 0) and string.format(" | %d S", math.floor(shield + 0.5)) or ""
-						local katTag = (katanaActiveUntil and katanaActiveUntil[plr] and os.clock() < katanaActiveUntil[plr]) and "[KATANA] " or ""
-						pair.hpText.Text = string.format("%s%d HP%s", katTag, math.floor(hp + 0.5), sValText)
+						pair.lastDistBucket = distBucket
+						pair.lastHpInt = hpInt
+						pair.lastMaxHpInt = maxHpInt
+						pair.lastShieldInt = shieldInt
 					else
 						pair.healthBg.Visible = false
 						pair.healthBar.Visible = false
@@ -5794,55 +5839,79 @@ KatanaWarnText.TextTruncate = Enum.TextTruncate.AtEnd
 KatanaWarnText.Text = ""
 KatanaWarnText.ZIndex = 89
 
+local KATANA_BOOL_ATTRS = { "Deflect", "Deflecting", "IsDeflecting", "KatanaDeflect", "Parry", "Parrying", "Reflect", "Reflecting", "Blocking", "Counter" }
+local KATANA_STR_ATTRS = { "Weapon", "EquippedWeapon", "CurrentWeapon", "Equipped", "Tool", "ActiveWeapon", "HeldWeapon" }
+local katanaLastScanTime, katanaLastScanResult = {}, {}
+local anyEnemyKatanaCurrentlyActive = false
+
+local function GetPlayingTracksDirect(animator)
+	return animator:GetPlayingAnimationTracks()
+end
+
 local function CheckRawEnemyKatanaActive(plr, char)
 	if not char then return false end
-	-- 1. Check Attributes on Character and Player
-	for _, attrName in ipairs({ "Deflect", "Deflecting", "IsDeflecting", "KatanaDeflect", "Parry", "Parrying", "Reflect", "Reflecting", "Blocking", "Counter" }) do
+	-- 1. Check pre-allocated Attribute lists on Character and Player (Zero table allocations)
+	for i = 1, #KATANA_BOOL_ATTRS do
+		local attrName = KATANA_BOOL_ATTRS[i]
 		if char:GetAttribute(attrName) == true or (plr and plr:GetAttribute(attrName) == true) then
 			return true
 		end
 	end
-	for _, wAttr in ipairs({ "Weapon", "EquippedWeapon", "CurrentWeapon", "Equipped", "Tool", "ActiveWeapon", "HeldWeapon" }) do
+	for i = 1, #KATANA_STR_ATTRS do
+		local wAttr = KATANA_STR_ATTRS[i]
 		local wv = char:GetAttribute(wAttr) or (plr and plr:GetAttribute(wAttr))
-		if type(wv) == "string" and (wv:lower():find("katana") or wv:lower():find("deflect")) then
-			return true
+		if type(wv) == "string" then
+			local low = wv:lower()
+			if low:find("katana", 1, true) or low:find("deflect", 1, true) then
+				return true
+			end
 		end
 	end
-	-- 2. Check Playing AnimationTracks on Humanoid / Animator for Katana / Deflect / Parry / Spin
+	-- 2. Check Playing AnimationTracks on Animator
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum then
 		local animator = hum:FindFirstChildOfClass("Animator") or hum
-		local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
+		local ok, tracks = pcall(GetPlayingTracksDirect, animator)
 		if ok and type(tracks) == "table" then
-			for _, tr in ipairs(tracks) do
+			for i = 1, #tracks do
+				local tr = tracks[i]
 				if tr.IsPlaying then
 					local tName = tostring(tr.Name or ""):lower()
 					local aName = tostring((tr.Animation and tr.Animation.Name) or ""):lower()
-					if tName:find("katana") or tName:find("deflect") or tName:find("parry") or tName:find("reflect") or aName:find("katana") or aName:find("deflect") or aName:find("parry") or aName:find("reflect") then
+					if tName:find("katana", 1, true) or tName:find("deflect", 1, true) or tName:find("parry", 1, true) or tName:find("reflect", 1, true) or aName:find("katana", 1, true) or aName:find("deflect", 1, true) or aName:find("parry", 1, true) or aName:find("reflect", 1, true) then
 						return true
 					end
 				end
 			end
 		end
 	end
-	-- 3. Check Equipped Tool / Model / Nested Weapon Folders / Welds / Highlight / Deflect Effects inside Character
-	for _, desc in ipairs(char:GetDescendants()) do
-		local dn = desc.Name:lower()
-		if dn:find("katana") or dn:find("deflect") or dn:find("parry") then
-			if desc:IsA("Tool") then
+	-- 3. Fast 2-level child scan (avoids full char:GetDescendants() over 100+ character attachments/welds)
+	for _, child in ipairs(char:GetChildren()) do
+		local cn = child.Name:lower()
+		if cn:find("katana", 1, true) or cn:find("deflect", 1, true) or cn:find("parry", 1, true) then
+			if child:IsA("Tool") then
 				return true
-			elseif desc:IsA("Highlight") and desc.Enabled and desc.Name ~= "AssetHighlight" and desc.Name ~= "TR_ESP_Highlight" and not desc.Name:find("^HL_") then
+			elseif child:IsA("Highlight") and child.Enabled and child.Name ~= "AssetHighlight" and child.Name ~= "TR_ESP_Highlight" then
 				return true
-			elseif (desc:IsA("ParticleEmitter") or desc:IsA("Beam") or desc:IsA("Trail")) and desc.Enabled then
+			elseif child:IsA("BasePart") and child.Transparency < 0.9 then
 				return true
-			elseif desc:IsA("Sound") and desc.IsPlaying then
-				return true
-			elseif desc:IsA("BasePart") and desc.Transparency < 0.9 then
-				return true
-			elseif desc:IsA("Model") then
-				for _, sub in ipairs(desc:GetDescendants()) do
+			elseif child:IsA("Model") or child:IsA("Folder") then
+				for _, sub in ipairs(child:GetDescendants()) do
 					if sub:IsA("BasePart") and sub.Transparency < 0.9 then
 						return true
+					end
+				end
+			end
+		elseif child:IsA("Model") or child:IsA("Folder") or child:IsA("Tool") then
+			for _, sub in ipairs(child:GetChildren()) do
+				local sn = sub.Name:lower()
+				if sn:find("katana", 1, true) or sn:find("deflect", 1, true) or sn:find("parry", 1, true) then
+					if sub:IsA("Tool") or (sub:IsA("BasePart") and sub.Transparency < 0.9) or ((sub:IsA("ParticleEmitter") or sub:IsA("Beam") or sub:IsA("Trail")) and sub.Enabled) then
+						return true
+					elseif sub:IsA("Model") then
+						for _, p in ipairs(sub:GetChildren()) do
+							if p:IsA("BasePart") and p.Transparency < 0.9 then return true end
+						end
 					end
 				end
 			end
@@ -5853,9 +5922,20 @@ end
 
 local function IsEnemyUsingKatana(plr, char)
 	if Config.AntiKatanaEnabled == false or not plr then return false end
-	char = char or GetCharacterFromPlayer(plr)
 	local now = os.clock()
-	if CheckRawEnemyKatanaActive(plr, char) then
+	local lastT = katanaLastScanTime[plr]
+	if lastT and (now - lastT < 0.10) then
+		if katanaLastScanResult[plr] then
+			return true
+		end
+		local exp = katanaActiveUntil[plr]
+		return (exp ~= nil and now < exp)
+	end
+	char = char or GetCharacterFromPlayer(plr)
+	local rawActive = CheckRawEnemyKatanaActive(plr, char)
+	katanaLastScanTime[plr] = now
+	katanaLastScanResult[plr] = rawActive
+	if rawActive then
 		katanaActiveUntil[plr] = now + 0.25
 		return true
 	end
@@ -5893,9 +5973,22 @@ local function getValidEnemyHitboxFromInstance(hitInstance)
 	return nil, nil
 end
 
+local lastWallFilterSync = 0
+local lastWallCharRef, lastWallCamRef = nil, nil
+local function EnsureWallcheckFilterFresh(cam)
+	local myChar = LocalPlayer.Character
+	local now = os.clock()
+	if myChar ~= lastWallCharRef or cam ~= lastWallCamRef or (now - lastWallFilterSync >= 1.0) then
+		lastWallCharRef = myChar
+		lastWallCamRef = cam
+		lastWallFilterSync = now
+		if updateWallcheckFilter then updateWallcheckFilter(myChar) end
+	end
+end
+
 local function checkScreenMiddleDotRay(cam)
 	if not cam then return nil, nil end
-	if updateWallcheckFilter then updateWallcheckFilter(LocalPlayer.Character) end
+	EnsureWallcheckFilterFresh(cam)
 	local origin = cam.CFrame.Position
 	local lookDir = cam.CFrame.LookVector
 	for _ = 1, 6 do
@@ -6007,36 +6100,39 @@ local function ScanEnemiesForKatanaEquip()
 		end
 	end
 
+	anyEnemyKatanaCurrentlyActive = (closestKatanaPlr ~= nil)
 	if closestKatanaPlr then
-		KatanaWarnBanner.Visible = true
-		KatanaWarnText.Text = string.format("[!] KATANA EQUIPPED: %s (%d studs)", tostring(closestKatanaPlr.DisplayName), math.floor(closestKatanaDist + 0.5))
-	else
+		if not KatanaWarnBanner.Visible then KatanaWarnBanner.Visible = true end
+		local warnStr = string.format("[!] KATANA EQUIPPED: %s (%d studs)", tostring(closestKatanaPlr.DisplayName), math.floor(closestKatanaDist + 0.5))
+		if KatanaWarnText.Text ~= warnStr then KatanaWarnText.Text = warnStr end
+	elseif KatanaWarnBanner.Visible then
 		KatanaWarnBanner.Visible = false
 	end
 end
 
-table.insert(Connections, RunService.RenderStepped:Connect(EnforceLockedCamera))
 table.insert(Connections, RunService.Heartbeat:Connect(function()
 	EnforceLockedCamera()
 	ScanEnemiesForKatanaEquip()
 end))
 
+local function setAimbotStatusText(txt)
+	if aimbotStatusLabel and aimbotStatusLabel.Text ~= txt then
+		aimbotStatusLabel.Text = txt
+	end
+end
+local function setNormalShootStatusText(txt)
+	if autoShootStatusLbl and autoShootStatusLbl.Text ~= txt then
+		autoShootStatusLbl.Text = txt
+	end
+end
+local function setAimbotShootStatusText(txt)
+	if aimbotAutoShootStatusLbl and aimbotAutoShootStatusLbl.Text ~= txt then
+		aimbotAutoShootStatusLbl.Text = txt
+	end
+end
+local lastMqAim, lastMqTAim, lastMqShoot, lastMqFly = nil, nil, nil, nil
+
 RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, function()
-	local function setAimbotStatusText(txt)
-		if aimbotStatusLabel and aimbotStatusLabel.Text ~= txt then
-			aimbotStatusLabel.Text = txt
-		end
-	end
-	local function setNormalShootStatusText(txt)
-		if autoShootStatusLbl and autoShootStatusLbl.Text ~= txt then
-			autoShootStatusLbl.Text = txt
-		end
-	end
-	local function setAimbotShootStatusText(txt)
-		if aimbotAutoShootStatusLbl and aimbotAutoShootStatusLbl.Text ~= txt then
-			aimbotAutoShootStatusLbl.Text = txt
-		end
-	end
 	local cam = workspace.CurrentCamera
 	if not cam then
 		if StopAutoShootFiring then StopAutoShootFiring() end
@@ -6064,14 +6160,23 @@ RunService:BindToRenderStep("Aimbot_v2", Enum.RenderPriority.Camera.Value + 10, 
 	end
 
 	if genv._TR_UpdateMobileQuickBar then
-		pcall(genv._TR_UpdateMobileQuickBar, aimbotEnabled, targetAimbotEnabled, (autoShootEnabled or aimbotAutoShootEnabled), (isFlightActive and isFlightActive() or false))
+		local curShoot = (autoShootEnabled or aimbotAutoShootEnabled)
+		local curFly = (isFlightActive and isFlightActive() or false)
+		if aimbotEnabled ~= lastMqAim or targetAimbotEnabled ~= lastMqTAim or curShoot ~= lastMqShoot or curFly ~= lastMqFly then
+			lastMqAim, lastMqTAim, lastMqShoot, lastMqFly = aimbotEnabled, targetAimbotEnabled, curShoot, curFly
+			pcall(genv._TR_UpdateMobileQuickBar, aimbotEnabled, targetAimbotEnabled, curShoot, curFly)
+		end
 	end
 
 	-- When Aimbot [Q]/[T] is OFF:
-	-- Mode 2 (Aimbot-Lock Auto Shoot [V]) is strictly inactive; Mode 1 (Normal Auto Shoot [Z]) + Anti-Katana Left-Click Blocker work via Screen Middle Dot!
+	-- Fast Idle Path: Only run checkScreenMiddleDotRay if Normal Auto Shoot [Z] is ON or an enemy currently has Katana active!
 	if not anyAimbotActive then
 		currentTarget = nil
-		local hitPlr, hitChar = checkScreenMiddleDotRay(cam)
+		local needMiddleDotRay = (autoShootEnabled and not isClosingPermanently) or anyEnemyKatanaCurrentlyActive or isKatanaBlockingClick
+		local hitPlr, hitChar = nil, nil
+		if needMiddleDotRay then
+			hitPlr, hitChar = checkScreenMiddleDotRay(cam)
+		end
 		if hitPlr and IsEnemyUsingKatana(hitPlr, hitChar) then
 			SetKatanaClickBlockState(true)
 			setAimbotStatusText("KATANA BLOCK: " .. tostring(hitPlr.DisplayName))
@@ -6246,9 +6351,9 @@ table.insert(Connections, RunService.Stepped:Connect(function() local char = pla
 				myRoot.CFrame = lastSafeAntiFlingCF end else lastSafeAntiFlingCF = myRoot.CFrame end end
 	if Config.NoclipEnabled then
 		genv._TR_WasNoclip = true
-		for _, child in ipairs(char:GetChildren()) do
-			if child:IsA("BasePart") and child.CanCollide and child.Name ~= "TR_FakeFloor" then
-				child.CanCollide = false
+		for _, part in ipairs(GetCachedCharBaseParts(char)) do
+			if part.CanCollide then
+				part.CanCollide = false
 			end
 		end
 	elseif genv._TR_WasNoclip then
