@@ -351,7 +351,23 @@ elseif Config.FloatingIconEnabled == nil then
 	savedConfig.Settings.FloatingIconEnabled = true
 end
 local FloatingPill = nil
-local FloatPillGrad, FloatPillStroke, FloatPillStrokeGrad, FloatPillTopSpec, FloatPillDivider, FloatDragIcon, FloatScriptIcon, FloatTitleLbl = nil, nil, nil, nil, nil, nil, nil, nil
+local FloatPillScale, FloatOuterHalo, FloatHaloStroke, FloatHaloGrad = nil, nil, nil, nil
+local FloatPillGrad, FloatPillStroke, FloatPillStrokeGrad, FloatPillTopSpec, FloatPillBotGlow = nil, nil, nil, nil, nil
+local FloatLeftPod, FloatLeftPodStroke, FloatPillDivider, FloatEmblemPod, FloatEmblemGrad, FloatEmblemStroke = nil, nil, nil, nil, nil, nil
+local FloatDragIcon, FloatScriptIcon, FloatTitleLbl, FloatTitleGrad, FloatSubLbl, FloatStatusDot, FloatStatusStroke = nil, nil, nil, nil, nil, nil, nil
+local function SyncFloatingPillState()
+	if not FloatingPill then return end
+	local eff = GetTheme()
+	if FloatSubLbl then
+		FloatSubLbl.Text = isMenuVisible and "HUB ACTIVE | V95" or "TAP TO OPEN HUB"
+		FloatSubLbl.TextColor3 = isMenuVisible and eff.TextSecondary or eff.Accent
+	end
+	if FloatStatusDot then
+		local dotCol = isMenuVisible and Color3.fromRGB(46, 213, 115) or eff.Accent
+		FloatStatusDot.BackgroundColor3 = dotCol
+		if FloatStatusStroke then FloatStatusStroke.Color = dotCol end
+	end
+end
 local function UpdateFloatingPillVisibility()
 	if not FloatingPill then return end
 	if isClosingPermanently then
@@ -363,6 +379,7 @@ local function UpdateFloatingPillVisibility()
 	else
 		FloatingPill.Visible = (Config.FloatingIconEnabled ~= false)
 	end
+	SyncFloatingPillState()
 end
 local function GetTargetWindowScale()
 	if not isMobileDevice then return 1 end
@@ -479,85 +496,178 @@ local function SetMenuVisible(state, onComplete) if isClosingPermanently then re
 	end end
 MainScale.Scale = GetTargetWindowScale()
 do
+	-- Upper-Middle Screen Spawn Position (Centered Horizontally at Top of Screen)
 	FloatingPill = Instance.new("Frame")
 	FloatingPill.Name = "TR_FloatingPill"
-	FloatingPill.Size = UDim2.new(0, 184, 0, 42)
-	FloatingPill.Position = isMobileDevice and UDim2.new(0, 18, 0.5, -21) or UDim2.new(0, 22, 0, 18)
+	FloatingPill.Size = UDim2.new(0, 204, 0, 44)
+	FloatingPill.Position = UDim2.new(0.5, -102, 0, 10)
 	FloatingPill.BackgroundTransparency = 0.08
 	FloatingPill.BorderSizePixel = 0
 	FloatingPill.Active = true
-	FloatingPill.ClipsDescendants = true
+	FloatingPill.ClipsDescendants = false
 	FloatingPill.ZIndex = 50
 	FloatingPill.Parent = ScreenGui
 	RegisterThemeObject(FloatingPill, "BackgroundColor3", "MainBg")
 	local pillCorner = Instance.new("UICorner", FloatingPill)
 	pillCorner.CornerRadius = UDim.new(1, 0)
 
+	FloatPillScale = Instance.new("UIScale", FloatingPill)
+	FloatPillScale.Scale = 1
+
+	-- Outer Soft Neon / Crystal Aura Ring
+	FloatOuterHalo = Instance.new("Frame", FloatingPill)
+	FloatOuterHalo.Name = "TR_PillOuterHalo"
+	FloatOuterHalo.Size = UDim2.new(1, 8, 1, 8)
+	FloatOuterHalo.Position = UDim2.new(0, -4, 0, -4)
+	FloatOuterHalo.BackgroundTransparency = 1
+	FloatOuterHalo.BorderSizePixel = 0
+	FloatOuterHalo.ZIndex = 49
+	local haloCorner = Instance.new("UICorner", FloatOuterHalo)
+	haloCorner.CornerRadius = UDim.new(1, 0)
+	FloatHaloStroke = Instance.new("UIStroke", FloatOuterHalo)
+	FloatHaloStroke.Thickness = 3.2
+	FloatHaloStroke.Transparency = 0.68
+	FloatHaloStroke.Color = Color3.fromRGB(255, 255, 255)
+	FloatHaloGrad = Instance.new("UIGradient", FloatHaloStroke)
+	FloatHaloGrad.Rotation = 0
+
+	-- Main Capsule Gradient & Glowing Iridescent Border Stroke
 	FloatPillGrad = Instance.new("UIGradient", FloatingPill)
 	FloatPillGrad.Rotation = 18
-	FloatPillGrad.Enabled = false
+	FloatPillGrad.Enabled = true
 
 	FloatPillStroke = Instance.new("UIStroke", FloatingPill)
 	FloatPillStroke.Thickness = 2.2
-	FloatPillStroke.Transparency = 0.05
+	FloatPillStroke.Transparency = 0.04
 	FloatPillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	RegisterThemeObject(FloatPillStroke, "Color", "Accent")
+	FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
 
 	FloatPillStrokeGrad = Instance.new("UIGradient", FloatPillStroke)
 	FloatPillStrokeGrad.Rotation = 0
 	FloatPillStrokeGrad.Enabled = true
 
-	FloatPillTopSpec = Instance.new("Frame", FloatingPill)
+	-- Clipped Inner Surface for Specular Glints & Laser Bars
+	local FloatClipSurface = Instance.new("Frame", FloatingPill)
+	FloatClipSurface.Name = "TR_PillClipSurface"
+	FloatClipSurface.Size = UDim2.new(1, 0, 1, 0)
+	FloatClipSurface.Position = UDim2.new(0, 0, 0, 0)
+	FloatClipSurface.BackgroundTransparency = 1
+	FloatClipSurface.ClipsDescendants = true
+	FloatClipSurface.ZIndex = 51
+	local clipCorner = Instance.new("UICorner", FloatClipSurface)
+	clipCorner.CornerRadius = UDim.new(1, 0)
+
+	FloatPillTopSpec = Instance.new("Frame", FloatClipSurface)
 	FloatPillTopSpec.Name = "TR_PillTopSpec"
-	FloatPillTopSpec.Size = UDim2.new(1, -36, 0, 1)
-	FloatPillTopSpec.Position = UDim2.new(0, 18, 0, 1)
+	FloatPillTopSpec.Size = UDim2.new(1, -34, 0, 2)
+	FloatPillTopSpec.Position = UDim2.new(0, 17, 0, 1)
 	FloatPillTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	FloatPillTopSpec.BackgroundTransparency = 0.20
+	FloatPillTopSpec.BackgroundTransparency = 0.18
 	FloatPillTopSpec.BorderSizePixel = 0
 	FloatPillTopSpec.ZIndex = 53
-	FloatPillTopSpec.Visible = false
+	FloatPillTopSpec.Visible = true
 	local pillSpecGrad = Instance.new("UIGradient", FloatPillTopSpec)
 	pillSpecGrad.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.9),
+		NumberSequenceKeypoint.new(0, 0.92),
+		NumberSequenceKeypoint.new(0.25, 0.10),
 		NumberSequenceKeypoint.new(0.5, 0.0),
-		NumberSequenceKeypoint.new(1, 0.9)
+		NumberSequenceKeypoint.new(0.75, 0.10),
+		NumberSequenceKeypoint.new(1, 0.92)
 	})
 
-	FloatDragIcon = Instance.new("TextLabel", FloatingPill)
+	FloatPillBotGlow = Instance.new("Frame", FloatClipSurface)
+	FloatPillBotGlow.Name = "TR_PillBotGlow"
+	FloatPillBotGlow.Size = UDim2.new(1, -48, 0, 2)
+	FloatPillBotGlow.Position = UDim2.new(0, 24, 1, -2)
+	FloatPillBotGlow.BackgroundTransparency = 0.35
+	FloatPillBotGlow.BorderSizePixel = 0
+	FloatPillBotGlow.ZIndex = 53
+	RegisterThemeObject(FloatPillBotGlow, "BackgroundColor3", "Accent")
+	local pillBotGrad = Instance.new("UIGradient", FloatPillBotGlow)
+	pillBotGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.95),
+		NumberSequenceKeypoint.new(0.5, 0.10),
+		NumberSequenceKeypoint.new(1, 0.95)
+	})
+
+	-- Left Tactile Grip Pod + 4-Way Directional Move Icon
+	FloatLeftPod = Instance.new("Frame", FloatingPill)
+	FloatLeftPod.Name = "DragGripPod"
+	FloatLeftPod.Size = UDim2.new(0, 32, 0, 32)
+	FloatLeftPod.Position = UDim2.new(0, 6, 0.5, -16)
+	FloatLeftPod.BackgroundTransparency = 0.55
+	FloatLeftPod.BorderSizePixel = 0
+	FloatLeftPod.ZIndex = 52
+	RegisterThemeObject(FloatLeftPod, "BackgroundColor3", "PanelBg")
+	local leftPodCorner = Instance.new("UICorner", FloatLeftPod)
+	leftPodCorner.CornerRadius = UDim.new(1, 0)
+	FloatLeftPodStroke = Instance.new("UIStroke", FloatLeftPod)
+	FloatLeftPodStroke.Thickness = 1.1
+	FloatLeftPodStroke.Transparency = 0.50
+	RegisterThemeObject(FloatLeftPodStroke, "Color", "Accent")
+
+	FloatDragIcon = Instance.new("TextLabel", FloatLeftPod)
 	FloatDragIcon.Name = "DragArrowIcon"
-	FloatDragIcon.Size = UDim2.new(0, 42, 1, 0)
+	FloatDragIcon.Size = UDim2.new(1, 0, 1, 0)
 	FloatDragIcon.Position = UDim2.new(0, 0, 0, 0)
 	FloatDragIcon.BackgroundTransparency = 1
 	FloatDragIcon.Font = Enum.Font.GothamBold
 	FloatDragIcon.TextSize = 16
 	FloatDragIcon.Text = utf8.char(0x2725)
-	FloatDragIcon.ZIndex = 52
+	FloatDragIcon.ZIndex = 53
 	RegisterThemeObject(FloatDragIcon, "TextColor3", "Accent")
 
+	-- Laser-Etched Feathered Vertical Divider Line
 	FloatPillDivider = Instance.new("Frame", FloatingPill)
 	FloatPillDivider.Name = "VerticalDivider"
-	FloatPillDivider.Size = UDim2.new(0, 1, 1, 0)
-	FloatPillDivider.Position = UDim2.new(0, 42, 0, 0)
-	FloatPillDivider.BackgroundTransparency = 0.55
+	FloatPillDivider.Size = UDim2.new(0, 1, 1, -10)
+	FloatPillDivider.Position = UDim2.new(0, 44, 0, 5)
+	FloatPillDivider.BackgroundTransparency = 0.25
 	FloatPillDivider.BorderSizePixel = 0
 	FloatPillDivider.ZIndex = 52
 	RegisterThemeObject(FloatPillDivider, "BackgroundColor3", "Stroke")
+	local divGrad = Instance.new("UIGradient", FloatPillDivider)
+	divGrad.Rotation = 90
+	divGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.90),
+		NumberSequenceKeypoint.new(0.5, 0.05),
+		NumberSequenceKeypoint.new(1, 0.90)
+	})
 
-	FloatScriptIcon = Instance.new("TextLabel", FloatingPill)
+	-- Glowing Script Emblem Badge (Bolt Icon inside Styled Medallion)
+	FloatEmblemPod = Instance.new("Frame", FloatingPill)
+	FloatEmblemPod.Name = "EmblemMedallion"
+	FloatEmblemPod.Size = UDim2.new(0, 28, 0, 28)
+	FloatEmblemPod.Position = UDim2.new(0, 52, 0.5, -14)
+	FloatEmblemPod.BackgroundTransparency = 0.12
+	FloatEmblemPod.BorderSizePixel = 0
+	FloatEmblemPod.ZIndex = 52
+	FloatEmblemPod.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	local embCorner = Instance.new("UICorner", FloatEmblemPod)
+	embCorner.CornerRadius = UDim.new(1, 0)
+	FloatEmblemGrad = Instance.new("UIGradient", FloatEmblemPod)
+	FloatEmblemGrad.Rotation = 45
+	FloatEmblemStroke = Instance.new("UIStroke", FloatEmblemPod)
+	FloatEmblemStroke.Thickness = 1.2
+	FloatEmblemStroke.Transparency = 0.25
+	RegisterThemeObject(FloatEmblemStroke, "Color", "Stroke")
+
+	FloatScriptIcon = Instance.new("TextLabel", FloatEmblemPod)
 	FloatScriptIcon.Name = "ScriptEmblem"
-	FloatScriptIcon.Size = UDim2.new(0, 22, 1, 0)
-	FloatScriptIcon.Position = UDim2.new(0, 50, 0, 0)
+	FloatScriptIcon.Size = UDim2.new(1, 0, 1, 0)
+	FloatScriptIcon.Position = UDim2.new(0, 0, 0, 0)
 	FloatScriptIcon.BackgroundTransparency = 1
 	FloatScriptIcon.Font = Enum.Font.GothamBold
-	FloatScriptIcon.TextSize = 15
+	FloatScriptIcon.TextSize = 14
 	FloatScriptIcon.Text = E.Bolt
-	FloatScriptIcon.ZIndex = 52
-	RegisterThemeObject(FloatScriptIcon, "TextColor3", "Accent")
+	FloatScriptIcon.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FloatScriptIcon.ZIndex = 53
 
+	-- Dual-Line Styled Title & Live Status Subtitle
 	FloatTitleLbl = Instance.new("TextLabel", FloatingPill)
 	FloatTitleLbl.Name = "ScriptTitle"
-	FloatTitleLbl.Size = UDim2.new(1, -80, 1, 0)
-	FloatTitleLbl.Position = UDim2.new(0, 74, 0, 0)
+	FloatTitleLbl.Size = UDim2.new(1, -106, 0, 18)
+	FloatTitleLbl.Position = UDim2.new(0, 86, 0, 6)
 	FloatTitleLbl.BackgroundTransparency = 1
 	FloatTitleLbl.Font = Enum.Font.GothamBold
 	FloatTitleLbl.TextSize = 14
@@ -566,7 +676,38 @@ do
 	FloatTitleLbl.Text = "T.R Scripts"
 	FloatTitleLbl.ZIndex = 52
 	RegisterThemeObject(FloatTitleLbl, "TextColor3", "TextPrimary")
+	FloatTitleGrad = Instance.new("UIGradient", FloatTitleLbl)
+	FloatTitleGrad.Rotation = 90
 
+	FloatSubLbl = Instance.new("TextLabel", FloatingPill)
+	FloatSubLbl.Name = "ScriptSubStatus"
+	FloatSubLbl.Size = UDim2.new(1, -106, 0, 13)
+	FloatSubLbl.Position = UDim2.new(0, 86, 0, 23)
+	FloatSubLbl.BackgroundTransparency = 1
+	FloatSubLbl.Font = Enum.Font.GothamBold
+	FloatSubLbl.TextSize = 9
+	FloatSubLbl.TextXAlignment = Enum.TextXAlignment.Left
+	FloatSubLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	FloatSubLbl.Text = "HUB ACTIVE | V95"
+	FloatSubLbl.ZIndex = 52
+	RegisterThemeObject(FloatSubLbl, "TextColor3", "TextSecondary")
+
+	-- Live Glowing Status Indicator Dot on Right Edge
+	FloatStatusDot = Instance.new("Frame", FloatingPill)
+	FloatStatusDot.Name = "LiveStatusDot"
+	FloatStatusDot.Size = UDim2.new(0, 7, 0, 7)
+	FloatStatusDot.Position = UDim2.new(1, -15, 0.5, -3)
+	FloatStatusDot.BackgroundColor3 = Color3.fromRGB(46, 213, 115)
+	FloatStatusDot.BorderSizePixel = 0
+	FloatStatusDot.ZIndex = 53
+	local dotCorner = Instance.new("UICorner", FloatStatusDot)
+	dotCorner.CornerRadius = UDim.new(1, 0)
+	FloatStatusStroke = Instance.new("UIStroke", FloatStatusDot)
+	FloatStatusStroke.Thickness = 2.0
+	FloatStatusStroke.Transparency = 0.55
+	FloatStatusStroke.Color = Color3.fromRGB(46, 213, 115)
+
+	-- Interactive HitBox with Spring Hover/Press Micro-Animations
 	local FloatHitBox = Instance.new("TextButton", FloatingPill)
 	FloatHitBox.Name = "HitBox"
 	FloatHitBox.Size = UDim2.new(1, 0, 1, 0)
@@ -574,19 +715,35 @@ do
 	FloatHitBox.BackgroundTransparency = 1
 	FloatHitBox.Text = ""
 	FloatHitBox.AutoButtonColor = false
-	FloatHitBox.ZIndex = 54
+	FloatHitBox.ZIndex = 55
 
 	local floatDragging, floatMoved = false, false
 	local floatDragStart, floatStartPos = nil, nil
+	FloatHitBox.MouseEnter:Connect(function()
+		if not floatDragging and FloatPillScale then
+			TweenService:Create(FloatPillScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.05 }):Play()
+		end
+	end)
+	FloatHitBox.MouseLeave:Connect(function()
+		if not floatDragging and FloatPillScale then
+			TweenService:Create(FloatPillScale, TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+		end
+	end)
 	FloatHitBox.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
 			floatDragging = true
 			floatMoved = false
 			floatDragStart = inp.Position
 			floatStartPos = FloatingPill.Position
+			if FloatPillScale then
+				TweenService:Create(FloatPillScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.95 }):Play()
+			end
 			inp.Changed:Connect(function()
 				if inp.UserInputState == Enum.UserInputState.End then
 					floatDragging = false
+					if FloatPillScale then
+						TweenService:Create(FloatPillScale, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+					end
 				end
 			end)
 		end
@@ -606,6 +763,16 @@ do
 			SetMenuVisible(not isMenuVisible)
 		end
 	end)
+
+	-- Continuous Smooth Iridescent Border Shimmer Animation
+	table.insert(Connections, RunService.Heartbeat:Connect(function()
+		if FloatingPill and FloatingPill.Visible and not isClosingPermanently then
+			local rot = (os.clock() * 42) % 360
+			if FloatPillStrokeGrad then FloatPillStrokeGrad.Rotation = rot end
+			if FloatHaloGrad then FloatHaloGrad.Rotation = (rot + 180) % 360 end
+		end
+	end))
+
 	UpdateFloatingPillVisibility()
 end
 if isMobileDevice then
@@ -614,7 +781,7 @@ if isMobileDevice then
 	local MobileQuickBar = Instance.new("Frame")
 	MobileQuickBar.Name = "TR_MobileQuickBar"
 	MobileQuickBar.Size = UDim2.new(0, 254, 0, 36)
-	MobileQuickBar.Position = UDim2.new(0.5, -127, 0, 8)
+	MobileQuickBar.Position = UDim2.new(0.5, -127, 0, 60)
 	MobileQuickBar.BackgroundTransparency = 0.14
 	MobileQuickBar.BorderSizePixel = 0
 	MobileQuickBar.Active = true
@@ -978,18 +1145,46 @@ ApplyGuiDesignSurface = function()
 		end
 	end
 
-	-- Synchronize Floating Pill Icon (Both Mobile & PC) with active Theme and GUI Design Style
+	-- Synchronize Enhanced Floating Pill Icon (Both Mobile & PC) with active Theme and GUI Design Style
 	if FloatingPill and FloatingPill.Parent then
 		FloatingPill.BackgroundColor3 = eff.MainBg
-		if FloatTitleLbl then FloatTitleLbl.TextColor3 = eff.TextPrimary end
+		if FloatTitleLbl then FloatTitleLbl.TextColor3 = Color3.fromRGB(255, 255, 255) end
+		if FloatTitleGrad then
+			FloatTitleGrad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(1, eff.TextPrimary:Lerp(eff.Accent, 0.28))
+			})
+		end
+		if FloatEmblemGrad then
+			FloatEmblemGrad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.25)),
+				ColorSequenceKeypoint.new(1, eff.AccentDark)
+			})
+		end
+		if FloatEmblemStroke then FloatEmblemStroke.Color = eff.Stroke end
+		if FloatLeftPod then FloatLeftPod.BackgroundColor3 = eff.PanelBg end
+		if FloatLeftPodStroke then FloatLeftPodStroke.Color = eff.Accent end
+		if FloatPillBotGlow then FloatPillBotGlow.BackgroundColor3 = eff.Accent end
+		if FloatHaloGrad then
+			FloatHaloGrad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, eff.Accent),
+				ColorSequenceKeypoint.new(0.5, eff.Stroke),
+				ColorSequenceKeypoint.new(1, eff.Accent)
+			})
+		end
+		SyncFloatingPillState()
+
 		if d == "LiquidGlass" then
-			FloatingPill.BackgroundTransparency = 0.48
+			FloatingPill.BackgroundTransparency = 0.44
+			if FloatHaloStroke then FloatHaloStroke.Transparency = 0.58 end
+			if FloatLeftPod then FloatLeftPod.BackgroundTransparency = 0.58 end
+			if FloatEmblemPod then FloatEmblemPod.BackgroundTransparency = 0.18 end
 			if FloatPillGrad then
 				FloatPillGrad.Rotation = -32
 				FloatPillGrad.Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(Color3.fromRGB(255, 255, 255), 0.36)),
+					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(Color3.fromRGB(255, 255, 255), 0.38)),
 					ColorSequenceKeypoint.new(0.5, eff.MainBg),
-					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(Color3.fromRGB(210, 235, 255), 0.28))
+					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(Color3.fromRGB(210, 235, 255), 0.30))
 				})
 				FloatPillGrad.Enabled = true
 			end
@@ -999,33 +1194,36 @@ ApplyGuiDesignSurface = function()
 				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FloatPillStrokeGrad then
-				FloatPillStrokeGrad.Rotation = 12
 				FloatPillStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)),
-					ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 255, 255)),
-					ColorSequenceKeypoint.new(1, eff.Stroke)
+					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.7, eff.Stroke),
+					ColorSequenceKeypoint.new(1, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35))
 				})
 				FloatPillStrokeGrad.Enabled = true
 			end
 			if FloatPillTopSpec then
 				FloatPillTopSpec.Visible = true
 				FloatPillTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				FloatPillTopSpec.BackgroundTransparency = 0.15
+				FloatPillTopSpec.BackgroundTransparency = 0.10
 			end
 			if FloatPillDivider then
 				FloatPillDivider.BackgroundColor3 = eff.Stroke
-				FloatPillDivider.BackgroundTransparency = 0.42
+				FloatPillDivider.BackgroundTransparency = 0.25
 			end
 			if FloatDragIcon then FloatDragIcon.TextColor3 = eff.Accent end
-			if FloatScriptIcon then FloatScriptIcon.TextColor3 = eff.Accent end
+			if FloatScriptIcon then FloatScriptIcon.TextColor3 = Color3.fromRGB(255, 255, 255) end
 		elseif d == "CyberHud" then
-			FloatingPill.BackgroundTransparency = 0.06
+			FloatingPill.BackgroundTransparency = 0.05
+			if FloatHaloStroke then FloatHaloStroke.Transparency = 0.45 end
+			if FloatLeftPod then FloatLeftPod.BackgroundTransparency = 0.35 end
+			if FloatEmblemPod then FloatEmblemPod.BackgroundTransparency = 0.05 end
 			if FloatPillGrad then
 				FloatPillGrad.Rotation = 20
 				FloatPillGrad.Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 16, 28):Lerp(eff.Accent, 0.18)),
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 16, 28):Lerp(eff.Accent, 0.22)),
 					ColorSequenceKeypoint.new(0.55, Color3.fromRGB(5, 6, 12)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 10, 28):Lerp(eff.Stroke, 0.18))
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 10, 28):Lerp(eff.Stroke, 0.22))
 				})
 				FloatPillGrad.Enabled = true
 			end
@@ -1035,11 +1233,10 @@ ApplyGuiDesignSurface = function()
 				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FloatPillStrokeGrad then
-				FloatPillStrokeGrad.Rotation = 18
 				FloatPillStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent),
-					ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 255, 255)),
-					ColorSequenceKeypoint.new(0.8, eff.Stroke),
+					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.7, eff.Stroke),
 					ColorSequenceKeypoint.new(1, eff.Accent)
 				})
 				FloatPillStrokeGrad.Enabled = true
@@ -1047,47 +1244,53 @@ ApplyGuiDesignSurface = function()
 			if FloatPillTopSpec then
 				FloatPillTopSpec.Visible = true
 				FloatPillTopSpec.BackgroundColor3 = eff.Accent
-				FloatPillTopSpec.BackgroundTransparency = 0.12
+				FloatPillTopSpec.BackgroundTransparency = 0.08
 			end
 			if FloatPillDivider then
 				FloatPillDivider.BackgroundColor3 = eff.Accent
-				FloatPillDivider.BackgroundTransparency = 0.35
+				FloatPillDivider.BackgroundTransparency = 0.15
 			end
 			if FloatDragIcon then FloatDragIcon.TextColor3 = eff.Accent end
-			if FloatScriptIcon then FloatScriptIcon.TextColor3 = eff.Stroke end
+			if FloatScriptIcon then FloatScriptIcon.TextColor3 = Color3.fromRGB(255, 255, 255) end
 		else
-			FloatingPill.BackgroundTransparency = 0.08
+			FloatingPill.BackgroundTransparency = 0.06
+			if FloatHaloStroke then FloatHaloStroke.Transparency = 0.62 end
+			if FloatLeftPod then FloatLeftPod.BackgroundTransparency = 0.45 end
+			if FloatEmblemPod then FloatEmblemPod.BackgroundTransparency = 0.08 end
 			if FloatPillGrad then
-				FloatPillGrad.Rotation = 0
+				FloatPillGrad.Rotation = 18
 				FloatPillGrad.Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(eff.PanelBg, 0.35)),
-					ColorSequenceKeypoint.new(1, eff.MainBg)
+					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(eff.PanelBg, 0.48)),
+					ColorSequenceKeypoint.new(0.55, eff.MainBg),
+					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(eff.AccentDark, 0.22))
 				})
 				FloatPillGrad.Enabled = true
 			end
 			if FloatPillStroke then
 				FloatPillStroke.Thickness = 2.2
-				FloatPillStroke.Transparency = 0.04
+				FloatPillStroke.Transparency = 0.02
 				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FloatPillStrokeGrad then
-				FloatPillStrokeGrad.Rotation = 0
 				FloatPillStrokeGrad.Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(110, 235, 255), 0.32)),
-					ColorSequenceKeypoint.new(0.55, eff.Accent),
+					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(130, 240, 255), 0.38)),
+					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.7, eff.Accent),
 					ColorSequenceKeypoint.new(1, eff.AccentDark)
 				})
 				FloatPillStrokeGrad.Enabled = true
 			end
 			if FloatPillTopSpec then
-				FloatPillTopSpec.Visible = false
+				FloatPillTopSpec.Visible = true
+				FloatPillTopSpec.BackgroundColor3 = eff.Stroke:Lerp(Color3.fromRGB(255, 255, 255), 0.5)
+				FloatPillTopSpec.BackgroundTransparency = 0.28
 			end
 			if FloatPillDivider then
 				FloatPillDivider.BackgroundColor3 = eff.Stroke
-				FloatPillDivider.BackgroundTransparency = 0.55
+				FloatPillDivider.BackgroundTransparency = 0.25
 			end
 			if FloatDragIcon then FloatDragIcon.TextColor3 = eff.Accent end
-			if FloatScriptIcon then FloatScriptIcon.TextColor3 = eff.Accent end
+			if FloatScriptIcon then FloatScriptIcon.TextColor3 = Color3.fromRGB(255, 255, 255) end
 		end
 	end
 end
