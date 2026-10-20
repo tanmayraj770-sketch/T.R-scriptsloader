@@ -806,6 +806,39 @@ do
 	local floatDragging, floatMoved = false, false
 	local floatDragStart, floatStartPos = nil, nil
 
+	local function PlayPillTriggerAnimation()
+		if FUI.FloatPillScale then
+			FUI.FloatPillScale.Scale = 0.88
+			TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+		end
+		if FUI.FloatScriptIcon then
+			FUI.FloatScriptIcon.Rotation = -28
+			TweenService:Create(FUI.FloatScriptIcon, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Rotation = 0 }):Play()
+		end
+		if FUI.FloatEmblemPod then
+			FUI.FloatEmblemPod.Size = UDim2.new(0, 33, 0, 33)
+			FUI.FloatEmblemPod.Position = UDim2.new(0, 49, 0.5, -16)
+			TweenService:Create(FUI.FloatEmblemPod, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Size = UDim2.new(0, 28, 0, 28),
+				Position = UDim2.new(0, 52, 0.5, -14)
+			}):Play()
+		end
+		if FUI.FloatPillStroke then
+			FUI.FloatPillStroke.Thickness = 3.2
+			TweenService:Create(FUI.FloatPillStroke, TweenInfo.new(0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Thickness = 2.2 }):Play()
+		end
+	end
+
+	FUI.PlayEntranceAnim = function(targetIcon)
+		if targetIcon == "Square" and MobileSquareIcon and FUI.SquareScale then
+			FUI.SquareScale.Scale = 0.25
+			TweenService:Create(FUI.SquareScale, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+		elseif FloatingPill and FUI.FloatPillScale then
+			FUI.FloatPillScale.Scale = 0.25
+			TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.40, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+		end
+	end
+
 	FUI.FloatLockBtn.MouseButton1Click:Connect(function()
 		isFloatingPillLocked = not isFloatingPillLocked
 		Config.FloatingIconLocked = isFloatingPillLocked
@@ -815,6 +848,20 @@ do
 		end
 		SyncFloatingPillState()
 		SaveConfig(false)
+		if FUI.FloatLockBtn then
+			FUI.FloatLockBtn.Rotation = isFloatingPillLocked and -22 or 22
+			FUI.FloatLockBtn.Size = UDim2.new(0, 36, 0, 36)
+			FUI.FloatLockBtn.Position = UDim2.new(1, -40, 0.5, -18)
+			TweenService:Create(FUI.FloatLockBtn, TweenInfo.new(0.30, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Rotation = 0,
+				Size = UDim2.new(0, 32, 0, 32),
+				Position = UDim2.new(1, -38, 0.5, -16)
+			}):Play()
+		end
+		if FUI.FloatDragIcon then
+			FUI.FloatDragIcon.Rotation = isFloatingPillLocked and 45 or -45
+			TweenService:Create(FUI.FloatDragIcon, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Rotation = 0 }):Play()
+		end
 		if NotifyFeatureToggle then
 			NotifyFeatureToggle("Floating Icon Position Lock", isFloatingPillLocked)
 		end
@@ -822,12 +869,18 @@ do
 
 	FloatHitBox.MouseEnter:Connect(function()
 		if not floatDragging and FUI.FloatPillScale then
-			TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.05 }):Play()
+			TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.20, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.06 }):Play()
+		end
+		if FUI.FloatDragIcon and not isFloatingPillLocked then
+			TweenService:Create(FUI.FloatDragIcon, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Rotation = 90 }):Play()
 		end
 	end)
 	FloatHitBox.MouseLeave:Connect(function()
 		if not floatDragging and FUI.FloatPillScale then
-			TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+			TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+		end
+		if FUI.FloatDragIcon then
+			TweenService:Create(FUI.FloatDragIcon, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Rotation = 0 }):Play()
 		end
 	end)
 	FloatHitBox.InputBegan:Connect(function(inp)
@@ -841,13 +894,13 @@ do
 				floatDragging = false
 			end
 			if FUI.FloatPillScale then
-				TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.95 }):Play()
+				TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.11, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.93 }):Play()
 			end
 			inp.Changed:Connect(function()
 				if inp.UserInputState == Enum.UserInputState.End then
 					floatDragging = false
 					if FUI.FloatPillScale then
-						TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+						TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
 					end
 				end
 			end)
@@ -865,36 +918,47 @@ do
 	end))
 	FloatHitBox.MouseButton1Click:Connect(function()
 		if not floatMoved then
+			PlayPillTriggerAnimation()
 			SetMenuVisible(not isMenuVisible)
 		end
 	end)
 
-	-- Throttled Iridescent Border Shimmer Animation (20Hz Integer-Quantized for Zero UI Redraw Lag)
-	local lastPillShimTime, lastPillRotInt = 0, -1
+	-- Full-Framerate Continuous Iridescent Shimmer, Breathing Halo Aura, Emblem Wave & Live Status Pulse
 	table.insert(Connections, RunService.Heartbeat:Connect(function()
 		if isClosingPermanently then return end
 		local pillVis = (FloatingPill and FloatingPill.Visible)
 		local sqVis = (MobileSquareIcon and MobileSquareIcon.Visible)
-		if pillVis or sqVis then
-			local now = os.clock()
-			if now - lastPillShimTime < 0.05 then return end
-			lastPillShimTime = now
-			local rot = math.floor((now * 42) % 360)
-			if rot ~= lastPillRotInt then
-				lastPillRotInt = rot
-				if pillVis then
-					if FUI.FloatPillStrokeGrad then FUI.FloatPillStrokeGrad.Rotation = rot end
-					if FUI.FloatHaloGrad then FUI.FloatHaloGrad.Rotation = (rot + 180) % 360 end
-				end
-				if sqVis then
-					if FUI.SquareStrokeGrad then FUI.SquareStrokeGrad.Rotation = rot end
-					if FUI.SquareHaloGrad then FUI.SquareHaloGrad.Rotation = (rot + 180) % 360 end
-				end
+		if not (pillVis or sqVis) then return end
+		local now = os.clock()
+		local rotFast = (now * 62) % 360
+		local rotCounter = (360 - ((now * 44) % 360)) % 360
+		local waveSlow = math.sin(now * 2.6)
+		local pulseFast = (math.sin(now * 4.8) + 1) * 0.5
+		local curD = Config.GuiDesign or "Default"
+		local baseHaloT = (curD == "CyberHud" and 0.38) or (curD == "LiquidGlass" and 0.50) or 0.54
+		if pillVis then
+			if FUI.FloatPillStrokeGrad then FUI.FloatPillStrokeGrad.Rotation = rotFast end
+			if FUI.FloatHaloGrad then FUI.FloatHaloGrad.Rotation = rotCounter end
+			if FUI.FloatPillGrad then FUI.FloatPillGrad.Rotation = 18 + (waveSlow * 16) end
+			if FUI.FloatEmblemGrad then FUI.FloatEmblemGrad.Rotation = (now * 80) % 360 end
+			if FUI.FloatHaloStroke then FUI.FloatHaloStroke.Transparency = baseHaloT + (waveSlow * 0.14) end
+			if FUI.FloatStatusStroke then
+				FUI.FloatStatusStroke.Thickness = 1.4 + (pulseFast * 1.4)
+				FUI.FloatStatusStroke.Transparency = 0.30 + (pulseFast * 0.45)
 			end
+		end
+		if sqVis then
+			if FUI.SquareStrokeGrad then FUI.SquareStrokeGrad.Rotation = rotFast end
+			if FUI.SquareHaloGrad then FUI.SquareHaloGrad.Rotation = rotCounter end
+			if FUI.SquareBgGrad then FUI.SquareBgGrad.Rotation = 135 + (waveSlow * 20) end
+			if FUI.SquareHaloStroke then FUI.SquareHaloStroke.Transparency = baseHaloT + (waveSlow * 0.14) end
 		end
 	end))
 
 	UpdateFloatingPillVisibility()
+	if FUI.PlayEntranceAnim then
+		pcall(FUI.PlayEntranceAnim, (isMobileDevice and Config.MobileFloatStyle == "Square") and "Square" or "Pill")
+	end
 end
 if isMobileDevice then
 	-- Option 2 (Mobile-Only): Compact Square Shaded "T.R" Floating Icon (Syncs with GUI Design & Theme)
@@ -2290,6 +2354,7 @@ if isMobileDevice then
 			savedConfig.Settings.MobileFloatStyle = sOpt.Id
 			RefreshMobStyleBtns()
 			UpdateFloatingPillVisibility()
+			if FUI.PlayEntranceAnim then pcall(FUI.PlayEntranceAnim, sOpt.Id) end
 			if ApplyGuiDesignSurface then pcall(ApplyGuiDesignSurface) end
 			SaveConfig(false)
 			if NotifyFeatureToggle then
