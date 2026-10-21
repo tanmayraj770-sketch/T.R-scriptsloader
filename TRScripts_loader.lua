@@ -615,27 +615,27 @@ do
 	FUI.FloatPillTopSpec.BorderSizePixel = 0
 	FUI.FloatPillTopSpec.ZIndex = 53
 	FUI.FloatPillTopSpec.Visible = true
-	local pillSpecGrad = Instance.new("UIGradient", FUI.FloatPillTopSpec)
-	pillSpecGrad.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.92),
-		NumberSequenceKeypoint.new(0.25, 0.10),
+	FUI.FloatTopSpecGrad = Instance.new("UIGradient", FUI.FloatPillTopSpec)
+	FUI.FloatTopSpecGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.94),
+		NumberSequenceKeypoint.new(0.30, 0.12),
 		NumberSequenceKeypoint.new(0.5, 0.0),
-		NumberSequenceKeypoint.new(0.75, 0.10),
-		NumberSequenceKeypoint.new(1, 0.92)
+		NumberSequenceKeypoint.new(0.70, 0.12),
+		NumberSequenceKeypoint.new(1, 0.94)
 	})
 
 	FUI.FloatPillBotGlow = Instance.new("Frame", FloatClipSurface)
 	FUI.FloatPillBotGlow.Name = "TR_PillBotGlow"
 	FUI.FloatPillBotGlow.Size = UDim2.new(1, -48, 0, 2)
 	FUI.FloatPillBotGlow.Position = UDim2.new(0, 24, 1, -2)
-	FUI.FloatPillBotGlow.BackgroundTransparency = 0.35
+	FUI.FloatPillBotGlow.BackgroundTransparency = 0.30
 	FUI.FloatPillBotGlow.BorderSizePixel = 0
 	FUI.FloatPillBotGlow.ZIndex = 53
 	RegisterThemeObject(FUI.FloatPillBotGlow, "BackgroundColor3", "Accent")
-	local pillBotGrad = Instance.new("UIGradient", FUI.FloatPillBotGlow)
-	pillBotGrad.Transparency = NumberSequence.new({
+	FUI.FloatBotGlowGrad = Instance.new("UIGradient", FUI.FloatPillBotGlow)
+	FUI.FloatBotGlowGrad.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0.95),
-		NumberSequenceKeypoint.new(0.5, 0.10),
+		NumberSequenceKeypoint.new(0.5, 0.08),
 		NumberSequenceKeypoint.new(1, 0.95)
 	})
 
@@ -697,9 +697,11 @@ do
 	FUI.FloatEmblemGrad = Instance.new("UIGradient", FUI.FloatEmblemPod)
 	FUI.FloatEmblemGrad.Rotation = 45
 	FUI.FloatEmblemStroke = Instance.new("UIStroke", FUI.FloatEmblemPod)
-	FUI.FloatEmblemStroke.Thickness = 1.2
-	FUI.FloatEmblemStroke.Transparency = 0.25
-	RegisterThemeObject(FUI.FloatEmblemStroke, "Color", "Stroke")
+	FUI.FloatEmblemStroke.Thickness = 1.4
+	FUI.FloatEmblemStroke.Transparency = 0.12
+	FUI.FloatEmblemStroke.Color = Color3.fromRGB(255, 255, 255)
+	FUI.FloatEmblemStrokeGrad = Instance.new("UIGradient", FUI.FloatEmblemStroke)
+	FUI.FloatEmblemStrokeGrad.Rotation = 0
 
 	FUI.FloatScriptIcon = Instance.new("TextLabel", FUI.FloatEmblemPod)
 	FUI.FloatScriptIcon.Name = "ScriptEmblem"
@@ -726,7 +728,7 @@ do
 	FUI.FloatTitleLbl.ZIndex = 52
 	RegisterThemeObject(FUI.FloatTitleLbl, "TextColor3", "TextPrimary")
 	FUI.FloatTitleGrad = Instance.new("UIGradient", FUI.FloatTitleLbl)
-	FUI.FloatTitleGrad.Rotation = 90
+	FUI.FloatTitleGrad.Rotation = 18
 
 	FUI.FloatSubLbl = Instance.new("TextLabel", FloatingPill)
 	FUI.FloatSubLbl.Name = "ScriptSubStatus"
@@ -831,11 +833,17 @@ do
 
 	FUI.PlayEntranceAnim = function(targetIcon)
 		if targetIcon == "Square" and MobileSquareIcon and FUI.SquareScale then
-			FUI.SquareScale.Scale = 0.25
-			TweenService:Create(FUI.SquareScale, TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+			local restPos = MobileSquareIcon.Position
+			FUI.SquareScale.Scale = 0.35
+			MobileSquareIcon.Position = UDim2.new(restPos.X.Scale, restPos.X.Offset, restPos.Y.Scale, restPos.Y.Offset - 28)
+			TweenService:Create(FUI.SquareScale, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+			TweenService:Create(MobileSquareIcon, TweenInfo.new(0.40, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = restPos }):Play()
 		elseif FloatingPill and FUI.FloatPillScale then
-			FUI.FloatPillScale.Scale = 0.25
-			TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.40, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+			local restPos = FloatingPill.Position
+			FUI.FloatPillScale.Scale = 0.35
+			FloatingPill.Position = UDim2.new(restPos.X.Scale, restPos.X.Offset, restPos.Y.Scale, restPos.Y.Offset - 32)
+			TweenService:Create(FUI.FloatPillScale, TweenInfo.new(0.44, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.0 }):Play()
+			TweenService:Create(FloatingPill, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = restPos }):Play()
 		end
 	end
 
@@ -923,25 +931,46 @@ do
 		end
 	end)
 
-	-- Continuous Smooth Iridescent Border Shimmer Animation (Exact Video Animation: 42 deg/s + 180 deg Halo Offset)
+	-- Enhanced Multi-Layer Orbiting Specular Border, Gliding Lens Glint, Emblem Ring & Sonar Pulse
 	table.insert(Connections, RunService.Heartbeat:Connect(function()
 		if isClosingPermanently then return end
 		local pillVis = (FloatingPill and FloatingPill.Visible)
 		local sqVis = (MobileSquareIcon and MobileSquareIcon.Visible)
-		if pillVis or sqVis then
-			local rot = (os.clock() * 42) % 360
-			if pillVis then
-				if FUI.FloatPillStrokeGrad then FUI.FloatPillStrokeGrad.Rotation = rot end
-				if FUI.FloatHaloGrad then FUI.FloatHaloGrad.Rotation = (rot + 180) % 360 end
+		if not (pillVis or sqVis) then return end
+		local now = os.clock()
+		local rot = (now * 48) % 360
+		local haloRot = (360 - ((now * 36) % 360)) % 360
+		local sweepX = math.sin(now * 1.9) * 0.36
+		local textSweepX = math.sin(now * 2.1) * 0.40
+		local breathe = math.sin(now * 2.8)
+		local sonar = (math.sin(now * 4.2) + 1) * 0.5
+		local curD = Config.GuiDesign or "Default"
+		local baseHaloT = (curD == "CyberHud" and 0.42) or (curD == "LiquidGlass" and 0.54) or 0.58
+		if pillVis then
+			if FUI.FloatPillStrokeGrad then FUI.FloatPillStrokeGrad.Rotation = rot end
+			if FUI.FloatHaloGrad then FUI.FloatHaloGrad.Rotation = haloRot end
+			if FUI.FloatHaloStroke then FUI.FloatHaloStroke.Transparency = baseHaloT + (breathe * 0.10) end
+			if FUI.FloatEmblemStrokeGrad then FUI.FloatEmblemStrokeGrad.Rotation = (now * 72) % 360 end
+			if FUI.FloatEmblemGrad then FUI.FloatEmblemGrad.Rotation = 45 + (breathe * 28) end
+			if FUI.FloatTopSpecGrad then FUI.FloatTopSpecGrad.Offset = Vector2.new(sweepX, 0) end
+			if FUI.FloatBotGlowGrad then FUI.FloatBotGlowGrad.Offset = Vector2.new(-sweepX, 0) end
+			if FUI.FloatTitleGrad then FUI.FloatTitleGrad.Offset = Vector2.new(textSweepX, 0) end
+			if FUI.FloatStatusStroke then
+				FUI.FloatStatusStroke.Thickness = 1.3 + (sonar * 1.3)
+				FUI.FloatStatusStroke.Transparency = 0.28 + (sonar * 0.46)
 			end
-			if sqVis then
-				if FUI.SquareStrokeGrad then FUI.SquareStrokeGrad.Rotation = rot end
-				if FUI.SquareHaloGrad then FUI.SquareHaloGrad.Rotation = (rot + 180) % 360 end
-			end
+		end
+		if sqVis then
+			if FUI.SquareStrokeGrad then FUI.SquareStrokeGrad.Rotation = rot end
+			if FUI.SquareHaloGrad then FUI.SquareHaloGrad.Rotation = haloRot end
+			if FUI.SquareHaloStroke then FUI.SquareHaloStroke.Transparency = baseHaloT + (breathe * 0.10) end
 		end
 	end))
 
 	UpdateFloatingPillVisibility()
+	if FUI.PlayEntranceAnim then
+		pcall(FUI.PlayEntranceAnim, (isMobileDevice and Config.MobileFloatStyle == "Square") and "Square" or "Pill")
+	end
 end
 if isMobileDevice then
 	-- Option 2 (Mobile-Only): Compact Square Shaded "T.R" Floating Icon (Syncs with GUI Design & Theme)
@@ -1524,17 +1553,26 @@ ApplyGuiDesignSurface = function()
 		if FUI.FloatTitleLbl then FUI.FloatTitleLbl.TextColor3 = Color3.fromRGB(255, 255, 255) end
 		if FUI.FloatTitleGrad then
 			FUI.FloatTitleGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0, eff.TextPrimary:Lerp(eff.Accent, 0.24)),
+				ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
 				ColorSequenceKeypoint.new(1, eff.TextPrimary:Lerp(eff.Accent, 0.28))
 			})
 		end
 		if FUI.FloatEmblemGrad then
 			FUI.FloatEmblemGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.25)),
+				ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.28)),
 				ColorSequenceKeypoint.new(1, eff.AccentDark)
 			})
 		end
-		if FUI.FloatEmblemStroke then FUI.FloatEmblemStroke.Color = eff.Stroke end
+		if FUI.FloatEmblemStroke then FUI.FloatEmblemStroke.Color = Color3.fromRGB(255, 255, 255) end
+		if FUI.FloatEmblemStrokeGrad then
+			FUI.FloatEmblemStrokeGrad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, eff.Accent),
+				ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
+				ColorSequenceKeypoint.new(0.7, eff.Stroke),
+				ColorSequenceKeypoint.new(1, eff.Accent)
+			})
+		end
 		if FUI.FloatLeftPod then FUI.FloatLeftPod.BackgroundColor3 = eff.PanelBg end
 		if FUI.FloatLeftPodStroke then FUI.FloatLeftPodStroke.Color = eff.Accent end
 		if FUI.FloatPillBotGlow then FUI.FloatPillBotGlow.BackgroundColor3 = eff.Accent end
@@ -1568,10 +1606,11 @@ ApplyGuiDesignSurface = function()
 			end
 			if FUI.FloatPillStrokeGrad then
 				FUI.FloatPillStrokeGrad.Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)),
-					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
-					ColorSequenceKeypoint.new(0.7, eff.Stroke),
-					ColorSequenceKeypoint.new(1, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35))
+					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.30)),
+					ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.50, eff.Stroke:Lerp(eff.Accent, 0.35)),
+					ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(1, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.30))
 				})
 				FUI.FloatPillStrokeGrad.Enabled = true
 			end
@@ -1608,8 +1647,9 @@ ApplyGuiDesignSurface = function()
 			if FUI.FloatPillStrokeGrad then
 				FUI.FloatPillStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent),
-					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
-					ColorSequenceKeypoint.new(0.7, eff.Stroke),
+					ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.50, eff.Stroke),
+					ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 255, 255)),
 					ColorSequenceKeypoint.new(1, eff.Accent)
 				})
 				FUI.FloatPillStrokeGrad.Enabled = true
@@ -1647,9 +1687,10 @@ ApplyGuiDesignSurface = function()
 			if FUI.FloatPillStrokeGrad then
 				FUI.FloatPillStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(130, 240, 255), 0.38)),
-					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
-					ColorSequenceKeypoint.new(0.7, eff.Accent),
-					ColorSequenceKeypoint.new(1, eff.AccentDark)
+					ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.50, eff.AccentDark),
+					ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(1, eff.Accent)
 				})
 				FUI.FloatPillStrokeGrad.Enabled = true
 			end
