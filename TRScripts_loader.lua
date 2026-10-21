@@ -1841,17 +1841,187 @@ isMenuVisible = true MinBtn.MouseButton1Click:Connect(function() SetMenuVisible(
 --==============================================================================
 -- 5. REUSABLE UI COMPONENT FACTORY
 --==============================================================================
-local Tabs = {} local ActiveTabName = nil local function CreateTab(tabName, iconText, order)
+local Tabs = {} local ActiveTabName = nil
+FUI.PageToTabName = {}
+FUI.SearchRegistry = {}
+FUI.SearchCards = {}
+
+-- Global Quick-Search Bar at Top of ContentContainer (Search & Toggle Functions Directly)
+do
+	FUI.QuickSearchBar = Instance.new("Frame")
+	FUI.QuickSearchBar.Name = "TR_QuickSearchBar"
+	FUI.QuickSearchBar.Size = UDim2.new(1, -16, 0, 34)
+	FUI.QuickSearchBar.Position = UDim2.new(0, 8, 0, 8)
+	FUI.QuickSearchBar.BackgroundTransparency = 0.10
+	FUI.QuickSearchBar.BorderSizePixel = 0
+	FUI.QuickSearchBar.ZIndex = 8
+	FUI.QuickSearchBar.Parent = ContentContainer
+	RegisterThemeObject(FUI.QuickSearchBar, "BackgroundColor3", "CardBg")
+	AddCorner(FUI.QuickSearchBar, 8)
+	local qsStroke = Instance.new("UIStroke", FUI.QuickSearchBar)
+	qsStroke.Thickness = 1.2
+	qsStroke.Transparency = 0.45
+	RegisterThemeObject(qsStroke, "Color", "Accent")
+
+	local qsIcon = MakeLabel(FUI.QuickSearchBar, UDim2.new(0, 28, 1, 0), UDim2.new(0, 8, 0, 0), E.Search, Enum.Font.GothamBold, 13, "Accent", Enum.TextXAlignment.Center)
+	qsIcon.ZIndex = 9
+
+	FUI.QuickSearchInput = Instance.new("TextBox", FUI.QuickSearchBar)
+	FUI.QuickSearchInput.Name = "SearchInput"
+	FUI.QuickSearchInput.Size = UDim2.new(1, -138, 1, 0)
+	FUI.QuickSearchInput.Position = UDim2.new(0, 36, 0, 0)
+	FUI.QuickSearchInput.BackgroundTransparency = 1
+	FUI.QuickSearchInput.ClearTextOnFocus = false
+	FUI.QuickSearchInput.Font = Enum.Font.GothamSemibold
+	FUI.QuickSearchInput.TextSize = 12
+	FUI.QuickSearchInput.TextXAlignment = Enum.TextXAlignment.Left
+	FUI.QuickSearchInput.TextTruncate = Enum.TextTruncate.AtEnd
+	FUI.QuickSearchInput.PlaceholderText = "Quick-Search any function to toggle ON/OFF (e.g. Aimbot, Fly, ESP, Speed, Glass)..."
+	FUI.QuickSearchInput.Text = ""
+	FUI.QuickSearchInput.ZIndex = 9
+	RegisterThemeObject(FUI.QuickSearchInput, "TextColor3", "TextPrimary")
+	RegisterThemeObject(FUI.QuickSearchInput, "PlaceholderColor3", "TextSecondary")
+
+	FUI.QuickSearchCountBadge = Instance.new("TextLabel", FUI.QuickSearchBar)
+	FUI.QuickSearchCountBadge.Size = UDim2.new(0, 62, 0, 22)
+	FUI.QuickSearchCountBadge.Position = UDim2.new(1, -98, 0.5, -11)
+	FUI.QuickSearchCountBadge.BackgroundTransparency = 0.2
+	FUI.QuickSearchCountBadge.Font = Enum.Font.GothamBold
+	FUI.QuickSearchCountBadge.TextSize = 10
+	FUI.QuickSearchCountBadge.Text = "Search"
+	FUI.QuickSearchCountBadge.ZIndex = 9
+	RegisterThemeObject(FUI.QuickSearchCountBadge, "BackgroundColor3", "PanelBg")
+	RegisterThemeObject(FUI.QuickSearchCountBadge, "TextColor3", "TextSecondary")
+	AddCorner(FUI.QuickSearchCountBadge, 6)
+
+	FUI.QuickSearchClearBtn = Instance.new("TextButton", FUI.QuickSearchBar)
+	FUI.QuickSearchClearBtn.Size = UDim2.new(0, 24, 0, 22)
+	FUI.QuickSearchClearBtn.Position = UDim2.new(1, -30, 0.5, -11)
+	FUI.QuickSearchClearBtn.BackgroundColor3 = Color3.fromRGB(175, 38, 55)
+	FUI.QuickSearchClearBtn.Font = Enum.Font.GothamBold
+	FUI.QuickSearchClearBtn.TextSize = 11
+	FUI.QuickSearchClearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FUI.QuickSearchClearBtn.Text = E.Close
+	FUI.QuickSearchClearBtn.ZIndex = 9
+	AddCorner(FUI.QuickSearchClearBtn, 6)
+
+	FUI.SearchResultsPage = Instance.new("ScrollingFrame")
+	FUI.SearchResultsPage.Name = "TR_SearchResultsPage"
+	FUI.SearchResultsPage.Size = UDim2.new(1, -16, 1, -54)
+	FUI.SearchResultsPage.Position = UDim2.new(0, 8, 0, 46)
+	FUI.SearchResultsPage.BackgroundTransparency = 1
+	FUI.SearchResultsPage.BorderSizePixel = 0
+	FUI.SearchResultsPage.ScrollBarThickness = 4
+	FUI.SearchResultsPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+	FUI.SearchResultsPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	FUI.SearchResultsPage.Visible = false
+	FUI.SearchResultsPage.Parent = ContentContainer
+	RegisterThemeObject(FUI.SearchResultsPage, "ScrollBarImageColor3", "Accent")
+	local srLayout = Instance.new("UIListLayout", FUI.SearchResultsPage)
+	srLayout.Padding = UDim.new(0, 6)
+	srLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	local srPad = Instance.new("UIPadding", FUI.SearchResultsPage)
+	srPad.PaddingTop = UDim.new(0, 4)
+	srPad.PaddingBottom = UDim.new(0, 10)
+	srPad.PaddingLeft = UDim.new(0, 4)
+	srPad.PaddingRight = UDim.new(0, 8)
+
+	FUI.SearchEmptyLbl = MakeLabel(FUI.SearchResultsPage, UDim2.new(1, -16, 0, 42), nil, "No matching functions found. Try keywords like Aimbot, Fly, ESP, Speed, Katana, Orbit, or Glass.", Enum.Font.GothamSemibold, 12, "TextSecondary", Enum.TextXAlignment.Center)
+	FUI.SearchEmptyLbl.LayoutOrder = 9999
+	FUI.SearchEmptyLbl.Visible = false
+end
+
+FUI.RefreshSearchCardsVisuals = function()
+	local theme = GetTheme()
+	for _, cEntry in ipairs(FUI.SearchCards) do
+		if cEntry.ToggleBtn and cEntry.GetState then
+			local ok, st = pcall(cEntry.GetState)
+			local isOn = (ok and st == true)
+			cEntry.ToggleBtn.Text = isOn and "ON" or "OFF"
+			cEntry.ToggleBtn.BackgroundColor3 = isOn and theme.Accent or theme.PanelBg
+			cEntry.ToggleBtn.TextColor3 = isOn and Color3.fromRGB(255, 255, 255) or theme.TextPrimary
+		end
+		if cEntry.JumpBtn then
+			cEntry.JumpBtn.BackgroundColor3 = theme.PanelBg
+			cEntry.JumpBtn.TextColor3 = theme.TextSecondary
+		end
+		if cEntry.SubLbl then
+			cEntry.SubLbl.TextColor3 = theme.Accent
+		end
+	end
+end
+table.insert(ThemeObjects.CustomCallbacks, FUI.RefreshSearchCardsVisuals)
+
+FUI.ApplySearchFilter = function()
+	local rawQ = FUI.QuickSearchInput and FUI.QuickSearchInput.Text or ""
+	local q = rawQ:lower():gsub("^%s+", ""):gsub("%s+$", "")
+	if q == "" then
+		if FUI.SearchResultsPage then FUI.SearchResultsPage.Visible = false end
+		if FUI.QuickSearchCountBadge then FUI.QuickSearchCountBadge.Text = "Search" end
+		for name, data in pairs(Tabs) do
+			data.Page.Visible = (name == ActiveTabName)
+		end
+		return
+	end
+	for _, data in pairs(Tabs) do
+		data.Page.Visible = false
+	end
+	if FUI.SearchResultsPage then FUI.SearchResultsPage.Visible = true end
+	local words = {}
+	for w in q:gmatch("%S+") do table.insert(words, w) end
+	local matchCount = 0
+	for _, cEntry in ipairs(FUI.SearchCards) do
+		local matched = true
+		for i = 1, #words do
+			if not cEntry.Keywords:find(words[i], 1, true) then
+				matched = false
+				break
+			end
+		end
+		cEntry.Card.Visible = matched
+		if matched then matchCount = matchCount + 1 end
+	end
+	if FUI.SearchEmptyLbl then FUI.SearchEmptyLbl.Visible = (matchCount == 0) end
+	if FUI.QuickSearchCountBadge then FUI.QuickSearchCountBadge.Text = tostring(matchCount) .. " Found" end
+	FUI.RefreshSearchCardsVisuals()
+end
+
+FUI.QuickSearchInput:GetPropertyChangedSignal("Text"):Connect(FUI.ApplySearchFilter)
+FUI.QuickSearchClearBtn.MouseButton1Click:Connect(function()
+	FUI.QuickSearchInput.Text = ""
+	FUI.ApplySearchFilter()
+end)
+
+FUI.SwitchToTab = function(tabName)
+	if not Tabs[tabName] then return end
+	ActiveTabName = tabName
+	if FUI.QuickSearchInput and FUI.QuickSearchInput.Text ~= "" then
+		FUI.QuickSearchInput.Text = ""
+	end
+	if FUI.SearchResultsPage then FUI.SearchResultsPage.Visible = false end
+	for name, data in pairs(Tabs) do
+		data.Page.Visible = (name == tabName)
+		local theme = GetTheme()
+		data.Button.BackgroundColor3 = (name == ActiveTabName) and theme.Accent or theme.CardBg
+		data.Button.BackgroundTransparency = (name == ActiveTabName) and 0.02 or 0.2
+	end
+	if tabName == "Player Radar" and genv._TR_RefreshRadar then pcall(genv._TR_RefreshRadar)
+	elseif tabName == "Target Fling" and genv._TR_RefreshFling then pcall(genv._TR_RefreshFling)
+	elseif tabName == "Aimbot & Visuals" and genv._TR_RefreshTargetAimbotList then pcall(genv._TR_RefreshTargetAimbotList) end
+end
+
+local function CreateTab(tabName, iconText, order)
 	local TabBtn = Instance.new("TextButton") TabBtn.LayoutOrder = order
 	TabBtn.Size = UDim2.new(1, -12, 0, 33) TabBtn.BackgroundTransparency = 0.1
 	TabBtn.Font = Enum.Font.GothamSemibold TabBtn.TextSize = 12 TabBtn.ZIndex = 6
 	TabBtn.TextXAlignment = Enum.TextXAlignment.Left TabBtn.Text = "   " .. iconText .. "  " .. tabName
 	TabBtn.Parent = Sidebar RegisterThemeObject(TabBtn, "TextColor3", "TextPrimary") AddCorner(TabBtn, 8)
-	local Page = Instance.new("ScrollingFrame") Page.Size = UDim2.new(1, -16, 1, -16)
-	Page.Position = UDim2.new(0, 8, 0, 8) Page.BackgroundTransparency = 1 Page.BorderSizePixel = 0
+	local Page = Instance.new("ScrollingFrame") Page.Size = UDim2.new(1, -16, 1, -54)
+	Page.Position = UDim2.new(0, 8, 0, 46) Page.BackgroundTransparency = 1 Page.BorderSizePixel = 0
 	Page.ScrollBarThickness = 4 Page.CanvasSize = UDim2.new(0, 0, 0, 0)
 	Page.AutomaticCanvasSize = Enum.AutomaticSize.Y Page.Visible = false Page.Parent = ContentContainer
 	RegisterThemeObject(Page, "ScrollBarImageColor3", "Accent")
+	FUI.PageToTabName[Page] = tabName
 	local PageLayout = Instance.new("UIListLayout") PageLayout.Padding = UDim.new(0, 8)
 	PageLayout.SortOrder = Enum.SortOrder.LayoutOrder PageLayout.Parent = Page
 	local PagePad = Instance.new("UIPadding") PagePad.PaddingTop = UDim.new(0, 4)
@@ -1862,11 +2032,9 @@ local Tabs = {} local ActiveTabName = nil local function CreateTab(tabName, icon
 			data.Button.BackgroundColor3 = (name == ActiveTabName) and theme.Accent or theme.CardBg
 			data.Button.BackgroundTransparency = (name == ActiveTabName) and 0.02 or 0.2 end end
 	table.insert(ThemeObjects.CustomCallbacks, RefreshTabVisuals)
-	TabBtn.MouseButton1Click:Connect(function() ActiveTabName = tabName
-		for name, data in pairs(Tabs) do data.Page.Visible = (name == tabName) end RefreshTabVisuals()
-		if tabName == "Player Radar" and genv._TR_RefreshRadar then pcall(genv._TR_RefreshRadar)
-		elseif tabName == "Target Fling" and genv._TR_RefreshFling then pcall(genv._TR_RefreshFling)
-		elseif tabName == "Aimbot & Visuals" and genv._TR_RefreshTargetAimbotList then pcall(genv._TR_RefreshTargetAimbotList) end end)
+	TabBtn.MouseButton1Click:Connect(function()
+		FUI.SwitchToTab(tabName)
+	end)
 	if order == 1 then ActiveTabName = tabName Page.Visible = true RefreshTabVisuals() end return Page end
 local function CreateSectionHeader(parent, title, order) local Header = Instance.new("TextLabel")
 	Header.LayoutOrder = order Header.Size = UDim2.new(1, 0, 0, 24) Header.BackgroundTransparency = 1
@@ -1896,6 +2064,7 @@ local activeFeatureNotifs = {}
 local notifCounter = 0
 
 local function NotifyFeatureToggle(rawName, isEnabled)
+	if FUI and FUI.RefreshSearchCardsVisuals then pcall(FUI.RefreshSearchCardsVisuals) end
 	if isClosingPermanently or not ScreenGui or not ScreenGui.Parent then return end
 	local cleanName = tostring(rawName or "Feature"):gsub("%s*%b()$", "")
 	if cleanName == "" then cleanName = tostring(rawName or "Feature") end
@@ -2015,17 +2184,60 @@ local function NotifyFeatureToggle(rawName, isEnabled)
 	end)
 end
 
+FUI.RegisterSearchFunction = function(info)
+	if not FUI.SearchResultsPage or not info or not info.Name then return end
+	local idx = #FUI.SearchCards + 1
+	local sCard = CreateCard(FUI.SearchResultsPage, 46, info.Priority or (100 + idx))
+	sCard.Visible = false
+	local titleLbl = MakeLabel(sCard, UDim2.new(1, -180, 0, 20), UDim2.new(0, 12, 0, 5), info.Name, Enum.Font.GothamBold, 12, "TextPrimary", Enum.TextXAlignment.Left)
+	titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	local tabStr = tostring(info.TabName or "General")
+	local subLbl = MakeLabel(sCard, UDim2.new(1, -180, 0, 16), UDim2.new(0, 12, 0, 24), "Tab: " .. tabStr, Enum.Font.GothamSemibold, 10, "Accent", Enum.TextXAlignment.Left)
+	subLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	local jumpBtn = MakeButton(sCard, UDim2.new(0, 62, 0, 28), UDim2.new(1, -160, 0.5, -14), "Open Tab", "PanelBg", 10)
+	jumpBtn.MouseButton1Click:Connect(function()
+		if FUI.SwitchToTab then FUI.SwitchToTab(tabStr) end
+	end)
+	local togBtn = MakeButton(sCard, UDim2.new(0, 84, 0, 28), UDim2.new(1, -92, 0.5, -14), "OFF", nil, 12)
+	local entry = {
+		Card = sCard,
+		TitleLbl = titleLbl,
+		SubLbl = subLbl,
+		JumpBtn = jumpBtn,
+		ToggleBtn = togBtn,
+		TabName = tabStr,
+		Keywords = string.lower(tostring(info.Name) .. " " .. tabStr .. " " .. tostring(info.Keywords or "")),
+		GetState = info.GetState,
+		Toggle = info.Toggle
+	}
+	togBtn.MouseButton1Click:Connect(function()
+		if entry.Toggle then pcall(entry.Toggle) end
+		if FUI.RefreshSearchCardsVisuals then FUI.RefreshSearchCardsVisuals() end
+	end)
+	table.insert(FUI.SearchCards, entry)
+	if FUI.RefreshSearchCardsVisuals then FUI.RefreshSearchCardsVisuals() end
+end
+
 local function CreateToggle(parent, labelText, initialValue, order, callback)
 	local Card = CreateCard(parent, 42, order)
 	local Label = MakeLabel(Card, UDim2.new(1, -110, 1, 0), UDim2.new(0, 14, 0, 0), labelText, Enum.Font.GothamSemibold, 13, "TextPrimary", Enum.TextXAlignment.Left)
 	local ToggleBtn = MakeButton(Card, UDim2.new(0, 84, 0, 28), UDim2.new(1, -96, 0.5, -14), "OFF", nil, 12)
 	local state = initialValue and true or false local function UpdateToggleVisual()
 		local theme = GetTheme() ToggleBtn.Text = state and "ON" or "OFF"
-		ToggleBtn.BackgroundColor3 = state and theme.Accent or theme.PanelBg end
+		ToggleBtn.BackgroundColor3 = state and theme.Accent or theme.PanelBg
+		if FUI.RefreshSearchCardsVisuals then pcall(FUI.RefreshSearchCardsVisuals) end end
 	table.insert(ThemeObjects.CustomCallbacks, UpdateToggleVisual) UpdateToggleVisual()
 	local function SetState(newState, triggerCallback) state = newState and true or false
 		UpdateToggleVisual() if triggerCallback ~= false then NotifyFeatureToggle(labelText, state) if callback then pcall(callback, state) end end end
 	ToggleBtn.MouseButton1Click:Connect(function() SetState(not state, true) end)
+	if FUI.RegisterSearchFunction then
+		FUI.RegisterSearchFunction({
+			Name = labelText,
+			TabName = (FUI.PageToTabName and FUI.PageToTabName[parent]) or "Themes & Status",
+			GetState = function() return state end,
+			Toggle = function() SetState(not state, true) end
+		})
+	end
 	return { SetState = SetState, GetState = function() return state end, Card = Card } end
 local function CreateSlider(parent, labelText, minVal, maxVal, initialVal, order, callback)
 	local Card = CreateCard(parent, 58, order)
@@ -2307,6 +2519,53 @@ RefreshMouseLockUI = function() local k = Config.MouseLockKeybind or "None"
 	mouseLockToggleBtn.Text = "Mouse Lock [" .. k .. "]: " .. (CursorUnlockedOverride and "ON" or "OFF")
 	mouseLockToggleBtn.BackgroundColor3 = CursorUnlockedOverride and Color3.fromRGB(38, 168, 92) or Color3.fromRGB(185, 52, 52)
 	mouseLockStatusLbl.Text = CursorUnlockedOverride and "Shift Lock: ACTIVE" or "Shift Lock: INACTIVE" end
+if FUI.RegisterSearchFunction then
+	FUI.RegisterSearchFunction({
+		Name = "Mouse Lock / Shift Lock [M]",
+		TabName = "Themes & Status",
+		Keywords = "mouse lock shift lock cursor center m",
+		Priority = 10,
+		GetState = function() return CursorUnlockedOverride == true end,
+		Toggle = function() if SetMouseLockState then SetMouseLockState(not CursorUnlockedOverride) end end
+	})
+	FUI.RegisterSearchFunction({
+		Name = "GUI Design: 2. Apple Liquid Glass",
+		TabName = "Themes & Status",
+		Keywords = "gui design apple liquid glass transparent crystal",
+		Priority = 11,
+		GetState = function() return (Config.GuiDesign == "LiquidGlass") end,
+		Toggle = function()
+			local nextD = (Config.GuiDesign == "LiquidGlass") and "Default" or "LiquidGlass"
+			if genv._TR_ApplyGuiDesign then genv._TR_ApplyGuiDesign(nextD, true) end
+		end
+	})
+	FUI.RegisterSearchFunction({
+		Name = "GUI Design: 3. Neon Cyber-HUD",
+		TabName = "Themes & Status",
+		Keywords = "gui design neon cyber hud cyberpunk laser",
+		Priority = 12,
+		GetState = function() return (Config.GuiDesign == "CyberHud") end,
+		Toggle = function()
+			local nextD = (Config.GuiDesign == "CyberHud") and "Default" or "CyberHud"
+			if genv._TR_ApplyGuiDesign then genv._TR_ApplyGuiDesign(nextD, true) end
+		end
+	})
+	FUI.RegisterSearchFunction({
+		Name = "Floating Icon Position Lock (Lock/Unlock Drag)",
+		TabName = "Themes & Status",
+		Keywords = "floating icon pill lock unlock position drag",
+		Priority = 13,
+		GetState = function() return isFloatingPillLocked == true end,
+		Toggle = function()
+			isFloatingPillLocked = not isFloatingPillLocked
+			Config.FloatingIconLocked = isFloatingPillLocked
+			savedConfig.Settings.FloatingIconLocked = isFloatingPillLocked
+			SyncFloatingPillState()
+			SaveConfig(false)
+			if NotifyFeatureToggle then NotifyFeatureToggle("Floating Icon Position Lock", isFloatingPillLocked) end
+		end
+	})
+end
 SetMouseLockState = function(newState) local prevML = CursorUnlockedOverride CursorUnlockedOverride = newState and true or false if prevML ~= CursorUnlockedOverride and not isClosingPermanently then NotifyFeatureToggle("Mouse Lock", CursorUnlockedOverride) end
 	RefreshMouseLockUI() if CursorUnlockedOverride then pcall(function() player.DevEnableMouseLock = true
 			UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.CameraRelative
@@ -2788,6 +3047,24 @@ SetStickTarget = function(targetPlr)
 	return true
 end
 
+if FUI.RegisterSearchFunction then
+	FUI.RegisterSearchFunction({
+		Name = "Orbit / Strafe Around Target Mode (Player Radar)",
+		TabName = "Player Radar",
+		Keywords = "orbit strafe circle target stick mode radar",
+		Priority = 8,
+		GetState = function() return StickMode == "Orbit" end,
+		Toggle = function()
+			StickMode = (StickMode == "Orbit") and "Back" or "Orbit"
+			Config.StickMode = StickMode
+			savedConfig.Settings.StickMode = StickMode
+			RefreshStickUI()
+			if RefreshRadarCards then pcall(RefreshRadarCards) end
+			SaveConfig(false)
+			if NotifyFeatureToggle then NotifyFeatureToggle("Orbit Strafe Mode", StickMode == "Orbit") end
+		end
+	})
+end
 UnstickTopBtn.MouseButton1Click:Connect(function()
 	SetStickTarget(nil)
 end)
@@ -3600,7 +3877,47 @@ toggleFreecamState = function()
 	if freecamEnabled then stopFreecam() else startFreecam() end
 	NotifyFeatureToggle("Freecam", freecamEnabled)
 end
-freecamToggleBtn.MouseButton1Click:Connect(toggleFreecamState)
+if FUI.RegisterSearchFunction then
+		FUI.RegisterSearchFunction({
+			Name = "Flight Active [E] (3D Camera-Aligned Fly)",
+			TabName = "Flight & Movement",
+			Keywords = "fly flight active air hover speed e",
+			Priority = 5,
+			GetState = function() return isFlightActive and isFlightActive() or false end,
+			Toggle = function()
+				if not masterFlightEnabled then
+					masterFlightEnabled = true
+					savedConfig.Settings.MasterFlightEnabled = true
+					UpdateFlightUI()
+				end
+				if toggleFlightState then toggleFlightState() end
+			end
+		})
+		FUI.RegisterSearchFunction({
+			Name = "Master Flight Switch (Enable/Disable Flight Engine)",
+			TabName = "Flight & Movement",
+			Keywords = "master flight switch enable fly",
+			Priority = 6,
+			GetState = function() return masterFlightEnabled == true end,
+			Toggle = function()
+				masterFlightEnabled = not masterFlightEnabled
+				savedConfig.Settings.MasterFlightEnabled = masterFlightEnabled
+				if not masterFlightEnabled and keyFlying then stopFlight() end
+				UpdateFlightUI()
+				SaveConfig(false)
+				NotifyFeatureToggle("Master Flight Switch", masterFlightEnabled)
+			end
+		})
+		FUI.RegisterSearchFunction({
+			Name = "Freecam Explorer [C] (Detach Camera & Fly)",
+			TabName = "Flight & Movement",
+			Keywords = "freecam camera spectator detach look c",
+			Priority = 7,
+			GetState = function() return isFreecamActive and isFreecamActive() or false end,
+			Toggle = function() if toggleFreecamState then toggleFreecamState() end end
+		})
+	end
+	freecamToggleBtn.MouseButton1Click:Connect(toggleFreecamState)
 freecamKeyAssignBtn.MouseButton1Click:Connect(function()
 	freecamKeyAssignBtn.Text = "[Key / Del]"
 	ActiveKeybindCaptureCallback = function(keyName)
@@ -4599,6 +4916,40 @@ local function SetupTab7()
 					end
 					currentTarget = nil
 					RefreshAimbotVisuals()
+	if FUI.RegisterSearchFunction then
+		FUI.RegisterSearchFunction({
+			Name = "1. Normal Aimbot [Q] (Camera Lock)",
+			TabName = "Aimbot & Visuals",
+			Keywords = "normal aimbot lock head body q camera aim",
+			Priority = 1,
+			GetState = function() return aimbotEnabled == true end,
+			Toggle = function() if toggleAimbot then toggleAimbot() end end
+		})
+		FUI.RegisterSearchFunction({
+			Name = "2. Target Specific Player Aimbot [T]",
+			TabName = "Aimbot & Visuals",
+			Keywords = "target specific player aimbot lock t aim",
+			Priority = 2,
+			GetState = function() return targetAimbotEnabled == true end,
+			Toggle = function() if toggleTargetAimbot then toggleTargetAimbot() end end
+		})
+		FUI.RegisterSearchFunction({
+			Name = "Mode 1: Normal Auto Shoot / Triggerbot [Z]",
+			TabName = "Aimbot & Visuals",
+			Keywords = "normal auto shoot triggerbot rapid fire z shoot",
+			Priority = 3,
+			GetState = function() return autoShootEnabled == true end,
+			Toggle = function() if toggleAutoShoot then toggleAutoShoot() end end
+		})
+		FUI.RegisterSearchFunction({
+			Name = "Mode 2: Aimbot-Lock Auto Shoot [V]",
+			TabName = "Aimbot & Visuals",
+			Keywords = "aimbot lock auto shoot triggerbot fire v shoot",
+			Priority = 4,
+			GetState = function() return aimbotAutoShootEnabled == true end,
+			Toggle = function() if toggleAimbotAutoShoot then toggleAimbotAutoShoot() end end
+		})
+	end
 					rebuildTargetSelectList()
 				end)
 				totalH = totalH + 37
@@ -6198,6 +6549,28 @@ table.insert(Connections, UserInputService.InputBegan:Connect(function(input, gp
 	if input.KeyCode == Enum.KeyCode.F4 then ToggleDetectorState() end
 end))
 
+if FUI.RegisterSearchFunction then
+	FUI.RegisterSearchFunction({
+		Name = "Hacker & Abnormal Speed Detector [F4]",
+		TabName = "Hacker Detector",
+		Keywords = "hacker speed detector scanner anticheat f4",
+		Priority = 8,
+		GetState = function() return detectorEnabled == true end,
+		Toggle = function() ToggleDetectorState() end
+	})
+	FUI.RegisterSearchFunction({
+		Name = "Hacker Detector Popup Alerts",
+		TabName = "Hacker Detector",
+		Keywords = "hacker detector alerts notifications popup",
+		Priority = 9,
+		GetState = function() return notificationsEnabled == true end,
+		Toggle = function()
+			notificationsEnabled = not notificationsEnabled
+			NotifyFeatureToggle("Detector Alerts", notificationsEnabled)
+			RefreshDetectorControlVisuals()
+		end
+	})
+end
 RefreshAllDetectorThemes()
 RefreshDetectorHeaderCounts()
 end SetupTab9()
