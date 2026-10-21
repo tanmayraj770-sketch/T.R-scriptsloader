@@ -923,42 +923,25 @@ do
 		end
 	end)
 
-	-- Full-Framerate Continuous Iridescent Shimmer, Breathing Halo Aura, Emblem Wave & Live Status Pulse
+	-- Continuous Smooth Iridescent Border Shimmer Animation (Exact Video Animation: 42 deg/s + 180 deg Halo Offset)
 	table.insert(Connections, RunService.Heartbeat:Connect(function()
 		if isClosingPermanently then return end
 		local pillVis = (FloatingPill and FloatingPill.Visible)
 		local sqVis = (MobileSquareIcon and MobileSquareIcon.Visible)
-		if not (pillVis or sqVis) then return end
-		local now = os.clock()
-		local rotFast = (now * 62) % 360
-		local rotCounter = (360 - ((now * 44) % 360)) % 360
-		local waveSlow = math.sin(now * 2.6)
-		local pulseFast = (math.sin(now * 4.8) + 1) * 0.5
-		local curD = Config.GuiDesign or "Default"
-		local baseHaloT = (curD == "CyberHud" and 0.38) or (curD == "LiquidGlass" and 0.50) or 0.54
-		if pillVis then
-			if FUI.FloatPillStrokeGrad then FUI.FloatPillStrokeGrad.Rotation = rotFast end
-			if FUI.FloatHaloGrad then FUI.FloatHaloGrad.Rotation = rotCounter end
-			if FUI.FloatPillGrad then FUI.FloatPillGrad.Rotation = 18 + (waveSlow * 16) end
-			if FUI.FloatEmblemGrad then FUI.FloatEmblemGrad.Rotation = (now * 80) % 360 end
-			if FUI.FloatHaloStroke then FUI.FloatHaloStroke.Transparency = baseHaloT + (waveSlow * 0.14) end
-			if FUI.FloatStatusStroke then
-				FUI.FloatStatusStroke.Thickness = 1.4 + (pulseFast * 1.4)
-				FUI.FloatStatusStroke.Transparency = 0.30 + (pulseFast * 0.45)
+		if pillVis or sqVis then
+			local rot = (os.clock() * 42) % 360
+			if pillVis then
+				if FUI.FloatPillStrokeGrad then FUI.FloatPillStrokeGrad.Rotation = rot end
+				if FUI.FloatHaloGrad then FUI.FloatHaloGrad.Rotation = (rot + 180) % 360 end
 			end
-		end
-		if sqVis then
-			if FUI.SquareStrokeGrad then FUI.SquareStrokeGrad.Rotation = rotFast end
-			if FUI.SquareHaloGrad then FUI.SquareHaloGrad.Rotation = rotCounter end
-			if FUI.SquareBgGrad then FUI.SquareBgGrad.Rotation = 135 + (waveSlow * 20) end
-			if FUI.SquareHaloStroke then FUI.SquareHaloStroke.Transparency = baseHaloT + (waveSlow * 0.14) end
+			if sqVis then
+				if FUI.SquareStrokeGrad then FUI.SquareStrokeGrad.Rotation = rot end
+				if FUI.SquareHaloGrad then FUI.SquareHaloGrad.Rotation = (rot + 180) % 360 end
+			end
 		end
 	end))
 
 	UpdateFloatingPillVisibility()
-	if FUI.PlayEntranceAnim then
-		pcall(FUI.PlayEntranceAnim, (isMobileDevice and Config.MobileFloatStyle == "Square") and "Square" or "Pill")
-	end
 end
 if isMobileDevice then
 	-- Option 2 (Mobile-Only): Compact Square Shaded "T.R" Floating Icon (Syncs with GUI Design & Theme)
@@ -1540,13 +1523,13 @@ ApplyGuiDesignSurface = function()
 		FloatingPill.BackgroundColor3 = eff.MainBg
 		if FUI.FloatTitleLbl then FUI.FloatTitleLbl.TextColor3 = Color3.fromRGB(255, 255, 255) end
 		if FUI.FloatTitleGrad then
-			FloatTitleGrad.Color = ColorSequence.new({
+			FUI.FloatTitleGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
 				ColorSequenceKeypoint.new(1, eff.TextPrimary:Lerp(eff.Accent, 0.28))
 			})
 		end
 		if FUI.FloatEmblemGrad then
-			FloatEmblemGrad.Color = ColorSequence.new({
+			FUI.FloatEmblemGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.25)),
 				ColorSequenceKeypoint.new(1, eff.AccentDark)
 			})
@@ -1556,7 +1539,7 @@ ApplyGuiDesignSurface = function()
 		if FUI.FloatLeftPodStroke then FUI.FloatLeftPodStroke.Color = eff.Accent end
 		if FUI.FloatPillBotGlow then FUI.FloatPillBotGlow.BackgroundColor3 = eff.Accent end
 		if FUI.FloatHaloGrad then
-			FloatHaloGrad.Color = ColorSequence.new({
+			FUI.FloatHaloGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, eff.Accent),
 				ColorSequenceKeypoint.new(0.5, eff.Stroke),
 				ColorSequenceKeypoint.new(1, eff.Accent)
@@ -1570,36 +1553,36 @@ ApplyGuiDesignSurface = function()
 			if FUI.FloatLeftPod then FUI.FloatLeftPod.BackgroundTransparency = 0.58 end
 			if FUI.FloatEmblemPod then FUI.FloatEmblemPod.BackgroundTransparency = 0.18 end
 			if FUI.FloatPillGrad then
-				FloatPillGrad.Rotation = -32
-				FloatPillGrad.Color = ColorSequence.new({
+				FUI.FloatPillGrad.Rotation = -32
+				FUI.FloatPillGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(Color3.fromRGB(255, 255, 255), 0.38)),
 					ColorSequenceKeypoint.new(0.5, eff.MainBg),
 					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(Color3.fromRGB(210, 235, 255), 0.30))
 				})
-				FloatPillGrad.Enabled = true
+				FUI.FloatPillGrad.Enabled = true
 			end
 			if FUI.FloatPillStroke then
-				FloatPillStroke.Thickness = 2.0
-				FloatPillStroke.Transparency = 0.04
-				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
+				FUI.FloatPillStroke.Thickness = 2.0
+				FUI.FloatPillStroke.Transparency = 0.04
+				FUI.FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FUI.FloatPillStrokeGrad then
-				FloatPillStrokeGrad.Color = ColorSequence.new({
+				FUI.FloatPillStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)),
 					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
 					ColorSequenceKeypoint.new(0.7, eff.Stroke),
 					ColorSequenceKeypoint.new(1, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35))
 				})
-				FloatPillStrokeGrad.Enabled = true
+				FUI.FloatPillStrokeGrad.Enabled = true
 			end
 			if FUI.FloatPillTopSpec then
-				FloatPillTopSpec.Visible = true
-				FloatPillTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				FloatPillTopSpec.BackgroundTransparency = 0.10
+				FUI.FloatPillTopSpec.Visible = true
+				FUI.FloatPillTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				FUI.FloatPillTopSpec.BackgroundTransparency = 0.10
 			end
 			if FUI.FloatPillDivider then
-				FloatPillDivider.BackgroundColor3 = eff.Stroke
-				FloatPillDivider.BackgroundTransparency = 0.25
+				FUI.FloatPillDivider.BackgroundColor3 = eff.Stroke
+				FUI.FloatPillDivider.BackgroundTransparency = 0.25
 			end
 			if FUI.FloatDragIcon then FUI.FloatDragIcon.TextColor3 = eff.Accent end
 			if FUI.FloatScriptIcon then FUI.FloatScriptIcon.TextColor3 = Color3.fromRGB(255, 255, 255) end
@@ -1609,36 +1592,36 @@ ApplyGuiDesignSurface = function()
 			if FUI.FloatLeftPod then FUI.FloatLeftPod.BackgroundTransparency = 0.35 end
 			if FUI.FloatEmblemPod then FUI.FloatEmblemPod.BackgroundTransparency = 0.05 end
 			if FUI.FloatPillGrad then
-				FloatPillGrad.Rotation = 20
-				FloatPillGrad.Color = ColorSequence.new({
+				FUI.FloatPillGrad.Rotation = 20
+				FUI.FloatPillGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 16, 28):Lerp(eff.Accent, 0.22)),
 					ColorSequenceKeypoint.new(0.55, Color3.fromRGB(5, 6, 12)),
 					ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 10, 28):Lerp(eff.Stroke, 0.22))
 				})
-				FloatPillGrad.Enabled = true
+				FUI.FloatPillGrad.Enabled = true
 			end
 			if FUI.FloatPillStroke then
-				FloatPillStroke.Thickness = 2.4
-				FloatPillStroke.Transparency = 0.0
-				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
+				FUI.FloatPillStroke.Thickness = 2.4
+				FUI.FloatPillStroke.Transparency = 0.0
+				FUI.FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FUI.FloatPillStrokeGrad then
-				FloatPillStrokeGrad.Color = ColorSequence.new({
+				FUI.FloatPillStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent),
 					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
 					ColorSequenceKeypoint.new(0.7, eff.Stroke),
 					ColorSequenceKeypoint.new(1, eff.Accent)
 				})
-				FloatPillStrokeGrad.Enabled = true
+				FUI.FloatPillStrokeGrad.Enabled = true
 			end
 			if FUI.FloatPillTopSpec then
-				FloatPillTopSpec.Visible = true
-				FloatPillTopSpec.BackgroundColor3 = eff.Accent
-				FloatPillTopSpec.BackgroundTransparency = 0.08
+				FUI.FloatPillTopSpec.Visible = true
+				FUI.FloatPillTopSpec.BackgroundColor3 = eff.Accent
+				FUI.FloatPillTopSpec.BackgroundTransparency = 0.08
 			end
 			if FUI.FloatPillDivider then
-				FloatPillDivider.BackgroundColor3 = eff.Accent
-				FloatPillDivider.BackgroundTransparency = 0.15
+				FUI.FloatPillDivider.BackgroundColor3 = eff.Accent
+				FUI.FloatPillDivider.BackgroundTransparency = 0.15
 			end
 			if FUI.FloatDragIcon then FUI.FloatDragIcon.TextColor3 = eff.Accent end
 			if FUI.FloatScriptIcon then FUI.FloatScriptIcon.TextColor3 = Color3.fromRGB(255, 255, 255) end
@@ -1648,36 +1631,36 @@ ApplyGuiDesignSurface = function()
 			if FUI.FloatLeftPod then FUI.FloatLeftPod.BackgroundTransparency = 0.45 end
 			if FUI.FloatEmblemPod then FUI.FloatEmblemPod.BackgroundTransparency = 0.08 end
 			if FUI.FloatPillGrad then
-				FloatPillGrad.Rotation = 18
-				FloatPillGrad.Color = ColorSequence.new({
+				FUI.FloatPillGrad.Rotation = 18
+				FUI.FloatPillGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(eff.PanelBg, 0.48)),
 					ColorSequenceKeypoint.new(0.55, eff.MainBg),
 					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(eff.AccentDark, 0.22))
 				})
-				FloatPillGrad.Enabled = true
+				FUI.FloatPillGrad.Enabled = true
 			end
 			if FUI.FloatPillStroke then
-				FloatPillStroke.Thickness = 2.2
-				FloatPillStroke.Transparency = 0.02
-				FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
+				FUI.FloatPillStroke.Thickness = 2.2
+				FUI.FloatPillStroke.Transparency = 0.02
+				FUI.FloatPillStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FUI.FloatPillStrokeGrad then
-				FloatPillStrokeGrad.Color = ColorSequence.new({
+				FUI.FloatPillStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(130, 240, 255), 0.38)),
 					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
 					ColorSequenceKeypoint.new(0.7, eff.Accent),
 					ColorSequenceKeypoint.new(1, eff.AccentDark)
 				})
-				FloatPillStrokeGrad.Enabled = true
+				FUI.FloatPillStrokeGrad.Enabled = true
 			end
 			if FUI.FloatPillTopSpec then
-				FloatPillTopSpec.Visible = true
-				FloatPillTopSpec.BackgroundColor3 = eff.Stroke:Lerp(Color3.fromRGB(255, 255, 255), 0.5)
-				FloatPillTopSpec.BackgroundTransparency = 0.28
+				FUI.FloatPillTopSpec.Visible = true
+				FUI.FloatPillTopSpec.BackgroundColor3 = eff.Stroke:Lerp(Color3.fromRGB(255, 255, 255), 0.5)
+				FUI.FloatPillTopSpec.BackgroundTransparency = 0.28
 			end
 			if FUI.FloatPillDivider then
-				FloatPillDivider.BackgroundColor3 = eff.Stroke
-				FloatPillDivider.BackgroundTransparency = 0.25
+				FUI.FloatPillDivider.BackgroundColor3 = eff.Stroke
+				FUI.FloatPillDivider.BackgroundTransparency = 0.25
 			end
 			if FUI.FloatDragIcon then FUI.FloatDragIcon.TextColor3 = eff.Accent end
 			if FUI.FloatScriptIcon then FUI.FloatScriptIcon.TextColor3 = Color3.fromRGB(255, 255, 255) end
@@ -1690,14 +1673,14 @@ ApplyGuiDesignSurface = function()
 		if FUI.SquareInnerShade then FUI.SquareInnerShade.BackgroundColor3 = eff.PanelBg end
 		if FUI.SquareBotGlow then FUI.SquareBotGlow.BackgroundColor3 = eff.Accent end
 		if FUI.SquareHaloGrad then
-			SquareHaloGrad.Color = ColorSequence.new({
+			FUI.SquareHaloGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, eff.Accent),
 				ColorSequenceKeypoint.new(0.5, eff.Stroke),
 				ColorSequenceKeypoint.new(1, eff.Accent)
 			})
 		end
 		if FUI.SquareTitleGrad then
-			SquareTitleGrad.Color = ColorSequence.new({
+			FUI.SquareTitleGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
 				ColorSequenceKeypoint.new(0.55, eff.TextPrimary:Lerp(eff.Accent, 0.28)),
 				ColorSequenceKeypoint.new(1, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35))
@@ -1709,31 +1692,31 @@ ApplyGuiDesignSurface = function()
 			if FUI.SquareInnerShade then FUI.SquareInnerShade.BackgroundTransparency = 0.56 end
 			if FUI.SquareHaloStroke then FUI.SquareHaloStroke.Transparency = 0.56 end
 			if FUI.SquareBgGrad then
-				SquareBgGrad.Rotation = -42
-				SquareBgGrad.Color = ColorSequence.new({
+				FUI.SquareBgGrad.Rotation = -42
+				FUI.SquareBgGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(Color3.fromRGB(255, 255, 255), 0.40)),
 					ColorSequenceKeypoint.new(0.5, eff.MainBg:Lerp(eff.Accent, 0.22)),
 					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(Color3.fromRGB(210, 235, 255), 0.32))
 				})
-				SquareBgGrad.Enabled = true
+				FUI.SquareBgGrad.Enabled = true
 			end
 			if FUI.SquareStroke then
-				SquareStroke.Thickness = 1.9
-				SquareStroke.Transparency = 0.04
-				SquareStroke.Color = Color3.fromRGB(255, 255, 255)
+				FUI.SquareStroke.Thickness = 1.9
+				FUI.SquareStroke.Transparency = 0.04
+				FUI.SquareStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FUI.SquareStrokeGrad then
-				SquareStrokeGrad.Color = ColorSequence.new({
+				FUI.SquareStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)),
 					ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 255, 255)),
 					ColorSequenceKeypoint.new(0.75, eff.Stroke),
 					ColorSequenceKeypoint.new(1, eff.Accent)
 				})
-				SquareStrokeGrad.Enabled = true
+				FUI.SquareStrokeGrad.Enabled = true
 			end
 			if FUI.SquareTopSpec then
-				SquareTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				SquareTopSpec.BackgroundTransparency = 0.08
+				FUI.SquareTopSpec.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				FUI.SquareTopSpec.BackgroundTransparency = 0.08
 			end
 		elseif d == "CyberHud" then
 			MobileSquareIcon.BackgroundTransparency = 0.05
@@ -1741,31 +1724,31 @@ ApplyGuiDesignSurface = function()
 			if FUI.SquareInnerShade then FUI.SquareInnerShade.BackgroundTransparency = 0.32 end
 			if FUI.SquareHaloStroke then FUI.SquareHaloStroke.Transparency = 0.42 end
 			if FUI.SquareBgGrad then
-				SquareBgGrad.Rotation = 135
-				SquareBgGrad.Color = ColorSequence.new({
+				FUI.SquareBgGrad.Rotation = 135
+				FUI.SquareBgGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, Color3.fromRGB(14, 18, 32):Lerp(eff.Accent, 0.28)),
 					ColorSequenceKeypoint.new(0.5, Color3.fromRGB(5, 6, 12)),
 					ColorSequenceKeypoint.new(1, Color3.fromRGB(18, 10, 32):Lerp(eff.Stroke, 0.28))
 				})
-				SquareBgGrad.Enabled = true
+				FUI.SquareBgGrad.Enabled = true
 			end
 			if FUI.SquareStroke then
-				SquareStroke.Thickness = 2.2
-				SquareStroke.Transparency = 0.0
-				SquareStroke.Color = Color3.fromRGB(255, 255, 255)
+				FUI.SquareStroke.Thickness = 2.2
+				FUI.SquareStroke.Transparency = 0.0
+				FUI.SquareStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FUI.SquareStrokeGrad then
-				SquareStrokeGrad.Color = ColorSequence.new({
+				FUI.SquareStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent),
 					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
 					ColorSequenceKeypoint.new(0.7, eff.Stroke),
 					ColorSequenceKeypoint.new(1, eff.Accent)
 				})
-				SquareStrokeGrad.Enabled = true
+				FUI.SquareStrokeGrad.Enabled = true
 			end
 			if FUI.SquareTopSpec then
-				SquareTopSpec.BackgroundColor3 = eff.Accent
-				SquareTopSpec.BackgroundTransparency = 0.08
+				FUI.SquareTopSpec.BackgroundColor3 = eff.Accent
+				FUI.SquareTopSpec.BackgroundTransparency = 0.08
 			end
 		else
 			MobileSquareIcon.BackgroundTransparency = 0.06
@@ -1773,31 +1756,31 @@ ApplyGuiDesignSurface = function()
 			if FUI.SquareInnerShade then FUI.SquareInnerShade.BackgroundTransparency = 0.42 end
 			if FUI.SquareHaloStroke then FUI.SquareHaloStroke.Transparency = 0.60 end
 			if FUI.SquareBgGrad then
-				SquareBgGrad.Rotation = 135
-				SquareBgGrad.Color = ColorSequence.new({
+				FUI.SquareBgGrad.Rotation = 135
+				FUI.SquareBgGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.MainBg:Lerp(eff.Accent, 0.26)),
 					ColorSequenceKeypoint.new(0.55, eff.MainBg),
 					ColorSequenceKeypoint.new(1, eff.MainBg:Lerp(eff.AccentDark, 0.34))
 				})
-				SquareBgGrad.Enabled = true
+				FUI.SquareBgGrad.Enabled = true
 			end
 			if FUI.SquareStroke then
-				SquareStroke.Thickness = 2.0
-				SquareStroke.Transparency = 0.02
-				SquareStroke.Color = Color3.fromRGB(255, 255, 255)
+				FUI.SquareStroke.Thickness = 2.0
+				FUI.SquareStroke.Transparency = 0.02
+				FUI.SquareStroke.Color = Color3.fromRGB(255, 255, 255)
 			end
 			if FUI.SquareStrokeGrad then
-				SquareStrokeGrad.Color = ColorSequence.new({
+				FUI.SquareStrokeGrad.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, eff.Accent:Lerp(Color3.fromRGB(130, 240, 255), 0.38)),
 					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
 					ColorSequenceKeypoint.new(0.7, eff.Accent),
 					ColorSequenceKeypoint.new(1, eff.AccentDark)
 				})
-				SquareStrokeGrad.Enabled = true
+				FUI.SquareStrokeGrad.Enabled = true
 			end
 			if FUI.SquareTopSpec then
-				SquareTopSpec.BackgroundColor3 = eff.Stroke:Lerp(Color3.fromRGB(255, 255, 255), 0.5)
-				SquareTopSpec.BackgroundTransparency = 0.22
+				FUI.SquareTopSpec.BackgroundColor3 = eff.Stroke:Lerp(Color3.fromRGB(255, 255, 255), 0.5)
+				FUI.SquareTopSpec.BackgroundTransparency = 0.22
 			end
 		end
 	end
