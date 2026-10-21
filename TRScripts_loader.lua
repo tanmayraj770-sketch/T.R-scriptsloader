@@ -2005,6 +2005,7 @@ FUI.SwitchToTab = function(tabName)
 		data.Button.BackgroundColor3 = (name == ActiveTabName) and theme.Accent or theme.CardBg
 		data.Button.BackgroundTransparency = (name == ActiveTabName) and 0.02 or 0.2
 	end
+	if tabName ~= "Avatar Changer" and genv._TR_StopAvatarHoverPreview then pcall(genv._TR_StopAvatarHoverPreview) end
 	if tabName == "Player Radar" and genv._TR_RefreshRadar then pcall(genv._TR_RefreshRadar)
 	elseif tabName == "Target Fling" and genv._TR_RefreshFling then pcall(genv._TR_RefreshFling)
 	elseif tabName == "Aimbot & Visuals" and genv._TR_RefreshTargetAimbotList then pcall(genv._TR_RefreshTargetAimbotList) end
@@ -2285,6 +2286,7 @@ local Tab6_Instant   = CreateTab("Target Fling", E.Bolt, 6)
 local Tab7_Visuals   = CreateTab("Aimbot & Visuals", E.Target, 7)
 local Tab8_Executor  = CreateTab("Script Executor", E.Laptop, 8)
 local Tab9_Detector  = CreateTab("Hacker Detector", E.Search, 9)
+local Tab10_Avatar   = CreateTab("Avatar Changer", E.Star, 10)
 --==============================================================================
 -- 7. TAB 1: THEMES, PERFORMANCE & PROTECTION
 --==============================================================================
@@ -6575,6 +6577,5262 @@ RefreshAllDetectorThemes()
 RefreshDetectorHeaderCounts()
 end SetupTab9()
 --==============================================================================
+-- 15.6 TAB 10: AVATAR CHANGER & SAVER (R6/R15 Local Try-On, 3D Preview, Multi-Source Saver)
+--==============================================================================
+local function SetupTab10()
+local vars = {}
+
+vars.getService = function(name)
+	local ok, service = pcall(function()
+		local s = game:GetService(name)
+		return (type(cloneref) == "function") and cloneref(s) or s
+	end)
+	return ok and service or game:GetService(name)
+end
+
+vars.UI_FONT_FAMILY = "rbxasset://fonts/families/BuilderExtended.json"
+vars.UI_WEIGHT = Enum.FontWeight.SemiBold
+
+vars.Players = vars.getService("Players")
+vars.HttpService = vars.getService("HttpService")
+vars.UserInputService = vars.getService("UserInputService")
+vars.RunService = vars.getService("RunService")
+vars.ContentProvider = vars.getService("ContentProvider")
+vars.TweenService = vars.getService("TweenService")
+vars.Workspace = vars.getService("Workspace")
+vars.CoreGui = vars.getService("CoreGui")
+vars.InsertService = vars.getService("InsertService")
+vars.StarterGui = vars.getService("StarterGui")
+vars.ReplicatedStorage = vars.getService("ReplicatedStorage")
+
+vars.IS_CATALOG_AVATAR_CREATOR = (game.PlaceId == 7041939546)
+vars.CATALOG_EVENTS = vars.ReplicatedStorage:FindFirstChild("Events")
+vars.CATALOG_GUI_REMOTE = vars.CATALOG_EVENTS and vars.CATALOG_EVENTS:FindFirstChild("CatalogGuiRemote")
+vars.SAVED_OUTFITS_REMOTE = vars.CATALOG_EVENTS and vars.CATALOG_EVENTS:FindFirstChild("SavedOutfitsRemote")
+
+vars.LocalPlayer = player or vars.Players.LocalPlayer
+if not vars.LocalPlayer then return end
+
+vars.FOLDER_NAME = "Avatar Saver v2"
+vars.FILE_PATH = vars.FOLDER_NAME .. "/SavedAvatars.json"
+vars.AVATARS_FOLDER = "Avatars"
+vars.AVATAR_INDEX_PATH = vars.AVATARS_FOLDER .. "/AvatarIndex.json"
+vars.MASTER_FILE_PATH = "TR_SavedAvatars_Master.json"
+vars.AVATAR_FILE_PREFIX = "Avatar"
+vars.AVATAR_FILE_EXTENSION = ".ava"
+vars.SCREEN_GUI_NAME = "LocalWearer_UI"
+
+vars.uiFont = function(weight)
+	local ok, font = pcall(function()
+		return Font.new(vars.UI_FONT_FAMILY, weight or Enum.FontWeight.Regular)
+	end)
+	if ok then return font end
+	return Font.new("rbxasset://fonts/families/GothamSSm.json", weight or Enum.FontWeight.Regular)
+end
+
+vars.runtimeConnections = {}
+vars.scriptAlive = true
+vars.tryOnActive = false
+vars.localTryOnModel = nil
+vars.hiddenCharacterParts = {}
+vars.hiddenCharacterDecals = {}
+vars.localTryOnConnections = {}
+vars.localTryOnRootPart = nil
+vars.localTryOnGroundOffset = Vector3.zero
+vars.localTryOnGroundOffsetValid = false
+vars.localTryOnNeutralCloneFeetRootOffsetY = nil
+vars.localTryOnSwimOffset = Vector3.zero
+vars.currentVerticalOffset = Vector3.zero
+vars.localTryOnSeatedHipOffsetLocal = Vector3.zero
+vars.localTryOnSeatedHipOffsetValid = false
+vars.localTryOnSeatTransitionActive = false
+vars.localTryOnSeatTransitionStartLocal = Vector3.zero
+vars.localTryOnSeatTransitionStartedAt = 0
+vars.localTryOnSwimTransitionActive = false
+vars.localTryOnSwimTransitionStart = Vector3.zero
+vars.localTryOnSwimTransitionStartedAt = 0
+vars.localTryOnLastSwimming = false
+vars.localTryOnSeatPart = nil
+vars.localTryOnPositionMode = "Ground"
+vars.localTryOnSeatCalibrationPending = false
+vars.localTryOnSeatCalibrationToken = 0
+vars.localTryOnGroundCalibrationFrames = 0
+vars.localTryOnHiddenInFirstPerson = false
+vars.localTryOnBuilding = false
+vars.localTryOnBuildId = 0
+vars.localTryOnMissingRecoveryPending = false
+vars.localTryOnCollisionParts = {}
+vars.placeholderMode = false
+vars.placeholderR6Active = false
+vars.placeholderR6Building = false
+vars.placeholderR6Backup = nil
+vars.deathConnection = nil
+vars.characterAddedConnection = nil
+vars.searchDebounceThread = nil
+
+vars.activeCloneTracks = {}
+vars.activeCloneStopConnections = {}
+vars.activeCloneEmoteAnimations = {}
+vars.activeEmotePlayerTrack = nil
+vars.animPlayedConnection = nil
+vars.emoteAssetAnimationCache = {}
+
+vars.parseAssetId = function(val)
+	if not val then return nil end
+	if type(val) == "number" then return val > 0 and val or nil end
+	local digits = string.match(tostring(val), "%d+")
+	return digits and tonumber(digits) or nil
+end
+
+vars.cloneEmoteTable = function(emotes)
+	local copy = {}
+	if type(emotes) ~= "table" then return copy end
+	for name, ids in pairs(emotes) do
+		if type(name) == "string" and type(ids) == "table" then
+			local idList = {}
+			for _, assetId in ipairs(ids) do
+				local parsed = vars.parseAssetId(assetId)
+				if parsed then idList[#idList + 1] = parsed end
+			end
+			if #idList > 0 then copy[name] = idList end
+		end
+	end
+	return copy
+end
+
+vars.BLUE_NORMAL = Color3.fromRGB(25, 115, 230)
+vars.BLUE_HOVER = Color3.fromRGB(45, 135, 255)
+vars.GREEN_NORMAL = Color3.fromRGB(35, 175, 80)
+vars.GREEN_HOVER = Color3.fromRGB(50, 200, 95)
+
+vars.R6_DEFAULTS = {
+	Idle = "rbxassetid://180435571",
+	Walk = "rbxassetid://180426354",
+	Run = "rbxassetid://180426354",
+	Jump = "rbxassetid://125750702",
+	Fall = "rbxassetid://180436148",
+	Climb = "rbxassetid://180436334",
+	Swim = "rbxassetid://180426354",
+	SwimIdle = "rbxassetid://180435571",
+	Sit = "rbxassetid://178130996"
+}
+
+vars.R15_DEFAULTS = {
+	Idle = "rbxassetid://507766388",
+	Walk = "rbxassetid://913403211",
+	Run = "rbxassetid://913384386",
+	Jump = "rbxassetid://507765000",
+	Fall = "rbxassetid://507767968",
+	Climb = "rbxassetid://507765644",
+	Swim = "rbxassetid://913389285",
+	SwimIdle = "rbxassetid://507785072",
+	Sit = "rbxassetid://507768133"
+}
+
+vars.R6_EMOTE_LIBRARY = {
+	wave = { "rbxassetid://128777973" },
+	point = { "rbxassetid://128853357" },
+	dance = {
+		"rbxassetid://182435998",
+		"rbxassetid://182491037",
+		"rbxassetid://182491065"
+	},
+	dance1 = {
+		"rbxassetid://182435998",
+		"rbxassetid://182491037",
+		"rbxassetid://182491065"
+	},
+	dance2 = {
+		"rbxassetid://182436842",
+		"rbxassetid://182491248",
+		"rbxassetid://182491277"
+	},
+	dance3 = {
+		"rbxassetid://182436935",
+		"rbxassetid://182491368",
+		"rbxassetid://182491423"
+	},
+	laugh = { "rbxassetid://129423131" },
+	cheer = { "rbxassetid://129423030" }
+}
+
+vars.R6_EMOTE_LOOPED = {
+	wave = false,
+	point = false,
+	dance = true,
+	dance1 = true,
+	dance2 = true,
+	dance3 = true,
+	laugh = false,
+	cheer = false
+}
+
+vars.PLAYER_LEGACY_EMOTE_IDS = {
+	["507770239"] = "wave",
+	["507770453"] = "point",
+	["507771019"] = "dance",
+	["507771955"] = "dance",
+	["507772104"] = "dance",
+	["507776043"] = "dance2",
+	["507776720"] = "dance2",
+	["507776879"] = "dance2",
+	["507777268"] = "dance3",
+	["507777451"] = "dance3",
+	["507777623"] = "dance3",
+	["507770818"] = "laugh",
+	["507770677"] = "cheer",
+}
+
+for emoteName, assetList in pairs(vars.R6_EMOTE_LIBRARY) do
+	for _, assetId in ipairs(assetList) do
+		local parsed = vars.parseAssetId(assetId)
+		if parsed then vars.PLAYER_LEGACY_EMOTE_IDS[tostring(parsed)] = emoteName end
+	end
+end
+
+vars.previewQueue = {}
+vars.previewQueueRunning = false
+vars.previewQueueGeneration = 0
+vars.previewStates = {}
+
+vars.previewModelCache = {}
+vars.previewCacheOrder = {}
+vars.PREVIEW_CACHE_LIMIT = 24
+
+vars.getPreviewCacheKey = function(data)
+	if not data then return nil end
+	local stableId = data.Signature or data.FileName or data.UserId or data.Name
+	if stableId ~= nil then
+		return tostring(stableId) .. "|" .. tostring(data.RigType)
+	end
+	local ok, encoded = pcall(function()
+		return vars.HttpService:JSONEncode({
+			Properties = data.Properties,
+			RigType = tostring(data.RigType)
+		})
+	end)
+	if ok and encoded then return encoded end
+	return tostring(data)
+end
+
+vars.clearPreviewModelCache = function()
+	for key, model in pairs(vars.previewModelCache) do
+		pcall(function() if model then model:Destroy() end end)
+		vars.previewModelCache[key] = nil
+	end
+	table.clear(vars.previewCacheOrder)
+end
+
+vars.touchPreviewCache = function(key)
+	for i = #vars.previewCacheOrder, 1, -1 do
+		if vars.previewCacheOrder[i] == key then table.remove(vars.previewCacheOrder, i) end
+	end
+	table.insert(vars.previewCacheOrder, key)
+	while #vars.previewCacheOrder > vars.PREVIEW_CACHE_LIMIT do
+		local oldKey = table.remove(vars.previewCacheOrder, 1)
+		local oldModel = vars.previewModelCache[oldKey]
+		vars.previewModelCache[oldKey] = nil
+		pcall(function() if oldModel then oldModel:Destroy() end end)
+	end
+end
+
+vars.wire = function(signal, callback)
+	local connection = signal:Connect(callback)
+	vars.runtimeConnections[#vars.runtimeConnections + 1] = connection
+	return connection
+end
+
+vars.disconnectConnection = function(connection)
+	if connection then
+		pcall(function()
+			if connection.Connected then connection:Disconnect() end
+		end)
+	end
+end
+
+vars.setLocalTryOnConnection = function(name, signal, callback)
+	vars.disconnectConnection(vars.localTryOnConnections[name])
+	if signal and callback then
+		vars.localTryOnConnections[name] = signal:Connect(callback)
+	else
+		vars.localTryOnConnections[name] = nil
+	end
+	return vars.localTryOnConnections[name]
+end
+
+vars.disconnectLocalTryOnConnections = function()
+	for name, connection in pairs(vars.localTryOnConnections) do
+		vars.disconnectConnection(connection)
+		vars.localTryOnConnections[name] = nil
+	end
+	table.clear(vars.localTryOnCollisionParts)
+end
+
+vars.resetLocalTryOnState = function()
+	vars.localTryOnRootPart = nil
+	vars.localTryOnGroundOffset = Vector3.zero
+	vars.localTryOnGroundOffsetValid = false
+	vars.localTryOnNeutralCloneFeetRootOffsetY = nil
+	vars.localTryOnSwimOffset = Vector3.zero
+	vars.currentVerticalOffset = Vector3.zero
+	vars.localTryOnSeatedHipOffsetLocal = Vector3.zero
+	vars.localTryOnSeatedHipOffsetValid = false
+	vars.localTryOnSeatTransitionActive = false
+	vars.localTryOnSeatTransitionStartLocal = Vector3.zero
+	vars.localTryOnSeatTransitionStartedAt = 0
+	vars.localTryOnSwimTransitionActive = false
+	vars.localTryOnSwimTransitionStart = Vector3.zero
+	vars.localTryOnSwimTransitionStartedAt = 0
+	vars.localTryOnLastSwimming = false
+	vars.localTryOnSeatPart = nil
+	vars.localTryOnPositionMode = "Ground"
+	vars.localTryOnSeatCalibrationPending = false
+	vars.localTryOnSeatCalibrationToken = vars.localTryOnSeatCalibrationToken + 1
+	vars.localTryOnGroundCalibrationFrames = 0
+	vars.localTryOnHiddenInFirstPerson = false
+end
+
+vars.vector3FromSaved = function(value, fallback)
+	if typeof(value) == "Vector3" then return value end
+	if type(value) == "table" then
+		return Vector3.new(
+			tonumber(value.X or value.x) or fallback.X,
+			tonumber(value.Y or value.y) or fallback.Y,
+			tonumber(value.Z or value.z) or fallback.Z
+		)
+	end
+	return fallback
+end
+
+vars.getEnumRigType = function(value)
+	if typeof(value) == "EnumItem" then return value end
+	local text = tostring(value or "")
+	if text:find("R6") then return Enum.HumanoidRigType.R6 end
+	return Enum.HumanoidRigType.R15
+end
+
+vars.stopAllCloneTracks = function(fadeTime)
+	for _, stoppedConnection in pairs(vars.activeCloneStopConnections) do
+		vars.disconnectConnection(stoppedConnection)
+	end
+	table.clear(vars.activeCloneStopConnections)
+
+	for playerTrack, cloneTrack in pairs(vars.activeCloneTracks) do
+		pcall(function() cloneTrack:Stop(fadeTime or 0.05) end)
+		local animation = vars.activeCloneEmoteAnimations[playerTrack]
+		if animation then pcall(function() animation:Destroy() end) end
+		vars.activeCloneEmoteAnimations[playerTrack] = nil
+	end
+	table.clear(vars.activeCloneTracks)
+	table.clear(vars.activeCloneEmoteAnimations)
+	vars.activeEmotePlayerTrack = nil
+end
+
+vars.cleanupAnimationSync = function()
+	vars.stopAllCloneTracks()
+	vars.disconnectConnection(vars.animPlayedConnection)
+	vars.animPlayedConnection = nil
+end
+
+vars.cleanup = function()
+	vars.scriptAlive = false
+	if vars.ui and vars.stopPlayerSelection then pcall(vars.stopPlayerSelection) end
+	if vars.stopHoverPreview then pcall(vars.stopHoverPreview) end
+	vars.localTryOnBuildId = vars.localTryOnBuildId + 1
+	vars.localTryOnBuilding = false
+	vars.tryOnActive = false
+	vars.cleanupAnimationSync()
+
+	if vars.placeholderR6Active or vars.placeholderR6Backup then
+		if vars.restorePlaceholderR6 then pcall(vars.restorePlaceholderR6) end
+	end
+
+	if vars.searchDebounceThread then
+		pcall(function() task.cancel(vars.searchDebounceThread) end)
+		vars.searchDebounceThread = nil
+	end
+
+	vars.previewQueueGeneration = vars.previewQueueGeneration + 1
+	vars.clearPreviewModelCache()
+	table.clear(vars.previewQueue)
+	table.clear(vars.previewStates)
+	vars.previewQueueRunning = false
+
+	vars.disconnectConnection(vars.deathConnection)
+	vars.deathConnection = nil
+	vars.disconnectConnection(vars.characterAddedConnection)
+	vars.characterAddedConnection = nil
+	vars.disconnectLocalTryOnConnections()
+
+	pcall(function() if vars.localTryOnModel then vars.localTryOnModel:Destroy() end end)
+	vars.localTryOnModel = nil
+	vars.resetLocalTryOnState()
+
+	for part, oldTransparency in pairs(vars.hiddenCharacterParts) do
+		pcall(function()
+			if part and part.Parent then
+				part.LocalTransparencyModifier = oldTransparency
+			end
+		end)
+	end
+	table.clear(vars.hiddenCharacterParts)
+
+	for decal, oldTransparency in pairs(vars.hiddenCharacterDecals) do
+		pcall(function()
+			if decal and decal.Parent then
+				decal.Transparency = oldTransparency
+			end
+		end)
+	end
+	table.clear(vars.hiddenCharacterDecals)
+
+	for _, connection in ipairs(vars.runtimeConnections) do
+		vars.disconnectConnection(connection)
+	end
+	table.clear(vars.runtimeConnections)
+
+	pcall(function()
+		if vars.HoverPreview and vars.HoverPreview.Parent then
+			vars.HoverPreview:Destroy()
+		end
+	end)
+
+	pcall(function()
+		if type(getgenv) == "function" and getgenv().__LocalWearerCleanup == vars.cleanup then
+			getgenv().__LocalWearerCleanup = nil
+		end
+	end)
+end
+
+pcall(function()
+	if type(getgenv) == "function" and type(getgenv().__LocalWearerCleanup) == "function" then
+		pcall(getgenv().__LocalWearerCleanup)
+	end
+end)
+vars.scriptAlive = true
+pcall(function()
+	if type(getgenv) == "function" then
+		getgenv().__LocalWearerCleanup = vars.cleanup
+	end
+end)
+
+vars.mainCamera = vars.Workspace.CurrentCamera
+vars.viewportSize = vars.mainCamera and vars.mainCamera.ViewportSize or Vector2.new(1024, 768)
+vars.mainWidth = 500
+vars.mainHeight = 400
+vars.minimizedWidth = 180
+vars.previewWidth = 276
+vars.previewGap = 10
+vars.previewCameraDistanceMultiplier = 1.80
+
+-- Dynamic Theme Color Bridge (Automatically synced with Hub's GetTheme() & GUI Design)
+local initTheme = GetTheme()
+vars.COLORS = {
+	Background = initTheme.MainBg,
+	Surface = initTheme.CardBg,
+	Surface2 = initTheme.PanelBg,
+	Surface3 = initTheme.PanelBg,
+	Border = initTheme.Stroke,
+	Text = initTheme.TextPrimary,
+	Muted = initTheme.TextSecondary,
+	Accent = initTheme.Accent,
+	AccentHover = initTheme.AccentDark,
+	Accent2 = initTheme.AccentDark,
+	Success = Color3.fromRGB(46, 204, 113),
+	SuccessHover = Color3.fromRGB(68, 224, 132),
+	Danger = Color3.fromRGB(231, 76, 60),
+	DangerHover = Color3.fromRGB(245, 96, 82),
+}
+
+vars.SyncColorsFromHubTheme = function()
+	local t = GetTheme()
+	vars.COLORS.Background = t.MainBg
+	vars.COLORS.Surface = t.CardBg
+	vars.COLORS.Surface2 = t.PanelBg
+	vars.COLORS.Surface3 = t.PanelBg
+	vars.COLORS.Border = t.Stroke
+	vars.COLORS.Text = t.TextPrimary
+	vars.COLORS.Muted = t.TextSecondary
+	vars.COLORS.Accent = t.Accent
+	vars.COLORS.AccentHover = t.AccentDark
+	vars.COLORS.Accent2 = t.AccentDark
+end
+
+vars.ScreenGui = ScreenGui
+vars.UIRoot = ScreenGui
+vars.Main = MainFrame
+
+vars.ui = {
+	savedAvatars = (type(genv._TR_SavedAvatarsMemory) == "table") and genv._TR_SavedAvatarsMemory or {},
+	deletedSignatures = {},
+	selectedAvatar = nil,
+	avatarRows = {},
+	hoverModel = nil,
+	hoverViewport = nil,
+	hoverConnection = nil,
+	hoverButton = nil,
+	pinnedPreviewData = nil,
+	selectingPlayer = false,
+	selectionHighlight = nil,
+	selectionPlayer = nil,
+}
+genv._TR_SavedAvatarsMemory = vars.ui.savedAvatars
+
+vars.addCorner = function(parent, radius)
+	local corner = parent:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius or 8)
+	corner.Parent = parent
+	return corner
+end
+
+vars.addStroke = function(parent, color, thickness, transparency)
+	local stroke = parent:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
+	stroke.Color = color or vars.COLORS.Border
+	stroke.Thickness = thickness or 1
+	stroke.Transparency = transparency or 0.4
+	stroke.Parent = parent
+	return stroke
+end
+
+vars.addGradient = function(parent, color1, color2, rotation)
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new(color1, color2)
+	gradient.Rotation = rotation or 0
+	gradient.Parent = parent
+	return gradient
+end
+
+vars.addPadding = function(parent, left, right, top, bottom)
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, left or 0)
+	pad.PaddingRight = UDim.new(0, right or left or 0)
+	pad.PaddingTop = UDim.new(0, top or 0)
+	pad.PaddingBottom = UDim.new(0, bottom or top or 0)
+	pad.Parent = parent
+	return pad
+end
+
+vars.BUILDER_ICONS_FONT = "rbxasset://LuaPackages/Packages/_Index/BuilderIcons/BuilderIcons/BuilderIcons.json"
+vars.BUILDER_ICONS = {
+	Rename = "pencil-square",
+	Preview3D = "cube-vertexes",
+	Delete = "trash-can",
+	Refresh = "arrow-spin-clockwise",
+	Minimize = "two-arrows-to-center",
+	Maximize = "two-arrows-from-center",
+	Close = "x"
+}
+
+vars.createBuilderIcon = function(parent, name, code, size, color)
+	local label = Instance.new("TextLabel")
+	label.Name = name or "Icon"
+	label.BackgroundTransparency = 1
+	label.Text = code or ""
+	label.TextColor3 = color or vars.COLORS.Text
+	label.TextScaled = true
+	label.Size = UDim2.fromOffset(size or 16, size or 16)
+	label.Font = Enum.Font.GothamBold
+	if code and code ~= "" then
+		pcall(function()
+			label.FontFace = Font.new(vars.BUILDER_ICONS_FONT, Enum.FontWeight.Bold)
+		end)
+	end
+	label.Parent = parent
+	return label
+end
+
+vars.createButton = function(parent, name, text, baseColor, hoverColor)
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.BackgroundColor3 = baseColor or vars.COLORS.Surface3
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.TextColor3 = vars.COLORS.Text
+	button.TextSize = 11
+	button.Font = Enum.Font.GothamBold
+	button.AutoButtonColor = false
+	button.Active = true
+	button.Parent = parent
+	vars.addCorner(button, 6)
+	vars.addStroke(button, vars.COLORS.Border, 1, 0.35)
+	return button
+end
+
+--==============================================================================
+-- TAB 10 UI LAYOUT (Native Hub Cards & Theme-Reactive Surfaces)
+--==============================================================================
+CreateSectionHeader(Tab10_Avatar, "Avatar Changer & Saver (Local R6/R15 Try-On | Click Player | Username | 3D Preview)", 1)
+
+local AvatarControlCard = CreateCard(Tab10_Avatar, 0, 2)
+AvatarControlCard.AutomaticSize = Enum.AutomaticSize.Y
+local CtrlPad = Instance.new("UIPadding")
+CtrlPad.PaddingTop = UDim.new(0, 8)
+CtrlPad.PaddingBottom = UDim.new(0, 8)
+CtrlPad.PaddingLeft = UDim.new(0, 10)
+CtrlPad.PaddingRight = UDim.new(0, 10)
+CtrlPad.Parent = AvatarControlCard
+
+local CtrlLayout = Instance.new("UIListLayout")
+CtrlLayout.Padding = UDim.new(0, 8)
+CtrlLayout.SortOrder = Enum.SortOrder.LayoutOrder
+CtrlLayout.Parent = AvatarControlCard
+
+-- Row 1: Live Status Bar + Unequip/Try-On Action Button
+vars.Footer = Instance.new("Frame")
+vars.Footer.Name = "StatusHeaderRow"
+vars.Footer.Size = UDim2.new(1, 0, 0, 26)
+vars.Footer.BackgroundTransparency = 1
+vars.Footer.LayoutOrder = 1
+vars.Footer.Parent = AvatarControlCard
+
+vars.StatusDot = Instance.new("Frame")
+vars.StatusDot.Name = "StatusDot"
+vars.StatusDot.Size = UDim2.fromOffset(8, 8)
+vars.StatusDot.Position = UDim2.new(0, 2, 0.5, -4)
+vars.StatusDot.BackgroundColor3 = initTheme.Accent
+vars.StatusDot.BorderSizePixel = 0
+vars.StatusDot.Parent = vars.Footer
+vars.addCorner(vars.StatusDot, 999)
+
+vars.Status = MakeLabel(vars.Footer, UDim2.new(1, -138, 1, 0), UDim2.new(0, 16, 0, 0), "Initializing Avatar Changer...", Enum.Font.GothamBold, 11, "TextPrimary", Enum.TextXAlignment.Left)
+vars.Status.TextTruncate = Enum.TextTruncate.AtEnd
+
+vars.WearButton = MakeButton(vars.Footer, UDim2.new(0, 124, 0, 24), UDim2.new(1, -124, 0.5, -12), "TRY ON SELECTED", nil, 10)
+vars.WearButton.Active = true
+
+vars.updateWearButtonState = function()
+	if not vars.WearButton or not vars.WearButton.Parent then return end
+	local t = GetTheme()
+	if vars.localTryOnBuilding then
+		vars.WearButton.Text = "BUILDING..."
+		vars.WearButton.BackgroundColor3 = t.AccentDark
+		vars.WearButton.TextColor3 = t.TextPrimary
+	elseif vars.tryOnActive or vars.localTryOnModel or vars.placeholderR6Active then
+		vars.WearButton.Text = "RESTORE DEFAULT"
+		vars.WearButton.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+		vars.WearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	elseif vars.ui.selectedAvatar then
+		vars.WearButton.Text = "WEAR SELECTED"
+		vars.WearButton.BackgroundColor3 = t.Accent
+		vars.WearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	else
+		vars.WearButton.Text = "NO AVATAR WORN"
+		vars.WearButton.BackgroundColor3 = t.PanelBg
+		vars.WearButton.TextColor3 = t.TextSecondary
+	end
+end
+
+-- Row 2: Username Input + Save Self + Save Other (Click Player) + Method Toggle
+vars.SaveBar = Instance.new("Frame")
+vars.SaveBar.Name = "SaveBar"
+vars.SaveBar.Size = UDim2.new(1, 0, 0, 30)
+vars.SaveBar.BackgroundTransparency = 1
+vars.SaveBar.LayoutOrder = 2
+vars.SaveBar.Parent = AvatarControlCard
+
+vars.UsernameBox = Instance.new("TextBox")
+vars.UsernameBox.Name = "UsernameBox"
+vars.UsernameBox.Size = UDim2.new(0.36, -4, 1, 0)
+vars.UsernameBox.Position = UDim2.new(0, 0, 0, 0)
+vars.UsernameBox.BorderSizePixel = 0
+vars.UsernameBox.Text = ""
+vars.UsernameBox.PlaceholderText = "Username (Enter to Wear)..."
+vars.UsernameBox.TextSize = 11
+vars.UsernameBox.Font = Enum.Font.GothamSemibold
+vars.UsernameBox.ClearTextOnFocus = false
+vars.UsernameBox.TextXAlignment = Enum.TextXAlignment.Left
+vars.UsernameBox.Parent = vars.SaveBar
+RegisterThemeObject(vars.UsernameBox, "BackgroundColor3", "PanelBg")
+RegisterThemeObject(vars.UsernameBox, "TextColor3", "TextPrimary")
+RegisterThemeObject(vars.UsernameBox, "PlaceholderColor3", "TextSecondary")
+vars.addPadding(vars.UsernameBox, 8, 6, 0, 0)
+vars.addCorner(vars.UsernameBox, 6)
+local userStroke = vars.addStroke(vars.UsernameBox, initTheme.Stroke, 1, 0.35)
+RegisterThemeObject(userStroke, "Color", "Stroke")
+
+vars.SaveSelfButton = MakeButton(vars.SaveBar, UDim2.new(0.19, -4, 1, 0), UDim2.new(0.36, 2, 0, 0), "SAVE SELF", "PanelBg", 10)
+local saveSelfStroke = vars.addStroke(vars.SaveSelfButton, initTheme.Stroke, 1, 0.35)
+RegisterThemeObject(saveSelfStroke, "Color", "Stroke")
+
+vars.SaveClickedButton = MakeButton(vars.SaveBar, UDim2.new(0.21, -4, 1, 0), UDim2.new(0.55, 2, 0, 0), "SAVE OTHER", "PanelBg", 10)
+local saveOtherStroke = vars.addStroke(vars.SaveClickedButton, initTheme.Stroke, 1, 0.35)
+RegisterThemeObject(saveOtherStroke, "Color", "Stroke")
+
+vars.PlaceholderToggle = MakeButton(vars.SaveBar, UDim2.new(0.24, -2, 1, 0), UDim2.new(0.76, 2, 0, 0), "MODE: CLONE", nil, 10)
+local placeStroke = vars.addStroke(vars.PlaceholderToggle, initTheme.Stroke, 1, 0.35)
+RegisterThemeObject(placeStroke, "Color", "Stroke")
+
+-- Row 3: Search Saved Avatars + Refresh Button
+vars.SearchRow = Instance.new("Frame")
+vars.SearchRow.Name = "SearchRow"
+vars.SearchRow.Size = UDim2.new(1, 0, 0, 30)
+vars.SearchRow.BackgroundTransparency = 1
+vars.SearchRow.LayoutOrder = 3
+vars.SearchRow.Parent = AvatarControlCard
+
+vars.SearchBox = Instance.new("TextBox")
+vars.SearchBox.Name = "SearchBox"
+vars.SearchBox.Size = UDim2.new(1, -92, 1, 0)
+vars.SearchBox.Position = UDim2.new(0, 0, 0, 0)
+vars.SearchBox.BorderSizePixel = 0
+vars.SearchBox.PlaceholderText = "Search Saved Avatars (Name, @User, R6/R15)..."
+vars.SearchBox.Text = ""
+vars.SearchBox.TextSize = 11
+vars.SearchBox.Font = Enum.Font.GothamSemibold
+vars.SearchBox.ClearTextOnFocus = false
+vars.SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+vars.SearchBox.Parent = vars.SearchRow
+RegisterThemeObject(vars.SearchBox, "BackgroundColor3", "PanelBg")
+RegisterThemeObject(vars.SearchBox, "TextColor3", "TextPrimary")
+RegisterThemeObject(vars.SearchBox, "PlaceholderColor3", "TextSecondary")
+vars.addPadding(vars.SearchBox, 8, 6, 0, 0)
+vars.addCorner(vars.SearchBox, 6)
+local searchStroke = vars.addStroke(vars.SearchBox, initTheme.Stroke, 1, 0.35)
+RegisterThemeObject(searchStroke, "Color", "Stroke")
+
+vars.RefreshButton = MakeButton(vars.SearchRow, UDim2.new(0, 86, 1, 0), UDim2.new(1, -86, 0, 0), "REFRESH", "PanelBg", 10)
+local refreshStroke = vars.addStroke(vars.RefreshButton, initTheme.Stroke, 1, 0.35)
+RegisterThemeObject(refreshStroke, "Color", "Stroke")
+
+CreateSectionHeader(Tab10_Avatar, "Saved Avatars Library (Click Name to Wear/Unequip | Hover/Click 3D for Preview)", 3)
+
+-- Auto-Sizing Saved Avatars Container inside Tab10_Avatar (Never clips after 5 avatars!)
+vars.List = Instance.new("Frame")
+vars.List.Name = "AvatarList"
+vars.List.LayoutOrder = 4
+vars.List.Size = UDim2.new(1, 0, 0, 0)
+vars.List.AutomaticSize = Enum.AutomaticSize.Y
+vars.List.BackgroundTransparency = 1
+vars.List.BorderSizePixel = 0
+vars.List.Parent = Tab10_Avatar
+
+vars.ListLayout = Instance.new("UIListLayout")
+vars.ListLayout.Padding = UDim.new(0, 6)
+vars.ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+vars.ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+vars.ListLayout.Parent = vars.List
+
+vars.ListPadding = Instance.new("UIPadding")
+vars.ListPadding.PaddingTop = UDim.new(0, 2)
+vars.ListPadding.PaddingBottom = UDim.new(0, 8)
+vars.ListPadding.Parent = vars.List
+
+-- Overlays (Confirm Delete/Refresh, Rename Avatar, Wear Diagnostics) parented to MainFrame
+vars.ConfirmOverlay = Instance.new("TextButton")
+vars.ConfirmOverlay.Name = "TR_AvatarConfirmOverlay"
+vars.ConfirmOverlay.Size = UDim2.new(1, 0, 1, 0)
+vars.ConfirmOverlay.BackgroundColor3 = Color3.fromRGB(4, 6, 12)
+vars.ConfirmOverlay.BackgroundTransparency = 0.25
+vars.ConfirmOverlay.BorderSizePixel = 0
+vars.ConfirmOverlay.ZIndex = 75
+vars.ConfirmOverlay.Visible = false
+vars.ConfirmOverlay.Active = true
+vars.ConfirmOverlay.AutoButtonColor = false
+vars.ConfirmOverlay.Text = ""
+vars.ConfirmOverlay.Parent = MainFrame
+vars.addCorner(vars.ConfirmOverlay, 12)
+
+vars.ConfirmBox = Instance.new("Frame")
+vars.ConfirmBox.Name = "ConfirmBox"
+vars.ConfirmBox.Size = UDim2.new(0, 310, 0, 134)
+vars.ConfirmBox.Position = UDim2.new(0.5, -155, 0.5, -67)
+vars.ConfirmBox.BorderSizePixel = 0
+vars.ConfirmBox.ZIndex = 76
+vars.ConfirmBox.Parent = vars.ConfirmOverlay
+RegisterThemeObject(vars.ConfirmBox, "BackgroundColor3", "CardBg")
+vars.addCorner(vars.ConfirmBox, 10)
+local confirmStroke = vars.addStroke(vars.ConfirmBox, initTheme.Stroke, 1.4, 0.15)
+RegisterThemeObject(confirmStroke, "Color", "Stroke")
+
+vars.ConfirmAccent = Instance.new("Frame")
+vars.ConfirmAccent.Size = UDim2.new(1, 0, 0, 3)
+vars.ConfirmAccent.BorderSizePixel = 0
+vars.ConfirmAccent.ZIndex = 77
+vars.ConfirmAccent.Parent = vars.ConfirmBox
+RegisterThemeObject(vars.ConfirmAccent, "BackgroundColor3", "Accent")
+vars.addCorner(vars.ConfirmAccent, 4)
+
+vars.ConfirmText = MakeLabel(vars.ConfirmBox, UDim2.new(1, -24, 0, 62), UDim2.new(0, 12, 0, 16), "Are you sure?", Enum.Font.GothamBold, 12, "TextPrimary", Enum.TextXAlignment.Center)
+vars.ConfirmText.TextWrapped = true
+vars.ConfirmText.ZIndex = 77
+
+vars.ConfirmYesBtn = MakeButton(vars.ConfirmBox, UDim2.new(0.44, 0, 0, 30), UDim2.new(0.04, 0, 1, -40), "CONFIRM", nil, 11)
+vars.ConfirmYesBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+vars.ConfirmYesBtn.ZIndex = 78
+
+vars.ConfirmNoBtn = MakeButton(vars.ConfirmBox, UDim2.new(0.44, 0, 0, 30), UDim2.new(0.52, 0, 1, -40), "CANCEL", "PanelBg", 11)
+vars.ConfirmNoBtn.ZIndex = 78
+
+vars.currentConfirmAction = nil
+vars.minimized = false
+
+vars.showConfirmation = function(message, onConfirm)
+	vars.ConfirmText.Text = tostring(message or "Are you sure?")
+	vars.currentConfirmAction = onConfirm
+	vars.ConfirmOverlay.Visible = true
+end
+
+vars.hideConfirmation = function()
+	vars.ConfirmOverlay.Visible = false
+	vars.currentConfirmAction = nil
+end
+
+vars.wire(vars.ConfirmYesBtn.Activated, function()
+	local action = vars.currentConfirmAction
+	vars.hideConfirmation()
+	if type(action) == "function" then action() end
+end)
+vars.wire(vars.ConfirmNoBtn.Activated, vars.hideConfirmation)
+
+-- Rename Overlay
+vars.RenameOverlay = Instance.new("Frame")
+vars.RenameOverlay.Name = "TR_AvatarRenameOverlay"
+vars.RenameOverlay.Size = UDim2.new(1, 0, 1, 0)
+vars.RenameOverlay.BackgroundColor3 = Color3.fromRGB(4, 6, 12)
+vars.RenameOverlay.BackgroundTransparency = 0.25
+vars.RenameOverlay.BorderSizePixel = 0
+vars.RenameOverlay.Visible = false
+vars.RenameOverlay.ZIndex = 75
+vars.RenameOverlay.Parent = MainFrame
+vars.addCorner(vars.RenameOverlay, 12)
+
+vars.RenameBox = Instance.new("Frame")
+vars.RenameBox.Name = "RenameBox"
+vars.RenameBox.Size = UDim2.new(0, 340, 0, 148)
+vars.RenameBox.Position = UDim2.new(0.5, -170, 0.5, -74)
+vars.RenameBox.BorderSizePixel = 0
+vars.RenameBox.ZIndex = 76
+vars.RenameBox.Parent = vars.RenameOverlay
+RegisterThemeObject(vars.RenameBox, "BackgroundColor3", "CardBg")
+vars.addCorner(vars.RenameBox, 10)
+local renameBoxStroke = vars.addStroke(vars.RenameBox, initTheme.Stroke, 1.4, 0.15)
+RegisterThemeObject(renameBoxStroke, "Color", "Stroke")
+
+vars.RenameTitle = MakeLabel(vars.RenameBox, UDim2.new(1, -24, 0, 26), UDim2.new(0, 12, 0, 10), "RENAME SAVED AVATAR", Enum.Font.GothamBold, 13, "TextPrimary", Enum.TextXAlignment.Left)
+vars.RenameTitle.ZIndex = 77
+
+vars.RenameInput = Instance.new("TextBox")
+vars.RenameInput.Name = "RenameInput"
+vars.RenameInput.Size = UDim2.new(1, -24, 0, 36)
+vars.RenameInput.Position = UDim2.new(0, 12, 0, 44)
+vars.RenameInput.BorderSizePixel = 0
+vars.RenameInput.PlaceholderText = "New Display Name..."
+vars.RenameInput.Text = ""
+vars.RenameInput.TextSize = 12
+vars.RenameInput.Font = Enum.Font.GothamSemibold
+vars.RenameInput.ClearTextOnFocus = false
+vars.RenameInput.TextXAlignment = Enum.TextXAlignment.Left
+vars.RenameInput.ZIndex = 77
+vars.RenameInput.Parent = vars.RenameBox
+RegisterThemeObject(vars.RenameInput, "BackgroundColor3", "PanelBg")
+RegisterThemeObject(vars.RenameInput, "TextColor3", "TextPrimary")
+RegisterThemeObject(vars.RenameInput, "PlaceholderColor3", "TextSecondary")
+vars.addPadding(vars.RenameInput, 8, 8, 0, 0)
+vars.addCorner(vars.RenameInput, 6)
+local renameInputStroke = vars.addStroke(vars.RenameInput, initTheme.Stroke, 1, 0.25)
+RegisterThemeObject(renameInputStroke, "Color", "Stroke")
+
+vars.RenameCancel = MakeButton(vars.RenameBox, UDim2.new(0, 106, 0, 30), UDim2.new(1, -228, 1, -40), "CANCEL", "PanelBg", 11)
+vars.RenameCancel.ZIndex = 77
+
+vars.RenameSave = MakeButton(vars.RenameBox, UDim2.new(0, 106, 0, 30), UDim2.new(1, -116, 1, -40), "SAVE NAME", "Accent", 11)
+vars.RenameSave.ZIndex = 77
+
+vars.RenameTarget = nil
+vars.wire(vars.RenameCancel.Activated, function()
+	vars.RenameOverlay.Visible = false
+	vars.RenameTarget = nil
+end)
+
+-- Diagnostics / Error Popup Overlay
+vars.ErrorPopup = Instance.new("Frame")
+vars.ErrorPopup.Name = "TR_WearDiagnostics"
+vars.ErrorPopup.Size = UDim2.new(0, 380, 0, 168)
+vars.ErrorPopup.Position = UDim2.new(0.5, -190, 0.5, -84)
+vars.ErrorPopup.BorderSizePixel = 0
+vars.ErrorPopup.Visible = false
+vars.ErrorPopup.ZIndex = 80
+vars.ErrorPopup.Parent = MainFrame
+RegisterThemeObject(vars.ErrorPopup, "BackgroundColor3", "MainBg")
+vars.addCorner(vars.ErrorPopup, 10)
+local errStroke = vars.addStroke(vars.ErrorPopup, Color3.fromRGB(231, 76, 60), 1.5, 0.1)
+
+vars.ErrorTitle = MakeLabel(vars.ErrorPopup, UDim2.new(1, -44, 0, 28), UDim2.new(0, 12, 0, 6), "Avatar Notice / Diagnostics", Enum.Font.GothamBold, 12, "Accent", Enum.TextXAlignment.Left)
+vars.ErrorTitle.ZIndex = 81
+
+vars.ErrorCloseBtn = MakeButton(vars.ErrorPopup, UDim2.new(0, 26, 0, 24), UDim2.new(1, -32, 0, 8), "X", "PanelBg", 12)
+vars.ErrorCloseBtn.ZIndex = 82
+
+vars.ErrorScroll = Instance.new("ScrollingFrame")
+vars.ErrorScroll.Name = "ErrorScroll"
+vars.ErrorScroll.Size = UDim2.new(1, -24, 1, -44)
+vars.ErrorScroll.Position = UDim2.new(0, 12, 0, 38)
+vars.ErrorScroll.BackgroundTransparency = 1
+vars.ErrorScroll.BorderSizePixel = 0
+vars.ErrorScroll.ScrollBarThickness = 3
+vars.ErrorScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+vars.ErrorScroll.ZIndex = 81
+vars.ErrorScroll.Parent = vars.ErrorPopup
+RegisterThemeObject(vars.ErrorScroll, "ScrollBarImageColor3", "Accent")
+
+vars.ErrorText = Instance.new("TextLabel")
+vars.ErrorText.Name = "FullError"
+vars.ErrorText.Size = UDim2.new(1, -6, 0, 0)
+vars.ErrorText.AutomaticSize = Enum.AutomaticSize.Y
+vars.ErrorText.BackgroundTransparency = 1
+vars.ErrorText.Text = ""
+vars.ErrorText.TextSize = 11
+vars.ErrorText.Font = Enum.Font.Code
+vars.ErrorText.TextWrapped = true
+vars.ErrorText.TextXAlignment = Enum.TextXAlignment.Left
+vars.ErrorText.TextYAlignment = Enum.TextYAlignment.Top
+vars.ErrorText.ZIndex = 82
+vars.ErrorText.Parent = vars.ErrorScroll
+RegisterThemeObject(vars.ErrorText, "TextColor3", "TextPrimary")
+
+vars.wire(vars.ErrorCloseBtn.Activated, function() vars.ErrorPopup.Visible = false end)
+
+vars.clearDiagnostics = function()
+	vars.ErrorPopup.Visible = false
+	vars.ErrorText.Text = ""
+	vars.ErrorScroll.CanvasPosition = Vector2.zero
+end
+
+vars.showDiagnostics = function(summary, detail)
+	vars.Status.Text = tostring(summary or "Wear failed.")
+	vars.ErrorText.Text = tostring(detail or "No additional error text was returned.")
+	vars.ErrorPopup.Visible = true
+	task.defer(function()
+		if vars.ErrorScroll.Parent then vars.ErrorScroll.CanvasPosition = Vector2.zero end
+	end)
+end
+
+vars.SEATED_TRY_ON_BLOCK_MESSAGE = "Please wear avatars while standing still. Cannot wear avatars while sitting at the moment because of the avatar placement glitch similar to wearing while flying and wearing while doing a forward/backward swim. The bug/glitch is under maintenance and is fixing right away. Thank you for understanding.\n\nKnightingale."
+
+vars.isCharacterCurrentlySitting = function(character, humanoid)	humanoid = humanoid or (character and character:FindFirstChildOfClass("Humanoid"))
+	if not humanoid then return false end
+
+	local state = humanoid:GetState()
+	return humanoid.Sit
+		or humanoid.SeatPart ~= nil
+		or state == Enum.HumanoidStateType.Seated
+end
+
+vars.showSeatedTryOnBlocked = function()	vars.showDiagnostics("[!] Cannot wear avatars while sitting.", vars.SEATED_TRY_ON_BLOCK_MESSAGE)
+end
+
+vars.accessoryPropertyNames = {
+	"HatAccessory", "HairAccessory", "FaceAccessory", "NeckAccessory",
+	"ShouldersAccessory", "FrontAccessory", "BackAccessory", "WaistAccessory",
+	"JacketAccessory", "ShortsAccessory", "SweaterAccessory", "TShirtAccessory",
+	"PantsAccessory", "ShoesAccessory", "DressSkirtAccessory", "EyelashAccessory",
+	"EyebrowAccessory", "MoodAccessory"
+}
+
+vars.rgbForSave = function(color)
+	if not color then return {r = 255, g = 255, b = 255} end
+	return {
+		r = math.floor(color.R * 255 + 0.5),
+		g = math.floor(color.G * 255 + 0.5),
+		b = math.floor(color.B * 255 + 0.5)
+	}
+end
+
+vars.vectorForSave = function(value, fallback)
+	fallback = fallback or Vector3.zero
+	if typeof(value) == "Vector3" then
+		return {X = value.X, Y = value.Y, Z = value.Z}
+	end
+	if type(value) == "table" then
+		return {
+			X = tonumber(value.X or value.x) or fallback.X,
+			Y = tonumber(value.Y or value.y) or fallback.Y,
+			Z = tonumber(value.Z or value.z) or fallback.Z
+		}
+	end
+	return {X = fallback.X, Y = fallback.Y, Z = fallback.Z}
+end
+
+vars.getSavedHeadShape = function(desc)
+	local shape = ""
+	pcall(function()
+		for _, child in ipairs(desc:GetChildren()) do
+			if child:IsA("BodyPartDescription") and child.BodyPart == Enum.BodyPart.Head then
+				local value = tostring(child.HeadShape or "")
+				if value ~= "" then shape = value break end
+			end
+		end
+	end)
+	return shape
+end
+
+vars.getSavedMakeups = function(desc)
+	local result, seen = {}, {}
+	local function addMakeup(makeup)
+		if not makeup then return end
+		local assetId = tonumber(makeup.AssetId)
+		if not assetId or assetId <= 0 then return end
+		local makeupType = makeup.MakeupType
+		local typeName = makeupType and makeupType.Name or tostring(makeupType or "")
+		local order = tonumber(makeup.Order) or 1
+		local key = tostring(assetId) .. "|" .. typeName .. "|" .. tostring(order)
+		if seen[key] then return end
+		seen[key] = true
+		result[#result + 1] = {Order = order, AssetId = assetId, MakeupType = typeName}
+	end
+	pcall(function()
+		for _, child in ipairs(desc:GetChildren()) do
+			if child:IsA("MakeupDescription") then addMakeup(child) end
+		end
+	end)
+	pcall(function()
+		if #result == 0 and type(desc.GetMakeups) == "function" then
+			for _, makeup in ipairs(desc:GetMakeups()) do addMakeup(makeup) end
+		end
+	end)
+	return result
+end
+
+vars.getSavedLayeredAccessories = function(desc)
+	local result = {}
+	pcall(function()
+		if type(desc.GetAccessories) ~= "function" then return end
+		for _, accessory in ipairs(desc:GetAccessories(true)) do
+			if accessory.IsLayered then
+				result[#result + 1] = {
+					Rotation = vars.vectorForSave(accessory.Rotation),
+					AssetId = accessory.AssetId,
+					AccessoryType = accessory.AccessoryType and accessory.AccessoryType.Name or "Unknown",
+					Position = vars.vectorForSave(accessory.Position),
+					Order = accessory.Order or 1,
+					IsLayered = true,
+					Puffiness = accessory.Puffiness or 0.5,
+					Scale = vars.vectorForSave(accessory.Scale, Vector3.one)
+				}
+			end
+		end
+	end)
+	return result
+end
+
+vars.getSavedAccessoryRefinements = function(desc, character)
+	local refinements = {}
+	pcall(function()
+		if character then
+			local raw = character:GetAttribute("AccessoryRefinements") or desc:GetAttribute("AccessoryRefinements")
+			if raw then
+				local decoded = type(raw) == "string" and vars.HttpService:JSONDecode(raw) or raw
+				if type(decoded) == "table" then
+					for id, value in pairs(decoded) do refinements[tostring(id)] = value end
+				end
+			end
+		end
+	end)
+	pcall(function()
+		if type(desc.GetAccessories) ~= "function" then return end
+		for _, accessory in ipairs(desc:GetAccessories(true)) do
+			local id = tostring(accessory.AssetId or 0)
+			if id ~= "0" then
+				local pos = accessory.Position
+				local scale = accessory.Scale
+				local rot = accessory.Rotation
+				local hasPos = pos and pos.Magnitude > 0.0001
+				local hasScale = scale and (math.abs(scale.X - 1) > 0.0001 or math.abs(scale.Y - 1) > 0.0001 or math.abs(scale.Z - 1) > 0.0001)
+				local hasRot = rot and rot.Magnitude > 0.0001
+				if hasPos or hasScale or hasRot then
+					local ref = type(refinements[id]) == "table" and refinements[id] or {}
+					if hasPos then ref.Position = vars.vectorForSave(pos) end
+					if hasScale then ref.Scale = vars.vectorForSave(scale, Vector3.one) end
+					if hasRot then ref.Rotation = vars.vectorForSave(rot) end
+					refinements[id] = ref
+				end
+			end
+		end
+	end)
+	return refinements
+end
+
+vars.createCopiedProperties = function(desc, character)
+	if not desc then return nil end
+	local categories = {
+		"HatAccessory", "HairAccessory", "FaceAccessory", "NeckAccessory", "ShouldersAccessory",
+		"FrontAccessory", "BackAccessory", "WaistAccessory", "JacketAccessory", "ShortsAccessory",
+		"SweaterAccessory", "TShirtAccessory", "PantsAccessory", "ShoesAccessory", "DressSkirtAccessory",
+		"EyelashAccessory", "EyebrowAccessory", "MoodAccessory"
+	}
+	local accLists = {}
+	for _, category in ipairs(categories) do accLists[category] = {} end
+	local function add(category, id)
+		if not accLists[category] then return end
+		id = tostring(id or "")
+		if id ~= "" and id ~= "0" and not table.find(accLists[category], id) then table.insert(accLists[category], id) end
+	end
+	for _, category in ipairs(categories) do
+		pcall(function()
+			for id in tostring(desc[category] or ""):gmatch("%d+") do add(category, id) end
+		end)
+	end
+	pcall(function()
+		if type(desc.GetAccessories) == "function" then
+			local typeToCategory = {
+				[Enum.AccessoryType.Hat] = "HatAccessory", [Enum.AccessoryType.Hair] = "HairAccessory",
+				[Enum.AccessoryType.Face] = "FaceAccessory", [Enum.AccessoryType.Neck] = "NeckAccessory",
+				[Enum.AccessoryType.Shoulder] = "ShouldersAccessory", [Enum.AccessoryType.Front] = "FrontAccessory",
+				[Enum.AccessoryType.Back] = "BackAccessory", [Enum.AccessoryType.Waist] = "WaistAccessory",
+				[Enum.AccessoryType.TShirt] = "TShirtAccessory", [Enum.AccessoryType.Shirt] = "ShirtAccessory",
+				[Enum.AccessoryType.Pants] = "PantsAccessory", [Enum.AccessoryType.Jacket] = "JacketAccessory",
+				[Enum.AccessoryType.Sweater] = "SweaterAccessory", [Enum.AccessoryType.Shorts] = "ShortsAccessory",
+				[Enum.AccessoryType.LeftShoe] = "ShoesAccessory", [Enum.AccessoryType.RightShoe] = "ShoesAccessory",
+				[Enum.AccessoryType.DressSkirt] = "DressSkirtAccessory", [Enum.AccessoryType.Eyebrow] = "EyebrowAccessory",
+				[Enum.AccessoryType.Eyelash] = "EyelashAccessory"
+			}
+			for _, accessory in ipairs(desc:GetAccessories(true)) do
+				if not accessory.IsLayered then
+					local category = typeToCategory[accessory.AccessoryType]
+					if category then add(category, accessory.AssetId) end
+				end
+			end
+		end
+	end)
+	local props = {
+		WalkAnimation = desc.WalkAnimation or 0, MoodAnimation = desc.MoodAnimation or 0,
+		ClimbAnimation = desc.ClimbAnimation or 0, FallAnimation = desc.FallAnimation or 0,
+		RunAnimation = desc.RunAnimation or 0, SwimAnimation = desc.SwimAnimation or 0,
+		IdleAnimation = desc.IdleAnimation or 0, JumpAnimation = desc.JumpAnimation or 0,
+		Face = desc.Face or 0, Shirt = desc.Shirt or 0, Pants = desc.Pants or 0, GraphicTShirt = desc.GraphicTShirt or 0,
+		RightArmColor = vars.rgbForSave(desc.RightArmColor), TorsoColor = vars.rgbForSave(desc.TorsoColor),
+		RightLegColor = vars.rgbForSave(desc.RightLegColor), LeftLegColor = vars.rgbForSave(desc.LeftLegColor),
+		LeftArmColor = vars.rgbForSave(desc.LeftArmColor), HeadColor = vars.rgbForSave(desc.HeadColor),
+		Head = desc.Head or 0, Torso = desc.Torso or 0, LeftArm = desc.LeftArm or 0, RightArm = desc.RightArm or 0,
+		LeftLeg = desc.LeftLeg or 0, RightLeg = desc.RightLeg or 0, HeadShape = vars.getSavedHeadShape(desc),
+		MakeupItems = vars.getSavedMakeups(desc), ProportionScale = desc.ProportionScale or 0, DepthScale = desc.DepthScale or 1,
+		HeightScale = desc.HeightScale or 1, WidthScale = desc.WidthScale or 1, BodyTypeScale = desc.BodyTypeScale or 0,
+		HeadScale = desc.HeadScale or 1, LayeredAccessories = vars.getSavedLayeredAccessories(desc),
+		AccessoryRefinements = vars.getSavedAccessoryRefinements(desc, character), StaticFacialAnimation = false
+	}
+	for _, category in ipairs(categories) do props[category] = table.concat(accLists[category], ",") end
+	pcall(function() props.StaticFacialAnimation = desc.StaticFacialAnimation == true end)
+	pcall(function()
+		local all = {}
+		for _, accessory in ipairs(desc:GetAccessories(true)) do
+			local entry = {AssetId = accessory.AssetId, AccessoryType = accessory.AccessoryType and accessory.AccessoryType.Name or "Unknown", IsLayered = accessory.IsLayered == true}
+			if accessory.Order ~= nil then entry.Order = accessory.Order end
+			if accessory.Puffiness ~= nil then entry.Puffiness = accessory.Puffiness end
+			all[#all + 1] = entry
+		end
+		props.AllAccessories = all
+	end)
+	pcall(function() if type(desc.GetEmotes) == "function" then props.Emotes = desc:GetEmotes() end end)
+	pcall(function() if type(desc.GetEquippedEmotes) == "function" then props.EquippedEmotes = desc:GetEquippedEmotes() end end)
+	return props
+end
+
+vars.getAvatarSignature = function(properties, rigType)
+	local ok, result = pcall(function()
+		return vars.HttpService:JSONEncode({Properties = properties, RigType = tostring(rigType)})
+	end)
+	return ok and result or tostring(properties)
+end
+
+
+--==============================================================================
+-- BULLETPROOF MULTI-SOURCE AVATAR PERSISTENCE ENGINE (Fixes 5+ Avatar Disappear Bug)
+--==============================================================================
+vars.ensureAvatarFolder = function()
+	if type(makefolder) ~= "function" or type(isfolder) ~= "function" then return false end
+	pcall(function()
+		if not isfolder(vars.AVATARS_FOLDER) then makefolder(vars.AVATARS_FOLDER) end
+	end)
+	pcall(function()
+		if not isfolder(vars.FOLDER_NAME) then makefolder(vars.FOLDER_NAME) end
+	end)
+	return true
+end
+
+vars.getAvatarFilePath = function(index)
+	return vars.AVATARS_FOLDER .. "/" .. vars.AVATAR_FILE_PREFIX .. tostring(index) .. vars.AVATAR_FILE_EXTENSION
+end
+
+vars.sanitizeAvatarFileName = function(name)
+	name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	name = name:gsub("[<>:\"/\\|%?%*]", "-")
+	name = name:gsub("[%. ]+$", "")
+	if name == "" then return nil end
+	if name:lower():sub(-4) == ".ava" then name = name:sub(1, -5) end
+	if name == "" then return nil end
+	return name .. ".ava"
+end
+
+vars.getNextAvatarFilePath = function(displayName)
+	vars.ensureAvatarFolder()
+	local sanitized = vars.sanitizeAvatarFileName(displayName or "Avatar") or "Avatar.ava"
+	local baseName = sanitized:sub(1, -5)
+	if baseName == "" then baseName = "Avatar" end
+
+	-- Track filenames already used in memory so even if executor `isfile` is broken, we NEVER overwrite an existing entry!
+	local usedNames = {}
+	for _, existing in ipairs(vars.ui.savedAvatars or {}) do
+		if existing.FileName then
+			usedNames[string.lower(tostring(existing.FileName))] = true
+		end
+		if existing.FilePath then
+			local fn = tostring(existing.FilePath):match("([^/\\]+)$")
+			if fn then usedNames[string.lower(fn)] = true end
+		end
+	end
+
+	for index = 1, 10000 do
+		local candidateName = (index == 1) and baseName or (baseName .. "_" .. tostring(index))
+		local fileName = candidateName .. vars.AVATAR_FILE_EXTENSION
+		local path = vars.AVATARS_FOLDER .. "/" .. fileName
+		local existsOnDisk = false
+		if type(isfile) == "function" then
+			pcall(function() existsOnDisk = isfile(path) end)
+		end
+		if not existsOnDisk and not usedNames[string.lower(fileName)] then
+			return path
+		end
+	end
+	return vars.AVATARS_FOLDER .. "/Avatar_" .. tostring(math.floor(os.clock() * 1000)) .. ".ava"
+end
+
+vars.serializeAvatarEntryForMaster = function(entry)
+	if type(entry) ~= "table" or type(entry.Properties) ~= "table" then return nil end
+	local sig = entry.Signature or vars.getAvatarSignature(entry.Properties, entry.RigType or "R6")
+	entry.Signature = sig
+	return {
+		Name = entry.Name or entry.Username or "Avatar",
+		Username = entry.Username or entry.Name or "Avatar",
+		UserId = entry.UserId or 1,
+		DisplayName = entry.DisplayName or entry.Name or "Avatar",
+		Properties = entry.Properties,
+		RigType = entry.RigType or "R15",
+		Signature = sig,
+		FileName = entry.FileName,
+		FilePath = entry.FilePath,
+		Source = entry.Source or "ava",
+		Order = entry.Order or 1
+	}
+end
+
+vars.syncAllSavedAvatarsToDisk = function()
+	if type(writefile) ~= "function" then return false end
+	vars.ensureAvatarFolder()
+	local masterList = {}
+	local indexNames = {}
+	for idx, entry in ipairs(vars.ui.savedAvatars or {}) do
+		local clean = vars.serializeAvatarEntryForMaster(entry)
+		if clean then
+			clean.Order = idx
+			masterList[#masterList + 1] = clean
+			if clean.FileName then
+				indexNames[#indexNames + 1] = clean.FileName
+			end
+		end
+	end
+	local okEnc, encodedMaster = pcall(function()
+		return vars.HttpService:JSONEncode(masterList)
+	end)
+	if okEnc and encodedMaster then
+		-- 1. Save root master JSON (works even if subfolders/listfiles fail on executor)
+		pcall(function() writefile(vars.MASTER_FILE_PATH, encodedMaster) end)
+		-- 2. Save v2 SavedAvatars.json
+		pcall(function() writefile(vars.FILE_PATH, encodedMaster) end)
+		-- 3. Save Avatars/AvatarIndex.json manifest
+		pcall(function()
+			writefile(vars.AVATAR_INDEX_PATH, vars.HttpService:JSONEncode({
+				Files = indexNames,
+				Avatars = masterList
+			}))
+		end)
+	end
+	genv._TR_SavedAvatarsMemory = vars.ui.savedAvatars
+	return true
+end
+
+vars.writeAvatarFile = function(data)
+	vars.ensureAvatarFolder()
+	local path = data.FilePath or vars.getNextAvatarFilePath(data.DisplayName or data.Name)
+	data.FilePath = path
+	data.FileName = tostring(path):match("([^/\\]+)$") or path
+	data.Source = "ava"
+	if not data.Signature and data.Properties then
+		data.Signature = vars.getAvatarSignature(data.Properties, data.RigType or "R6")
+	end
+	if type(writefile) == "function" then
+		pcall(function() writefile(path, vars.HttpService:JSONEncode(data)) end)
+	end
+	return true, path
+end
+
+vars.readAvatarFiles = function()
+	local result = {}
+	if type(readfile) ~= "function" then return result end
+	vars.ensureAvatarFolder()
+	local paths = {}
+	local seenPath = {}
+	local function addCandidatePath(p)
+		if not p or p == "" then return end
+		local norm = tostring(p):gsub("\\", "/")
+		local low = string.lower(norm)
+		if not low:match("%.ava$") then return end
+		if not seenPath[low] then
+			seenPath[low] = true
+			paths[#paths + 1] = p
+		end
+	end
+
+	-- 1. Check AvatarIndex.json manifest for known .ava filenames
+	if type(isfile) == "function" then
+		local okIdx, hasIdx = pcall(isfile, vars.AVATAR_INDEX_PATH)
+		if okIdx and hasIdx then
+			local okRead, decoded = pcall(function()
+				return vars.HttpService:JSONDecode(readfile(vars.AVATAR_INDEX_PATH))
+			end)
+			if okRead and type(decoded) == "table" and type(decoded.Files) == "table" then
+				for _, fn in ipairs(decoded.Files) do
+					local p = vars.AVATARS_FOLDER .. "/" .. tostring(fn)
+					local okF, ex = pcall(isfile, p)
+					if okF and ex then addCandidatePath(p) end
+				end
+			end
+		end
+	end
+
+	-- 2. Check listfiles("Avatars")
+	if type(listfiles) == "function" then
+		pcall(function()
+			for _, path in ipairs(listfiles(vars.AVATARS_FOLDER)) do
+				if tostring(path):lower():match("%.ava$") then
+					addCandidatePath(path)
+				end
+			end
+		end)
+	end
+
+	-- 3. Check sequential Avatar1.ava .. Avatar200.ava
+	if type(isfile) == "function" then
+		for index = 1, 200 do
+			local path = vars.getAvatarFilePath(index)
+			local exists = false
+			pcall(function() exists = isfile(path) end)
+			if exists then addCandidatePath(path) end
+		end
+	end
+
+	for _, path in ipairs(paths) do
+		local ok, data = pcall(function() return vars.HttpService:JSONDecode(readfile(path)) end)
+		if ok and type(data) == "table" and type(data.Properties) == "table" then
+			data.FilePath = data.FilePath or path
+			data.FileName = data.FileName or tostring(path):match("([^/\\]+)$")
+			data.Source = "ava"
+			if not data.Signature then
+				data.Signature = vars.getAvatarSignature(data.Properties, data.RigType or "R6")
+			end
+			result[#result + 1] = data
+		end
+	end
+	return result
+end
+
+vars.renameAvatarFile = function(data, newName)
+	if not data then return false, "No avatar selected." end
+	local displayName = tostring(newName or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if displayName == "" then return false, "The new name cannot be empty." end
+	data.DisplayName = displayName
+
+	local fileName = vars.sanitizeAvatarFileName(displayName)
+	if fileName and type(writefile) == "function" then
+		vars.ensureAvatarFolder()
+		local oldPath = data.FilePath or (data.FileName and (vars.AVATARS_FOLDER .. "/" .. tostring(data.FileName)))
+		local newPath = vars.AVATARS_FOLDER .. "/" .. fileName
+		data.FilePath = newPath
+		data.FileName = fileName
+		data.Source = "ava"
+		pcall(function()
+			writefile(newPath, vars.HttpService:JSONEncode(data))
+		end)
+		if oldPath and oldPath:lower() ~= newPath:lower() and type(delfile) == "function" then
+			pcall(function() delfile(oldPath) end)
+		end
+	end
+	vars.syncAllSavedAvatarsToDisk()
+	return true, data.FilePath or displayName
+end
+
+vars.wire(vars.RenameSave.Activated, function()
+	local target = vars.RenameTarget
+	local newName = tostring(vars.RenameInput.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if not target or newName == "" then return end
+	local ok, result = vars.renameAvatarFile(target, newName)
+	if not ok then
+		vars.showDiagnostics("Failed to rename avatar.", tostring(result))
+		return
+	end
+	vars.RenameOverlay.Visible = false
+	vars.RenameTarget = nil
+	vars.populateAvatarList()
+	vars.Status.Text = "[OK] Renamed avatar to: " .. newName
+end)
+
+vars.buildSavedAvatarData = function(targetPlayer)
+	if not targetPlayer or not targetPlayer.Character then return nil, "Player character is unavailable." end
+	local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return nil, "Humanoid is unavailable." end
+	local ok, desc = pcall(function() return humanoid:GetAppliedDescription() end)
+	if not ok or not desc then return nil, "Could not read the currently applied avatar." end
+	local properties = vars.createCopiedProperties(desc, targetPlayer.Character)
+	if type(properties) ~= "table" then return nil, "Could not serialize the avatar." end
+	local rigType = humanoid.RigType
+	local data = {
+		Name = targetPlayer.Name,
+		Username = targetPlayer.Name,
+		UserId = targetPlayer.UserId,
+		DisplayName = targetPlayer.DisplayName,
+		Properties = properties,
+		RigType = (rigType == Enum.HumanoidRigType.R6) and "R6" or "R15",
+		Signature = vars.getAvatarSignature(properties, rigType),
+		Order = 1
+	}
+	return data
+end
+
+vars.notifyCatalogAvatarCreator = function()
+	if not vars.IS_CATALOG_AVATAR_CREATOR then return end
+	local payload = {
+		Title = "T.R Avatar Changer",
+		Text = "Catalog Avatar Creator detected: avatars are FE and saved to Saved Outfits!",
+		Duration = 7
+	}
+	task.spawn(function()
+		for _ = 1, 6 do
+			if not vars.scriptAlive then return end
+			local ok = pcall(function()
+				vars.StarterGui:SetCore("SendNotification", payload)
+			end)
+			if ok then return end
+			task.wait(0.5)
+		end
+	end)
+end
+
+vars.getCatalogWearRemotes = function()
+	if not vars.IS_CATALOG_AVATAR_CREATOR then return nil, nil end
+	if not vars.CATALOG_EVENTS or not vars.CATALOG_EVENTS.Parent then
+		vars.CATALOG_EVENTS = vars.ReplicatedStorage:FindFirstChild("Events")
+	end
+	vars.CATALOG_GUI_REMOTE = vars.CATALOG_EVENTS and vars.CATALOG_EVENTS:FindFirstChild("CatalogGuiRemote")
+	vars.SAVED_OUTFITS_REMOTE = vars.CATALOG_EVENTS and vars.CATALOG_EVENTS:FindFirstChild("SavedOutfitsRemote")
+	return vars.CATALOG_GUI_REMOTE, vars.SAVED_OUTFITS_REMOTE
+end
+
+vars.wearAvatarThroughCatalog = function(data)
+	if not vars.IS_CATALOG_AVATAR_CREATOR then return false, "Not in Catalog Avatar Creator." end
+	if not data or type(data.Properties) ~= "table" then return false, "Avatar has no saved properties." end
+	local catalogGuiRemote = vars.getCatalogWearRemotes()
+	if not catalogGuiRemote then return false, "CatalogGuiRemote was not found." end
+
+	local rigTypeEnum = (tostring(data.RigType):find("R6") and Enum.HumanoidRigType.R6) or Enum.HumanoidRigType.R15
+	local cleanProps = {}
+	for key, value in pairs(data.Properties) do
+		if key ~= "Emotes" and key ~= "EquippedEmotes" and key ~= "AllAccessories" then
+			cleanProps[key] = value
+		end
+	end
+
+	local payload = {
+		Properties = cleanProps,
+		Action = "CreateAndWearHumanoidDescription",
+		RigType = rigTypeEnum
+	}
+	local ok, result = pcall(function()
+		return catalogGuiRemote:InvokeServer(payload)
+	end)
+	if not ok then return false, tostring(result) end
+	return true, result
+end
+
+vars.saveAvatarToCatalogOutfit = function(data)
+	if not vars.IS_CATALOG_AVATAR_CREATOR then return false, "Not in Catalog Avatar Creator." end
+	if not data or not data.Properties then return false, "Avatar has no saved properties." end
+	local _, savedOutfitsRemote = vars.getCatalogWearRemotes()
+	if not savedOutfitsRemote then return false, "SavedOutfitsRemote was not found." end
+
+	local okWear, wearErr = vars.wearAvatarThroughCatalog(data)
+	if not okWear then return false, wearErr end
+
+	local username = tostring(data.Name or data.Username or "Unknown")
+	local outfitName = "Avatar Saver: " .. username
+	local ok, result = pcall(function()
+		return savedOutfitsRemote:InvokeServer({
+			OutfitName = outfitName,
+			Configs = {},
+			Action = "CreateNewOutfit"
+		})
+	end)
+	if not ok then return false, tostring(result) end
+	return true, outfitName, result
+end
+
+vars.notifyCatalogAvatarCreator()
+
+vars.buildSavedAvatarDataFromUsername = function(username)
+	username = tostring(username or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	username = username:gsub("^@", "")
+	if username == "" then return nil, "Enter a Roblox username first." end
+
+	local okId, userId = pcall(function()
+		return vars.Players:GetUserIdFromNameAsync(username)
+	end)
+	if not okId or not userId then
+		return nil, "Could not find Roblox user @" .. username .. "."
+	end
+
+	local desc
+	local descOk, descResult = pcall(function()
+		if type(vars.Players.GetHumanoidDescriptionFromUserIdAsync) == "function" then
+			return vars.Players:GetHumanoidDescriptionFromUserIdAsync(userId)
+		end
+		return vars.Players:GetHumanoidDescriptionFromUserId(userId)
+	end)
+	if not descOk or not descResult then
+		return nil, "Could not load the profile avatar for @" .. username .. "."
+	end
+	desc = descResult
+
+	local properties = vars.createCopiedProperties(desc, nil)
+	if type(properties) ~= "table" then
+		return nil, "Could not serialize the profile avatar for @" .. username .. "."
+	end
+
+	local localHumanoid = vars.LocalPlayer.Character and vars.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	local rigType = localHumanoid and localHumanoid.RigType or Enum.HumanoidRigType.R6
+	local displayName = username
+	pcall(function()
+		local fetchedPlayer = vars.Players:GetPlayerByUserId(userId)
+		if fetchedPlayer then displayName = fetchedPlayer.DisplayName end
+	end)
+
+	local data = {
+		Name = username,
+		Username = username,
+		UserId = userId,
+		DisplayName = displayName,
+		Properties = properties,
+		RigType = (rigType == Enum.HumanoidRigType.R6) and "R6" or "R15",
+		Signature = vars.getAvatarSignature(properties, rigType),
+		Order = 1
+	}
+	return data
+end
+
+vars.findExactSavedAvatarMatch = function(data)
+	if type(data) ~= "table" then return nil end
+	local targetSignature = data.Signature
+	if not targetSignature and data.Properties then
+		targetSignature = vars.getAvatarSignature(data.Properties, data.RigType or "R6")
+	end
+	for _, existing in ipairs(vars.ui.savedAvatars or {}) do
+		local existingSignature = existing.Signature
+		if not existingSignature and existing.Properties then
+			existingSignature = vars.getAvatarSignature(existing.Properties, existing.RigType or "R6")
+			existing.Signature = existingSignature
+		end
+		if targetSignature and existingSignature and targetSignature == existingSignature then
+			return existing
+		end
+	end
+	return nil
+end
+
+vars.saveAndWearUsernameAvatar = function(rawUsername)
+	local username = tostring(rawUsername or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	username = username:gsub("^@", "")
+	if username == "" then
+		return false, "Enter a Roblox username first."
+	end
+
+	if vars.ui.selectingPlayer then vars.stopPlayerSelection() end
+	if vars.tryOnActive or vars.localTryOnModel or vars.localTryOnBuilding or vars.placeholderR6Active then
+		vars.tryOnActive = false
+		vars.stopLocalTryOn(false)
+	end
+	vars.ui.selectedAvatar = nil
+	vars.updateRowVisuals(nil)
+
+	local data, buildErr = vars.buildSavedAvatarDataFromUsername(username)
+	if not data then return false, buildErr end
+
+	local existingMatch = vars.findExactSavedAvatarMatch(data)
+	if existingMatch then
+		data = existingMatch
+		vars.ui.selectedAvatar = data
+		vars.populateAvatarList()
+		vars.updateRowVisuals(data)
+
+		if vars.IS_CATALOG_AVATAR_CREATOR then
+			local wearOk, wearErr = vars.wearAvatarThroughCatalog(data)
+			if not wearOk then
+				vars.showDiagnostics("Existing avatar could not be equipped.", tostring(wearErr))
+				return false, wearErr
+			end
+			vars.Status.Text = "[FE] Already saved - equipped existing avatar: " .. tostring(data.Name or data.Username or username)
+		else
+			vars.Status.Text = "[OK] Already saved - equipped existing avatar: " .. tostring(data.Name or data.Username or username)
+			task.defer(function()
+				if vars.scriptAlive and vars.ui.selectedAvatar == data then
+					vars.tryOnSelectedAvatarLocally()
+				end
+			end)
+		end
+		vars.clearDiagnostics()
+		return true, data
+	end
+
+	local okWrite, pathOrErr = vars.writeAvatarFile(data)
+	if not okWrite then return false, pathOrErr end
+	data.FilePath = pathOrErr
+	data.FileName = tostring(pathOrErr):match("([^/\\]+)$") or pathOrErr
+	data.Source = "ava"
+	if data.Signature then vars.ui.deletedSignatures[data.Signature] = nil end
+	vars.ui.savedAvatars = vars.ui.savedAvatars or {}
+	table.insert(vars.ui.savedAvatars, 1, data)
+	vars.syncAllSavedAvatarsToDisk()
+
+	vars.ui.selectedAvatar = data
+	vars.populateAvatarList()
+	vars.updateRowVisuals(data)
+
+	if vars.IS_CATALOG_AVATAR_CREATOR then
+		local catalogOk, catalogName, catalogErr = vars.saveAvatarToCatalogOutfit(data)
+		if not catalogOk then
+			vars.showDiagnostics("CAC avatar save/wear failed.", tostring(catalogErr))
+			return false, catalogErr
+		end
+		vars.Status.Text = "[FE] Wore @" .. username .. " and saved to Saved Outfits as " .. tostring(catalogName)
+		vars.clearDiagnostics()
+		return true, data
+	end
+
+	vars.Status.Text = "[...] Wearing profile avatar: @" .. username
+	vars.clearDiagnostics()
+	task.defer(function()
+		if vars.scriptAlive and vars.ui.selectedAvatar == data then
+			vars.tryOnSelectedAvatarLocally()
+		end
+	end)
+	return true, data
+end
+
+vars.savePlayerAvatar = function(targetPlayer)
+	local data, err = vars.buildSavedAvatarData(targetPlayer)
+	if not data then return false, err end
+	if vars.findExactSavedAvatarMatch(data) then
+		return false, "You already have that exact avatar saved in your list."
+	end
+	local ok, pathOrErr = vars.writeAvatarFile(data)
+	if not ok then return false, pathOrErr end
+	data.FilePath = pathOrErr
+	data.FileName = tostring(pathOrErr):match("([^/\\]+)$") or pathOrErr
+	data.Source = "ava"
+	if data.Signature then vars.ui.deletedSignatures[data.Signature] = nil end
+	vars.ui.savedAvatars = vars.ui.savedAvatars or {}
+	table.insert(vars.ui.savedAvatars, 1, data)
+	vars.syncAllSavedAvatarsToDisk()
+	vars.ui.selectedAvatar = data
+	return true, data
+end
+
+vars.stopPlayerSelection = function()
+	vars.ui.selectingPlayer = false
+	vars.ui.selectionPlayer = nil
+	if vars.ui.selectionHighlight then
+		pcall(function() vars.ui.selectionHighlight:Destroy() end)
+		vars.ui.selectionHighlight = nil
+	end
+	if vars.SaveClickedButton and vars.SaveClickedButton.Parent then
+		local t = GetTheme()
+		vars.SaveClickedButton.Text = "SAVE OTHER"
+		vars.SaveClickedButton.BackgroundColor3 = t.PanelBg
+		vars.SaveClickedButton.TextColor3 = t.TextPrimary
+	end
+end
+
+vars.setPlayerSelectionHighlight = function(targetPlayer)
+	if not targetPlayer or targetPlayer == vars.LocalPlayer or not targetPlayer.Character then
+		if vars.ui.selectionHighlight then pcall(function() vars.ui.selectionHighlight:Destroy() end) vars.ui.selectionHighlight = nil end
+		vars.ui.selectionPlayer = nil
+		return
+	end
+	if vars.ui.selectionPlayer == targetPlayer and vars.ui.selectionHighlight and vars.ui.selectionHighlight.Parent then return end
+	if vars.ui.selectionHighlight then pcall(function() vars.ui.selectionHighlight:Destroy() end) end
+	local t = GetTheme()
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "AvatarSaveSelectionHighlight"
+	highlight.Adornee = targetPlayer.Character
+	highlight.FillColor = t.Accent
+	highlight.FillTransparency = 0.68
+	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+	highlight.OutlineTransparency = 0.05
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = vars.ScreenGui
+	vars.ui.selectionHighlight = highlight
+	vars.ui.selectionPlayer = targetPlayer
+end
+
+vars.getPlayerFromScreenPosition = function(position)
+	local camera = vars.Workspace.CurrentCamera
+	if not camera then return nil end
+	local ray = camera:ScreenPointToRay(position.X, position.Y)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {vars.LocalPlayer.Character}
+	local result = vars.Workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+	local target = result and result.Instance
+	if not target then return nil end
+	local model = target:FindFirstAncestorOfClass("Model")
+	if not model then return nil end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return nil end
+	local hitPlayer = vars.Players:GetPlayerFromCharacter(model)
+	return (hitPlayer and hitPlayer ~= vars.LocalPlayer) and hitPlayer or nil
+end
+
+vars.getPlayerFromMouseTarget = function()
+	local mouse = vars.LocalPlayer:GetMouse()
+	if not mouse then return nil end
+	return vars.getPlayerFromScreenPosition(Vector2.new(mouse.X, mouse.Y))
+end
+
+-- Non-destructive multi-source loader: merges in-memory avatars + Master JSON + AvatarIndex + .ava files + Legacy JSON
+vars.loadSavedAvatars = function()
+	local previousSignature = vars.ui.selectedAvatar and vars.ui.selectedAvatar.Signature
+	local previousName = vars.ui.selectedAvatar and vars.ui.selectedAvatar.Name
+
+	local merged = {}
+	local seenSignatures = {}
+
+	local function addAvatarIfUnique(data, defaultSource)
+		if type(data) ~= "table" or type(data.Properties) ~= "table" then return end
+		local sig = data.Signature
+		if not sig or sig == "" then
+			sig = vars.getAvatarSignature(data.Properties, data.RigType or "R6")
+			data.Signature = sig
+		end
+		if vars.ui.deletedSignatures and vars.ui.deletedSignatures[sig] then
+			return
+		end
+		if seenSignatures[sig] then
+			return
+		end
+		seenSignatures[sig] = true
+		data.Source = data.Source or defaultSource or "ava"
+		merged[#merged + 1] = data
+	end
+
+	-- 1. First preserve all currently loaded in-memory avatars (so saving a 6th+ avatar NEVER loses session avatars!)
+	for _, memEntry in ipairs(vars.ui.savedAvatars or {}) do
+		addAvatarIfUnique(memEntry, memEntry.Source or "ava")
+	end
+
+	-- 2. Read Master JSON (TR_SavedAvatars_Master.json)
+	if type(readfile) == "function" and type(isfile) == "function" then
+		local okM, hasMaster = pcall(isfile, vars.MASTER_FILE_PATH)
+		if okM and hasMaster then
+			local okDec, list = pcall(function() return vars.HttpService:JSONDecode(readfile(vars.MASTER_FILE_PATH)) end)
+			if okDec and type(list) == "table" then
+				for _, entry in ipairs(list) do
+					addAvatarIfUnique(entry, "ava")
+				end
+			end
+		end
+
+		-- 3. Read AvatarIndex.json embedded Avatars list
+		local okIdx, hasIdx = pcall(isfile, vars.AVATAR_INDEX_PATH)
+		if okIdx and hasIdx then
+			local okDec, idxData = pcall(function() return vars.HttpService:JSONDecode(readfile(vars.AVATAR_INDEX_PATH)) end)
+			if okDec and type(idxData) == "table" and type(idxData.Avatars) == "table" then
+				for _, entry in ipairs(idxData.Avatars) do
+					addAvatarIfUnique(entry, "ava")
+				end
+			end
+		end
+
+		-- 4. Read individual .ava files from Avatars/ folder
+		for _, fileData in ipairs(vars.readAvatarFiles()) do
+			addAvatarIfUnique(fileData, "ava")
+		end
+
+		-- 5. Read SavedAvatars.json (v2 / legacy path)
+		local okLeg, hasLeg = pcall(isfile, vars.FILE_PATH)
+		if okLeg and hasLeg then
+			local okDec, legList = pcall(function() return vars.HttpService:JSONDecode(readfile(vars.FILE_PATH)) end)
+			if okDec and type(legList) == "table" then
+				for _, entry in ipairs(legList) do
+					addAvatarIfUnique(entry, "ava")
+				end
+			end
+		end
+	end
+
+	table.clear(vars.ui.savedAvatars)
+	for idx, item in ipairs(merged) do
+		item.Order = idx
+		vars.ui.savedAvatars[#vars.ui.savedAvatars + 1] = item
+	end
+	genv._TR_SavedAvatarsMemory = vars.ui.savedAvatars
+	vars.syncAllSavedAvatarsToDisk()
+
+	if previousSignature or previousName then
+		vars.ui.selectedAvatar = nil
+		for _, data in ipairs(vars.ui.savedAvatars) do
+			if (previousSignature and data.Signature == previousSignature) or (not previousSignature and previousName and data.Name == previousName) then
+				vars.ui.selectedAvatar = data
+				break
+			end
+		end
+	end
+	vars.Status.Text = "[File] " .. tostring(#vars.ui.savedAvatars) .. " avatar(s) loaded."
+	vars.clearDiagnostics()
+	return true
+end
+
+vars.applyBodyColors = function(character, props)	if not character or type(props) ~= "table" then return end
+	local bodyColors = character:FindFirstChildOfClass("BodyColors") or Instance.new("BodyColors")
+	bodyColors.Parent = character
+	local colorProps = {
+		HeadColor = "HeadColor3", TorsoColor = "TorsoColor3", LeftArmColor = "LeftArmColor3",
+		RightArmColor = "RightArmColor3", LeftLegColor = "LeftLegColor3", RightLegColor = "RightLegColor3"
+	}
+	for propKey, colorKey in pairs(colorProps) do
+		local colorData = props[propKey]
+		if type(colorData) == "table" then
+			pcall(function()
+				bodyColors[colorKey] = Color3.fromRGB(
+					colorData.r or colorData.R or 255,
+					colorData.g or colorData.G or 255,
+					colorData.b or colorData.B or 255
+				)
+			end)
+		end
+	end
+end
+
+vars.applyHeadShapeToModel = function(model, props)	if not model or type(props) ~= "table" or props.HeadShape == nil then return end
+	local head = model:FindFirstChild("Head")
+	if not head then return end
+
+	local shapeStr = tostring(props.HeadShape):lower()
+	local specialMesh = head:FindFirstChildOfClass("SpecialMesh")
+
+	if specialMesh then
+		if shapeStr:find("block") then
+			specialMesh.MeshType = Enum.MeshType.Brick
+		elseif shapeStr:find("round") or shapeStr:find("standard") then
+			specialMesh.MeshType = Enum.MeshType.Head
+		end
+	end
+end
+
+vars.applyHeadShapeToDescription = function(description, props)	if not description or type(props) ~= "table" then return false end
+
+	local rawShape = props.HeadShape
+	local shape = tostring(rawShape or "")
+	shape = string.match(shape, "^%s*(.-)%s*$")
+	if shape == "" then return false end
+
+	local headAssetId = vars.parseAssetId(props.Head)
+		or vars.parseAssetId(props.HeadAssetId)
+		or vars.parseAssetId(props.HeadId)
+		or (type(props.BodyParts) == "table" and vars.parseAssetId(props.BodyParts.Head))
+		or (type(props.EquippedAssets) == "table" and vars.parseAssetId(props.EquippedAssets.Head))
+	if not headAssetId then return false end
+
+	local ok = pcall(function()
+		local headDescription = Instance.new("BodyPartDescription")
+		headDescription.BodyPart = Enum.BodyPart.Head
+		headDescription.AssetId = headAssetId
+		headDescription.HeadShape = shape
+		headDescription.Parent = description
+	end)
+
+	return ok
+end
+
+vars.reconstructHumanoidDescription = function(props)	local desc = Instance.new("HumanoidDescription")
+	if type(props) ~= "table" then return desc end
+
+	local headShape = tostring(props.HeadShape or "")
+	headShape = string.match(headShape, "^%s*(.-)%s*$")
+	local hasHeadShape = headShape ~= ""
+	local headShapeApplied = vars.applyHeadShapeToDescription(desc, props)
+
+	local directProps = {
+		"Face", "Shirt", "Pants", "GraphicTShirt", "Head", "Torso",
+		"LeftArm", "RightArm", "LeftLeg", "RightLeg", "WalkAnimation",
+		"MoodAnimation", "ClimbAnimation", "FallAnimation", "RunAnimation",
+		"SwimAnimation", "IdleAnimation", "JumpAnimation"
+	}
+	for _, prop in ipairs(directProps) do
+		local parsedId = vars.parseAssetId(props[prop])
+		if parsedId and not (prop == "Head" and hasHeadShape and headShapeApplied) then
+			pcall(function() desc[prop] = parsedId end)
+		end
+	end
+
+	if not headShapeApplied and (desc.Head == 0 or not desc.Head) then
+		local fallbackHeadId = vars.parseAssetId(props.HeadAssetId) or vars.parseAssetId(props.HeadId)
+			or (type(props.BodyParts) == "table" and vars.parseAssetId(props.BodyParts.Head))
+			or (type(props.EquippedAssets) == "table" and vars.parseAssetId(props.EquippedAssets.Head))
+		if fallbackHeadId then pcall(function() desc.Head = fallbackHeadId end) end
+	end
+
+	if props.StaticFacialAnimation ~= nil then
+		pcall(function() desc.StaticFacialAnimation = props.StaticFacialAnimation == true end)
+	end
+	if type(props.Emotes) == "table" then pcall(function() desc:SetEmotes(props.Emotes) end) end
+	if type(props.EquippedEmotes) == "table" then pcall(function() desc:SetEquippedEmotes(props.EquippedEmotes) end) end
+
+	if type(props.MakeupItems) == "table" then
+		for _, makeup in ipairs(props.MakeupItems) do
+			pcall(function()
+				local assetId = vars.parseAssetId(makeup.AssetId)
+				local makeupType = Enum.MakeupType[tostring(makeup.MakeupType)]
+				if assetId and makeupType then
+					local makeupDescription = Instance.new("MakeupDescription")
+					makeupDescription.AssetId = assetId
+					makeupDescription.Order = tonumber(makeup.Order) or 1
+					makeupDescription.MakeupType = makeupType
+					makeupDescription.Parent = desc
+				end
+			end)
+		end
+	end
+
+	local refinements = props.AccessoryRefinements or {}
+	if props.AllAccessories and type(props.AllAccessories) == "table" then
+		local accessories = {}
+		for _, entry in ipairs(props.AllAccessories) do
+			if type(entry) == "table" and entry.AssetId and entry.AccessoryType then
+				local parsedAssetId = vars.parseAssetId(entry.AssetId)
+				local accessoryType = Enum.AccessoryType[entry.AccessoryType]
+				if parsedAssetId and accessoryType then
+					local accessory = { AssetId = parsedAssetId, AccessoryType = accessoryType }
+					local refData = refinements[tostring(parsedAssetId)] or entry
+					if refData then
+						if refData.Position then accessory.Position = vars.vector3FromSaved(refData.Position, Vector3.zero) end
+						if refData.Rotation then accessory.Rotation = vars.vector3FromSaved(refData.Rotation, Vector3.zero) end
+						if refData.Scale then accessory.Scale = vars.vector3FromSaved(refData.Scale, Vector3.one) end
+					end
+					if entry.IsLayered then
+						accessory.IsLayered = true
+						accessory.Order = tonumber(entry.Order) or 0
+						if entry.Puffiness ~= nil then accessory.Puffiness = tonumber(entry.Puffiness) or 0 end
+					end
+					table.insert(accessories, accessory)
+				end
+			end
+		end
+		pcall(function() desc:SetAccessories(accessories, true) end)
+	else
+		for _, propertyName in ipairs(vars.accessoryPropertyNames) do
+			if props[propertyName] ~= nil then
+				pcall(function() desc[propertyName] = tostring(props[propertyName]) end)
+			end
+		end
+	end
+
+	local colorProps = { "RightArmColor", "TorsoColor", "RightLegColor", "LeftLegColor", "LeftArmColor", "HeadColor" }
+	for _, colorName in ipairs(colorProps) do
+		local colorData = props[colorName]
+		if type(colorData) == "table" then
+			pcall(function()
+				desc[colorName] = Color3.fromRGB(
+					colorData.r or colorData.R or 255,
+					colorData.g or colorData.G or 255,
+					colorData.b or colorData.B or 255
+				)
+			end)
+		end
+	end
+
+	local scaleProps = { "ProportionScale", "DepthScale", "HeightScale", "WidthScale", "BodyTypeScale", "HeadScale" }
+	for _, scaleName in ipairs(scaleProps) do
+		if props[scaleName] ~= nil then pcall(function() desc[scaleName] = tonumber(props[scaleName]) or 1 end) end
+	end
+
+	return desc
+end
+
+vars.applyRigidAccessoryRefinements = function(model, props)	local refinements = props and props.AccessoryRefinements
+	if type(refinements) ~= "table" then return 0 end
+	local matched = 0
+	local used = {}
+	for _, accessory in ipairs(model:GetDescendants()) do
+		if accessory:IsA("Accessory") then
+			local handle = accessory:FindFirstChild("Handle")
+			if handle then
+				local assetId = nil
+				pcall(function() assetId = vars.parseAssetId(accessory:GetAttribute("AssetId")) end)
+				if not assetId then pcall(function() assetId = vars.parseAssetId(handle:GetAttribute("AssetId")) end) end
+				if not assetId then
+					local specialMesh = handle:FindFirstChildOfClass("SpecialMesh")
+					if specialMesh and specialMesh.MeshId then assetId = vars.parseAssetId(specialMesh.MeshId) end
+				end
+				if not assetId and handle:IsA("MeshPart") and handle.MeshId then assetId = vars.parseAssetId(handle.MeshId) end
+
+				local ref = (assetId and refinements[tostring(assetId)]) or refinements[accessory.Name]
+				if ref and type(ref) == "table" then
+					local key = assetId or accessory.Name
+					if not used[key] then
+						local position = vars.vector3FromSaved(ref.Position, Vector3.zero)
+						local rotation = vars.vector3FromSaved(ref.Rotation, Vector3.zero)
+						local scale = vars.vector3FromSaved(ref.Scale, Vector3.one)
+
+						local offsetCF = CFrame.new(position) * CFrame.Angles(
+							math.rad(rotation.X), math.rad(rotation.Y), math.rad(rotation.Z)
+						)
+
+						local attachment = handle:FindFirstChildOfClass("Attachment")
+						if attachment then
+							attachment.CFrame = attachment.CFrame * offsetCF
+						else
+							local weld = handle:FindFirstChildOfClass("Weld") or handle:FindFirstChildOfClass("WeldConstraint") or handle:FindFirstChildOfClass("ManualWeld")
+							if weld and weld:IsA("Weld") then weld.C0 = weld.C0 * offsetCF end
+						end
+
+						if scale ~= Vector3.one then
+							handle.Size = handle.Size * scale
+							local specialMesh = handle:FindFirstChildOfClass("SpecialMesh")
+							if specialMesh then specialMesh.Scale = specialMesh.Scale * scale end
+						end
+						used[key] = true
+						matched = matched + 1
+					end
+				end
+			end
+		end
+	end
+	return matched
+end
+
+vars.getAnimationIdFromFolder = function(container, animName)	if not container then return nil end
+	local target = container:FindFirstChild(animName)
+		or container:FindFirstChild(string.lower(animName))
+		or (animName == "SwimIdle" and (container:FindFirstChild("swimidle") or container:FindFirstChild("SwimIdle")))
+		or (animName == "Swim" and (container:FindFirstChild("swim") or container:FindFirstChild("Swim")))
+	if not target then return nil end
+
+	if target:IsA("Animation") and target.AnimationId ~= "" then return target.AnimationId
+	elseif target:IsA("StringValue") and target.Value ~= "" then return target.Value end
+
+	for _, child in ipairs(target:GetChildren()) do
+		if child:IsA("Animation") and child.AnimationId ~= "" then return child.AnimationId
+		elseif child:IsA("StringValue") and child.Value ~= "" then return child.Value end
+	end
+	return nil
+end
+
+vars.resolveAnimationIds = function(cloneModel, savedProps, isR6)	local defaults = isR6 and vars.R6_DEFAULTS or vars.R15_DEFAULTS
+	local animFolder = cloneModel:FindFirstChild("Animate")
+	local animIds = {}
+	local animKeys = {"Idle", "Walk", "Run", "Jump", "Fall", "Climb", "Swim", "SwimIdle", "Sit"}
+
+	for _, key in ipairs(animKeys) do
+		if key == "Sit" then
+			local cloneSitId = vars.getAnimationIdFromFolder(animFolder, "Sit")
+			animIds[key] = cloneSitId or defaults[key]
+		elseif isR6 then
+			animIds[key] = defaults[key]
+		else
+			local idFromAnimate = vars.getAnimationIdFromFolder(animFolder, key)
+			local propKey = key .. "Animation"
+			local rawPropVal = savedProps and savedProps[propKey]
+			local parsedPropId = vars.parseAssetId(rawPropVal)
+
+			local finalId = (idFromAnimate and idFromAnimate ~= "") and idFromAnimate or nil
+			if not finalId and parsedPropId then finalId = "rbxassetid://" .. tostring(parsedPropId) end
+			if not finalId or finalId == "" then finalId = defaults[key] end
+			animIds[key] = finalId
+		end
+	end
+	return animIds
+end
+
+vars.getAppliedPlayerEmoteData = function(humanoid)	if not humanoid then return {}, {} end
+	local description = nil
+	local ok = pcall(function()
+		description = humanoid:GetAppliedDescription()
+	end)
+	if not ok or not description then return {}, {} end
+
+	local emotes = {}
+	local equipped = {}
+	pcall(function()
+		emotes = vars.cloneEmoteTable(description:GetEmotes())
+	end)
+	pcall(function()
+		local value = description:GetEquippedEmotes()
+		if type(value) == "table" then
+			for _, entry in ipairs(value) do
+				if type(entry) == "table" and type(entry.Name) == "string" and entry.Name ~= "" then
+					equipped[#equipped + 1] = {
+						Slot = tonumber(entry.Slot) or (#equipped + 1),
+						Name = entry.Name
+					}
+				end
+			end
+		end
+	end)
+	pcall(function() description:Destroy() end)
+	return emotes, equipped
+end
+
+vars.mergePlayerEmotesIntoDescription = function(description, playerHumanoid, rigType)	if not description or vars.getEnumRigType(rigType) ~= Enum.HumanoidRigType.R15 then
+		return
+	end
+
+	local playerEmotes, playerEquippedEmotes = vars.getAppliedPlayerEmoteData(playerHumanoid)
+	local merged = {}
+	pcall(function()
+		merged = vars.cloneEmoteTable(description:GetEmotes())
+	end)
+	for name, ids in pairs(playerEmotes) do
+		merged[name] = ids
+	end
+
+	if next(merged) ~= nil then
+		pcall(function() description:SetEmotes(merged) end)
+	end
+
+	if #playerEquippedEmotes > 0 then
+		local validEquipped = {}
+		for _, entry in ipairs(playerEquippedEmotes) do
+			if merged[entry.Name] then
+				validEquipped[#validEquipped + 1] = entry
+			end
+		end
+		if #validEquipped > 0 then
+			pcall(function() description:SetEquippedEmotes(validEquipped) end)
+		end
+	end
+end
+
+vars.bindAnimationSync = function(playerCharacter, cloneModel, savedProps, rigType)	vars.cleanupAnimationSync()
+
+	local playerHumanoid = playerCharacter and playerCharacter:FindFirstChildOfClass("Humanoid")
+	local cloneHumanoid = cloneModel and cloneModel:FindFirstChildOfClass("Humanoid")
+	if not playerHumanoid or not cloneHumanoid then return function() end end
+
+	local playerAnimator = playerHumanoid:FindFirstChildOfClass("Animator")
+	local cloneAnimator = cloneHumanoid:FindFirstChildOfClass("Animator")
+	if not cloneAnimator then
+		cloneAnimator = Instance.new("Animator")
+		cloneAnimator.Parent = cloneHumanoid
+	end
+
+	for _, track in ipairs(cloneAnimator:GetPlayingAnimationTracks()) do
+		pcall(function() track:Stop(0) end)
+	end
+
+	local enumRig = vars.getEnumRigType(rigType)
+	local isR6 = (enumRig == Enum.HumanoidRigType.R6)
+		or (cloneModel:FindFirstChild("Torso") ~= nil and cloneModel:FindFirstChild("UpperTorso") == nil)
+	local defaults = isR6 and vars.R6_DEFAULTS or vars.R15_DEFAULTS
+	local animIds = vars.resolveAnimationIds(cloneModel, savedProps, isR6)
+
+	local playerEmoteByAssetId = {}
+	local playerEmoteByAnimationId = {}
+	local playerEmotePlayNameByCanonical = {}
+	local equippedEmoteNames = {}
+
+	local function normalizeEmoteName(rawName)
+		local value = string.lower(tostring(rawName or ""))
+		value = string.match(value, "^%s*(.-)%s*$") or value
+		value = value:gsub("[^%w]+", "")
+		return value
+	end
+
+	local function rememberEmoteAsset(assetId, emoteName, exactNameForPlayback)
+		local parsed = vars.parseAssetId(assetId)
+		if not parsed then return end
+		local normalized = normalizeEmoteName(emoteName)
+		if normalized == "" then return end
+		playerEmoteByAssetId[tostring(parsed)] = normalized
+		local exactName = exactNameForPlayback or emoteName
+		if type(exactName) == "string" and exactName ~= "" then
+			playerEmotePlayNameByCanonical[normalized] = exactName
+		end
+	end
+
+	local function rememberResolvedAnimation(emoteAnimationId, emoteName, exactNameForPlayback)
+		local parsed = vars.parseAssetId(emoteAnimationId)
+		if not parsed then return end
+		local normalized = normalizeEmoteName(emoteName)
+		if normalized == "" then return end
+		playerEmoteByAnimationId[tostring(parsed)] = normalized
+		local exactName = exactNameForPlayback or emoteName
+		if type(exactName) == "string" and exactName ~= "" then
+			playerEmotePlayNameByCanonical[normalized] = exactName
+		end
+	end
+
+	local function extractAnimationIdFromLoadedEmoteAsset(root)
+		if not root then return nil end
+		if root:IsA("Animation") and root.AnimationId ~= "" then
+			return root.AnimationId
+		end
+		for _, instance in ipairs(root:GetDescendants()) do
+			if instance:IsA("Animation") and instance.AnimationId ~= "" then
+				return instance.AnimationId
+			end
+		end
+		return nil
+	end
+
+	local function resolveEmoteCatalogAssetToAnimationId(catalogAssetId)
+		local parsed = vars.parseAssetId(catalogAssetId)
+		if not parsed then return nil end
+		local key = tostring(parsed)
+		if vars.emoteAssetAnimationCache[key] ~= nil then
+			return vars.emoteAssetAnimationCache[key]
+		end
+
+		local animationId = nil
+
+		pcall(function()
+			if type(game.GetObjects) == "function" then
+				local objects = game:GetObjects("rbxassetid://" .. key)
+				if type(objects) == "table" then
+					for _, root in ipairs(objects) do
+						animationId = extractAnimationIdFromLoadedEmoteAsset(root)
+						if animationId then
+							pcall(function() root:Destroy() end)
+							break
+						end
+					end
+				end
+			end
+		end)
+
+		if not animationId and vars.InsertService then
+			pcall(function()
+				local root = vars.InsertService:LoadAsset(parsed)
+				animationId = extractAnimationIdFromLoadedEmoteAsset(root)
+				if root then root:Destroy() end
+			end)
+		end
+
+		if animationId then
+			vars.emoteAssetAnimationCache[key] = animationId
+		end
+		return animationId
+	end
+
+	local appliedDescription = nil
+	local appliedDescriptionOk = pcall(function()
+		appliedDescription = playerHumanoid:GetAppliedDescription()
+	end)
+	if appliedDescriptionOk and appliedDescription then
+		pcall(function()
+			local equipped = appliedDescription:GetEquippedEmotes()
+			if type(equipped) == "table" then
+				for _, entry in ipairs(equipped) do
+					if type(entry) == "table" and type(entry.Name) == "string" then
+						equippedEmoteNames[normalizeEmoteName(entry.Name)] = entry.Name
+					end
+				end
+			end
+		end)
+
+		pcall(function()
+			local emotes = appliedDescription:GetEmotes()
+			if type(emotes) == "table" then
+				for name, ids in pairs(emotes) do
+					if type(ids) == "table" then
+						local exactName = type(name) == "string" and name or tostring(name)
+						for _, assetId in ipairs(ids) do
+							rememberEmoteAsset(assetId, exactName, exactName)
+							local actualAnimationId = resolveEmoteCatalogAssetToAnimationId(assetId)
+							if actualAnimationId then
+								rememberResolvedAnimation(actualAnimationId, exactName, exactName)
+							end
+						end
+					end
+				end
+			end
+		end)
+		pcall(function() appliedDescription:Destroy() end)
+	end
+
+	for emoteName, assetList in pairs(vars.R6_EMOTE_LIBRARY) do
+		for _, assetId in ipairs(assetList) do
+			rememberEmoteAsset(assetId, emoteName)
+		end
+	end
+
+	local playerAnimate = playerCharacter:FindFirstChild("Animate")
+	local knownEmoteNames = {}
+	for emoteName in pairs(vars.R6_EMOTE_LIBRARY) do
+		knownEmoteNames[normalizeEmoteName(emoteName)] = emoteName
+	end
+	for normalized, exactName in pairs(equippedEmoteNames) do
+		knownEmoteNames[normalized] = exactName
+	end
+
+	local function getNamedEmoteFromHierarchy(animation)
+		if not animation then return nil end
+
+		local function checkName(instance)
+			if not instance then return nil end
+			local normalized = normalizeEmoteName(instance.Name)
+			return knownEmoteNames[normalized]
+		end
+
+		local direct = checkName(animation)
+		if direct then return direct end
+
+		local parent = animation.Parent
+		while parent and parent ~= playerCharacter do
+			local named = checkName(parent)
+			if named then return named end
+			if parent == playerAnimate then break end
+			parent = parent.Parent
+		end
+		return nil
+	end
+
+	local locomotionFolderNames = {
+		idle = true,
+		walk = true,
+		run = true,
+		jump = true,
+		fall = true,
+		climb = true,
+		swim = true,
+		swimidle = true,
+		sit = true,
+		seated = true,
+		tool = true,
+		toolnone = true,
+		toolnoneanim = true,
+		toolslash = true,
+		toollunge = true,
+		slash = true,
+		lunge = true,
+	}
+
+	local function hasLocomotionOrToolAncestor(animation)
+		if not animation then return false end
+		local normalizedName = normalizeEmoteName(animation.Name)
+		if locomotionFolderNames[normalizedName] then return true end
+
+		local parent = animation.Parent
+		while parent and parent ~= playerCharacter do
+			local parentName = normalizeEmoteName(parent.Name)
+			if locomotionFolderNames[parentName] then return true end
+			parent = parent.Parent
+		end
+		return false
+	end
+
+	local function isLikelyR15EmoteTrack(playerTrack)
+		if isR6 or not playerTrack or not playerTrack.Animation then return false end
+		if hasLocomotionOrToolAncestor(playerTrack.Animation) then return false end
+
+		local priority = playerTrack.Priority
+		local isCore = priority == Enum.AnimationPriority.Core
+		local isAction = priority == Enum.AnimationPriority.Action
+			or priority == Enum.AnimationPriority.Action2
+			or priority == Enum.AnimationPriority.Action3
+			or priority == Enum.AnimationPriority.Action4
+		if not isCore and not isAction then return false end
+
+		local animationId = vars.parseAssetId(playerTrack.Animation.AnimationId)
+		if not animationId then return false end
+
+		if next(equippedEmoteNames) ~= nil
+			or next(playerEmoteByAnimationId) ~= nil
+			or next(playerEmoteByAssetId) ~= nil then
+			return true
+		end
+
+		return false
+	end
+
+	if playerAnimate then
+		for _, instance in ipairs(playerAnimate:GetDescendants()) do
+			if instance:IsA("Animation") then
+				local emoteName = getNamedEmoteFromHierarchy(instance)
+				if emoteName then
+					rememberEmoteAsset(instance.AnimationId, emoteName)
+				end
+			end
+		end
+	end
+
+	local function resolvePlayerEmoteName(playerTrack)
+		if not playerTrack or not playerTrack.Animation then return nil, false end
+
+		local assetId = vars.parseAssetId(playerTrack.Animation.AnimationId)
+		if assetId then
+			local assetKey = tostring(assetId)
+
+			local resolvedAnimationMapped = playerEmoteByAnimationId[assetKey]
+			if resolvedAnimationMapped then
+				return resolvedAnimationMapped, true
+			end
+
+			local legacyMapped = vars.PLAYER_LEGACY_EMOTE_IDS[assetKey]
+			if legacyMapped then return legacyMapped, true end
+
+			local mapped = playerEmoteByAssetId[assetKey]
+			if mapped then return mapped, true end
+		end
+
+		local named = getNamedEmoteFromHierarchy(playerTrack.Animation)
+		if named then return normalizeEmoteName(named), true end
+
+		if isLikelyR15EmoteTrack(playerTrack) then
+			return "__direct_r15_emote_track__", false
+		end
+
+	return nil, false
+	end
+
+	local function chooseR6EmoteAnimation(emoteName)
+		local list = vars.R6_EMOTE_LIBRARY[emoteName]
+		if type(list) ~= "table" or #list == 0 then return nil end
+
+		if #list == 1 then return list[1] end
+		local index = (math.floor(os.clock() * 1000) % #list) + 1
+		return list[index]
+	end
+	local function findFreshCloneEmoteTrack(beforeTracks, expectedAssetId)
+		local expectedParsed = vars.parseAssetId(expectedAssetId)
+		local expectedKey = expectedParsed and tostring(expectedParsed) or nil
+		local fallback = nil
+
+		for _, candidate in ipairs(cloneAnimator:GetPlayingAnimationTracks()) do
+			if candidate and candidate.IsPlaying and not beforeTracks[candidate] then
+				local candidateId = candidate.Animation and vars.parseAssetId(candidate.Animation.AnimationId)
+				if expectedKey and candidateId and tostring(candidateId) == expectedKey then
+					return candidate
+				end
+				fallback = fallback or candidate
+			end
+		end
+
+		return fallback
+	end
+
+	local function syncInitialEmotePhase(playerTrack, cloneTrack)
+		if not playerTrack or not cloneTrack then return end
+		if not playerTrack.IsPlaying or not cloneTrack.IsPlaying then return end
+
+		local playerAnimation = playerTrack.Animation
+		local cloneAnimation = cloneTrack.Animation
+		local playerId = playerAnimation and vars.parseAssetId(playerAnimation.AnimationId)
+		local cloneId = cloneAnimation and vars.parseAssetId(cloneAnimation.AnimationId)
+
+		if not playerId or not cloneId or playerId ~= cloneId then return end
+
+		local function applyPhase()
+			if not playerTrack.IsPlaying or not cloneTrack.IsPlaying then return true end
+			if playerTrack.Length <= 0 or cloneTrack.Length <= 0 then return false end
+
+			local playerPhase = math.clamp(playerTrack.TimePosition / playerTrack.Length, 0, 0.999999)
+			local targetPosition = playerPhase * cloneTrack.Length
+			pcall(function()
+				cloneTrack.TimePosition = targetPosition
+			end)
+			return true
+		end
+
+		if applyPhase() then return end
+
+		task.spawn(function()
+			for _ = 1, 4 do
+				vars.RunService.Heartbeat:Wait()
+				if not vars.scriptAlive then return end
+				if applyPhase() then return end
+			end
+		end)
+	end
+
+	local function tryPlayRegisteredR15Emote(emoteName, playerTrack)
+		if isR6 then return nil, nil end
+
+		local playbackName = playerEmotePlayNameByCanonical[emoteName]
+		if not playbackName then return nil, nil end
+
+		local beforeTracks = {}
+		for _, track in ipairs(cloneAnimator:GetPlayingAnimationTracks()) do
+			beforeTracks[track] = true
+		end
+
+		local ok, result = pcall(function()
+			return cloneHumanoid:PlayEmoteAsync(playbackName)
+		end)
+		if not ok or result ~= true then return nil, nil end
+
+		local expectedAssetId = playerTrack
+			and playerTrack.Animation
+			and playerTrack.Animation.AnimationId
+
+		local cloneTrack = nil
+		local deadline = os.clock() + 0.35
+		repeat
+			cloneTrack = findFreshCloneEmoteTrack(beforeTracks, expectedAssetId)
+			if cloneTrack then break end
+			vars.RunService.Heartbeat:Wait()
+		until os.clock() >= deadline
+
+		if not cloneTrack then
+			local expectedParsed = vars.parseAssetId(expectedAssetId)
+			if expectedParsed then
+				pcall(function()
+					cloneTrack = cloneAnimator:GetTrackByAnimationId("rbxassetid://" .. tostring(expectedParsed))
+				end)
+			end
+		end
+
+		if cloneTrack then
+			pcall(function() cloneTrack.Priority = Enum.AnimationPriority.Action end)
+			pcall(function() cloneTrack.Looped = true end)
+			syncInitialEmotePhase(playerTrack, cloneTrack)
+		end
+
+		return cloneTrack
+	end
+
+	local function loadDirectCloneEmote(animationId, emoteName, playerTrack)
+		if not animationId or animationId == "" then return nil, nil end
+
+		local animation = Instance.new("Animation")
+		animation.AnimationId = animationId
+
+		local ok, cloneTrack = pcall(function()
+			return cloneAnimator:LoadAnimation(animation)
+		end)
+		if not ok or not cloneTrack then
+			animation:Destroy()
+			return nil, nil
+		end
+
+		cloneTrack.Priority = Enum.AnimationPriority.Action
+		if isR6 then
+			cloneTrack.Looped = vars.R6_EMOTE_LOOPED[emoteName] == true
+		else
+			cloneTrack.Looped = playerTrack.Looped
+		end
+
+		local playedOk = pcall(function()
+			cloneTrack:Play(0.08, 1, 1)
+		end)
+		if not playedOk then
+			pcall(function() cloneTrack:Stop(0) end)
+			animation:Destroy()
+			return nil, nil
+		end
+
+		syncInitialEmotePhase(playerTrack, cloneTrack)
+		return cloneTrack, animation
+	end
+
+	local catchEmoteTrack
+
+	local function playCloneEmote(playerTrack, emoteName, isDirectR15Track)
+		if not playerTrack or not emoteName then return false end
+
+		vars.stopAllCloneTracks(0.08)
+
+		local cloneTrack = nil
+		local animationObject = nil
+
+		if not isR6 and not isDirectR15Track then
+			cloneTrack = tryPlayRegisteredR15Emote(emoteName, playerTrack)
+		end
+
+		if not cloneTrack then
+			local animationId = nil
+			if isR6 then
+				animationId = chooseR6EmoteAnimation(emoteName)
+			else
+				animationId = playerTrack.Animation.AnimationId
+			end
+
+			cloneTrack, animationObject = loadDirectCloneEmote(animationId, emoteName, playerTrack)
+		end
+
+		if not cloneTrack then
+			return false
+		end
+
+		vars.activeCloneTracks[playerTrack] = cloneTrack
+		vars.activeCloneEmoteAnimations[playerTrack] = animationObject
+		vars.activeEmotePlayerTrack = playerTrack
+
+		local stoppedConnection
+		stoppedConnection = playerTrack.Stopped:Connect(function()
+			task.delay(0.12, function()
+				if not vars.scriptAlive or vars.activeEmotePlayerTrack ~= playerTrack then return end
+				if playerAnimator then
+					for _, replacementTrack in ipairs(playerAnimator:GetPlayingAnimationTracks()) do
+						if replacementTrack and replacementTrack.IsPlaying then
+							local replacementName = resolvePlayerEmoteName(replacementTrack)
+							if replacementName == emoteName then
+								catchEmoteTrack(replacementTrack)
+								return
+							end
+						end
+					end
+				end
+
+				local active = vars.activeCloneTracks[playerTrack]
+				vars.activeCloneTracks[playerTrack] = nil
+				vars.activeCloneStopConnections[playerTrack] = nil
+				local activeAnimation = vars.activeCloneEmoteAnimations[playerTrack]
+				vars.activeCloneEmoteAnimations[playerTrack] = nil
+				if active then pcall(function() active:Stop(0.08) end) end
+				if activeAnimation then pcall(function() activeAnimation:Destroy() end) end
+				vars.disconnectConnection(stoppedConnection)
+				if vars.activeEmotePlayerTrack == playerTrack then vars.activeEmotePlayerTrack = nil end
+			end)
+		end)
+
+		vars.activeCloneStopConnections[playerTrack] = stoppedConnection
+		return true
+	end
+
+	catchEmoteTrack = function(playerTrack)
+		if not playerTrack or not playerTrack.IsPlaying then return false end
+		if vars.activeCloneTracks[playerTrack] then return true end
+		local emoteName, isKnownEmote = resolvePlayerEmoteName(playerTrack)
+		if not emoteName then return false end
+		if next(vars.activeCloneTracks) ~= nil and vars.activeEmotePlayerTrack ~= playerTrack and not isKnownEmote then
+			return false
+		end
+		local directR15 = (emoteName == "__direct_r15_emote_track__")
+		return playCloneEmote(playerTrack, emoteName, directR15)
+	end
+
+	if playerAnimator then
+		for _, track in ipairs(playerAnimator:GetPlayingAnimationTracks()) do
+			task.defer(catchEmoteTrack, track)
+		end
+		vars.animPlayedConnection = playerAnimator.AnimationPlayed:Connect(function(playerTrack)
+			task.defer(catchEmoteTrack, playerTrack)
+		end)
+	end
+
+	local loadedTracks = {}
+	for key, animId in pairs(animIds) do
+		if animId and animId ~= "" then
+			local animObj = Instance.new("Animation")
+			animObj.AnimationId = animId
+			local ok, track = pcall(function() return cloneAnimator:LoadAnimation(animObj) end)
+
+			if (not ok or not track) and isR6 and defaults[key] then
+				local fallbackObj = Instance.new("Animation")
+				fallbackObj.AnimationId = defaults[key]
+				ok, track = pcall(function() return cloneAnimator:LoadAnimation(fallbackObj) end)
+			end
+
+			if ok and track then
+				if key == "Idle" then track.Priority = Enum.AnimationPriority.Idle
+				elseif key == "Walk" or key == "Run" or key == "Climb" or key == "Swim" or key == "SwimIdle" then track.Priority = Enum.AnimationPriority.Movement
+				elseif key == "Jump" or key == "Fall" or key == "Sit" then track.Priority = Enum.AnimationPriority.Action
+				else track.Priority = Enum.AnimationPriority.Core end
+
+				track.Looped = (key ~= "Jump")
+				loadedTracks[key] = track
+			end
+		end
+	end
+
+	local activeKey = nil
+
+	return function()
+		if not vars.scriptAlive or not cloneModel or not cloneModel.Parent then return end
+
+		local playerRoot = playerCharacter:FindFirstChild("HumanoidRootPart") or playerCharacter.PrimaryPart
+		local moveSpeed, verticalVel, totalVel = 0, 0, 0
+		local moveDirectionMagnitude = 0
+
+		if playerRoot then
+			local vel = playerRoot.AssemblyLinearVelocity or playerRoot.Velocity
+			moveSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+			verticalVel = vel.Y
+			totalVel = vel.Magnitude
+		end
+
+		if playerHumanoid then
+			moveDirectionMagnitude = playerHumanoid.MoveDirection.Magnitude
+		end
+
+		local state = playerHumanoid and playerHumanoid:GetState()
+		local isSeated = playerHumanoid and (playerHumanoid.Sit or playerHumanoid.SeatPart ~= nil or state == Enum.HumanoidStateType.Seated) or false
+
+		if not isR6 and vars.activeEmotePlayerTrack then
+			local activePlayerEmoteTrack = vars.activeEmotePlayerTrack
+			local activeCloneEmoteTrack = vars.activeCloneTracks[activePlayerEmoteTrack]
+			if activePlayerEmoteTrack.IsPlaying and activeCloneEmoteTrack and activeCloneEmoteTrack.IsPlaying then
+				pcall(function() activeCloneEmoteTrack.Looped = true end)
+			end
+		end
+
+		local intentionalMovement = moveDirectionMagnitude > 0.05 and moveSpeed > 1.2
+
+		local shouldReleaseEmote = isSeated or intentionalMovement
+			or state == Enum.HumanoidStateType.Jumping
+			or state == Enum.HumanoidStateType.Freefall
+			or state == Enum.HumanoidStateType.Climbing
+			or state == Enum.HumanoidStateType.Swimming
+
+		if shouldReleaseEmote and next(vars.activeCloneTracks) ~= nil then
+			vars.stopAllCloneTracks(0.08)
+		end
+
+		local desiredKey = "Idle"
+		local climbPlaybackSpeed = 0
+
+		if isSeated and isR6 then
+			local sitTrack = loadedTracks.Sit
+			if sitTrack then
+				for key, track in pairs(loadedTracks) do
+					if key ~= "Sit" and track.IsPlaying then
+						pcall(function() track:Stop(0.05) end)
+					end
+				end
+				sitTrack.Priority = Enum.AnimationPriority.Action4
+				sitTrack.Looped = true
+				if not sitTrack.IsPlaying then
+					pcall(function() sitTrack:Play(0.08, 1, 1) end)
+				else
+					pcall(function() sitTrack:AdjustWeight(1, 0.05) end)
+				end
+				activeKey = "Sit"
+				return
+			end
+			desiredKey = "Sit"
+		elseif isSeated then desiredKey = "Sit"
+		elseif state == Enum.HumanoidStateType.Climbing then
+			desiredKey = "Climb"
+			if verticalVel > 0.1 then
+				climbPlaybackSpeed = math.clamp(verticalVel / 8, 0.4, 2.0)
+			elseif verticalVel < -0.1 then
+				climbPlaybackSpeed = -math.clamp(math.abs(verticalVel) / 8, 0.4, 2.0)
+			end
+		elseif state == Enum.HumanoidStateType.Swimming then desiredKey = (totalVel > 0.75) and "Swim" or "SwimIdle"
+		elseif state == Enum.HumanoidStateType.Jumping then desiredKey = "Jump"
+		elseif state == Enum.HumanoidStateType.Freefall then
+			desiredKey = (activeKey == "Jump" and loadedTracks["Jump"] and loadedTracks["Jump"].IsPlaying and verticalVel > 0.1) and "Jump" or "Fall"
+		else
+			if moveSpeed > 1.2 then
+				desiredKey = (moveSpeed > 12 and loadedTracks["Run"]) and "Run" or "Walk"
+			else desiredKey = "Idle" end
+		end
+
+		if not loadedTracks[desiredKey] then
+			if desiredKey == "SwimIdle" then desiredKey = loadedTracks["Swim"] and "Swim" or (loadedTracks["Idle"] and "Idle" or "Walk")
+			elseif desiredKey == "Swim" then desiredKey = loadedTracks["SwimIdle"] and "SwimIdle" or (loadedTracks["Walk"] and "Walk" or "Idle")
+			elseif desiredKey == "Run" then desiredKey = "Walk" end
+			if not loadedTracks[desiredKey] then desiredKey = "Idle" end
+		end
+
+		local activeTrack = activeKey and loadedTracks[activeKey]
+		local desiredTrack = desiredKey and loadedTracks[desiredKey]
+
+		local sameAnimationAsset = activeTrack and desiredTrack
+			and activeTrack.Animation and desiredTrack.Animation
+			and activeTrack.Animation.AnimationId == desiredTrack.Animation.AnimationId
+
+		if activeKey ~= desiredKey and not sameAnimationAsset then
+			if activeTrack then pcall(function() activeTrack:Stop(0.15) end) end
+			activeKey = desiredKey
+			activeTrack = loadedTracks[activeKey]
+			if activeTrack then
+				if activeKey == "Climb" then
+					pcall(function() activeTrack:Play(0.15, 1, 0) end)
+					if activeTrack.Length > 0 then
+						pcall(function()
+							activeTrack.TimePosition = (climbPlaybackSpeed < 0) and math.max(activeTrack.Length - 0.001, 0) or 0
+						end)
+					end
+					pcall(function() activeTrack:AdjustSpeed(climbPlaybackSpeed) end)
+				else
+					pcall(function() activeTrack:Play(0.15) end)
+				end
+			end
+		elseif activeTrack and not activeTrack.IsPlaying then
+			if activeKey == "Climb" then
+				pcall(function() activeTrack:Play(0.15, 1, 0) end)
+				if activeTrack.Length > 0 then
+					pcall(function()
+						activeTrack.TimePosition = (climbPlaybackSpeed < 0) and math.max(activeTrack.Length - 0.001, 0) or 0
+					end)
+				end
+				pcall(function() activeTrack:AdjustSpeed(climbPlaybackSpeed) end)
+			else
+				pcall(function() activeTrack:Play(0.15) end)
+			end
+		end
+
+		if activeKey == "Walk" or activeKey == "Run" then
+			local currentTrack = loadedTracks[activeKey]
+			if currentTrack and currentTrack.IsPlaying then
+				pcall(function() currentTrack:AdjustSpeed(math.clamp(moveSpeed / 14, 0.6, 2.0)) end)
+			end
+		elseif activeKey == "Climb" then
+			local currentTrack = loadedTracks[activeKey]
+			if currentTrack and currentTrack.IsPlaying then
+				pcall(function() currentTrack:AdjustSpeed(climbPlaybackSpeed) end)
+			end
+		elseif activeKey == "Swim" or activeKey == "SwimIdle" then
+			local currentTrack = loadedTracks[activeKey]
+			if currentTrack and currentTrack.IsPlaying then
+				local targetSpeed = isR6 and math.clamp(totalVel / 12, 0.5, 1.8) or math.clamp(totalVel / 10, 0.6, 2.0)
+				if activeKey == "SwimIdle" and totalVel < 0.5 then targetSpeed = 1.0 end
+				pcall(function() currentTrack:AdjustSpeed(targetSpeed) end)
+			end
+		end
+	end
+end
+
+vars.queuePreview = function(card, data)	if not vars.scriptAlive or not card or not data or not card.Parent then return end
+	local state = vars.previewStates[data]
+	if state == "queued" or state == "loading" or state == "ready" then return end
+
+	vars.previewStates[data] = "queued"
+	vars.previewQueue[#vars.previewQueue + 1] = {
+		Card = card,
+		Data = data,
+		Generation = vars.previewQueueGeneration
+	}
+end
+
+vars.preloadAvatarVisualContent = function(model)	if not model then return false end
+	local targets = {}
+	for _, instance in ipairs(model:GetDescendants()) do
+		if instance:IsA("MeshPart")
+			or instance:IsA("SpecialMesh")
+			or instance:IsA("Decal")
+			or instance:IsA("Texture") then
+			targets[#targets + 1] = instance
+		end
+	end
+	if #targets == 0 then return true end
+	return pcall(function() vars.ContentProvider:PreloadAsync(targets) end)
+end
+
+vars.createPreviewViewport = function(parentContainer)	if not parentContainer or not parentContainer.Parent then return nil end
+
+	local oldPreview = parentContainer:FindFirstChild("Preview")
+	if oldPreview then oldPreview:Destroy() end
+
+	local viewport = Instance.new("ViewportFrame")
+	viewport.Name = "Preview"
+	viewport.Size = UDim2.new(1, 0, 1, 0)
+	viewport.BackgroundTransparency = 1
+	viewport.BorderSizePixel = 0
+	viewport.ZIndex = parentContainer.ZIndex + 1
+	viewport.Parent = parentContainer
+
+	local worldModel = Instance.new("WorldModel")
+	worldModel.Parent = viewport
+
+	local previewCamera = Instance.new("Camera")
+	previewCamera.FieldOfView = 30
+	previewCamera.Parent = viewport
+	viewport.CurrentCamera = previewCamera
+
+	return viewport, worldModel, previewCamera
+end
+
+vars.positionPreviewCamera = function(previewCamera, model)	if not previewCamera or not model then return end
+	local head = model:FindFirstChild("Head", true)
+	local root = model:FindFirstChild("HumanoidRootPart", true) or head or model.PrimaryPart
+	if not root then return end
+
+	local cf, size = model:GetBoundingBox()
+	if size.Magnitude <= 0 then return end
+
+	local targetPosition = cf.Position + Vector3.new(0, size.Y * 0.04, 0)
+	local lookVector = head and head.CFrame.LookVector or root.CFrame.LookVector
+	if lookVector.Magnitude == 0 then lookVector = Vector3.new(0, 0, -1) end
+
+	local distance = math.max(math.max(size.Y, size.X, size.Z) * 1.85, 5.5)
+	previewCamera.CFrame = CFrame.lookAt(targetPosition + lookVector.Unit * distance, targetPosition)
+end
+
+vars.buildPreviewTemplate = function(data, cacheKey)	if not data or not data.Properties then return nil end
+
+	local description = vars.reconstructHumanoidDescription(data.Properties)
+	local rigType = vars.getEnumRigType(data.RigType)
+	local ok, model = pcall(function()
+		if type(vars.Players.CreateHumanoidModelFromDescriptionAsync) == "function" then
+			return vars.Players:CreateHumanoidModelFromDescriptionAsync(description, rigType)
+		end
+		return vars.Players:CreateHumanoidModelFromDescription(description, rigType)
+	end)
+	pcall(function() description:Destroy() end)
+
+	if not ok or not model or not model:IsA("Model") then
+		if model and typeof(model) == "Instance" then pcall(function() model:Destroy() end) end
+		return nil
+	end
+
+	model.Parent = nil
+	model:PivotTo(CFrame.new(0, 0, 0))
+	vars.applyBodyColors(model, data.Properties)
+	vars.applyHeadShapeToModel(model, data.Properties)
+
+	if cacheKey then
+		vars.previewModelCache[cacheKey] = model
+		vars.touchPreviewCache(cacheKey)
+	end
+	return model
+end
+
+vars.renderPreview = function(card, data)	if not card or not card.Parent or not data then return false end
+	local previewContainer = card:FindFirstChild("PreviewContainer")
+	if not previewContainer then return false end
+
+	local cacheKey = vars.getPreviewCacheKey(data)
+	local template = cacheKey and vars.previewModelCache[cacheKey]
+	if template and template.Parent ~= nil then
+		vars.previewModelCache[cacheKey] = nil
+		template = nil
+	elseif template then
+		vars.touchPreviewCache(cacheKey)
+	end
+
+	for attempt = 1, 3 do
+		if not vars.scriptAlive or not card.Parent then return false end
+
+		local viewport, worldModel, camera = vars.createPreviewViewport(previewContainer)
+		if not viewport then return false end
+
+		if not template then
+			template = vars.buildPreviewTemplate(data, cacheKey)
+		end
+
+		if template then
+			local model
+			local cloneOk = pcall(function() model = template:Clone() end)
+			if cloneOk and model then
+				model.Parent = worldModel
+				model:PivotTo(CFrame.new(0, 0, 0))
+				task.wait()
+				if model.Parent == worldModel and model:FindFirstChildOfClass("Humanoid") then
+					local cf, size = model:GetBoundingBox()
+			local center = cf.Position + Vector3.new(0, size.Y * 0.03, 0)
+			local distance = math.max(size.X, size.Y, size.Z) * vars.previewCameraDistanceMultiplier
+			camera.FieldOfView = 35
+			camera.CFrame = CFrame.lookAt(center + Vector3.new(0, size.Y * 0.02, distance), center)
+					return true
+				end
+				pcall(function() model:Destroy() end)
+			end
+		end
+
+		pcall(function() viewport:Destroy() end)
+		if attempt < 3 then task.wait(0.12 * attempt) end
+	end
+
+	return false
+end
+
+vars.processPreviewQueue = function()	if vars.previewQueueRunning then return end
+	vars.previewQueueRunning = true
+
+	while vars.scriptAlive and #vars.previewQueue > 0 do
+		local taskData = table.remove(vars.previewQueue, 1)
+		if taskData and taskData.Generation == vars.previewQueueGeneration then
+			local card = taskData.Card
+			local data = taskData.Data
+			if card and card.Parent and data then
+				vars.previewStates[data] = "loading"
+				local ok, rendered = pcall(function()
+					return vars.renderPreview(card, data)
+				end)
+				if ok and rendered then
+					vars.previewStates[data] = "ready"
+				else
+					vars.previewStates[data] = "unavailable"
+				end
+			end
+		end
+		task.wait(0.04)
+	end
+
+	vars.previewQueueRunning = false
+end
+
+vars.getAccessoryCount = function(data)	local props = data and data.Properties
+	if type(props) ~= "table" then return 0 end
+
+	if type(props.AllAccessories) == "table" then
+		local count = 0
+		for _, entry in ipairs(props.AllAccessories) do
+			if type(entry) == "table" and vars.parseAssetId(entry.AssetId) then
+				count = count + 1
+			end
+		end
+		return count
+	end
+
+	local count = 0
+	for _, propertyName in ipairs(vars.accessoryPropertyNames) do
+		local value = props[propertyName]
+		if value ~= nil and tostring(value) ~= "" and tostring(value) ~= "0" then
+			for _ in tostring(value):gmatch("%d+") do
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
+--==============================================================================
+-- 3D ROTATING VIEWPORT PREVIEW & THEME-REACTIVE SAVED AVATAR CARDS
+--==============================================================================
+vars.hoverPreviewToken = vars.hoverPreviewToken or 0
+
+vars.stopHoverPreview = function()
+	vars.hoverPreviewToken = vars.hoverPreviewToken + 1
+	vars.ui.hoverButton = nil
+	vars.ui.pinnedPreviewData = nil
+	if vars.ui.hoverConnection then
+		vars.disconnectConnection(vars.ui.hoverConnection)
+		vars.ui.hoverConnection = nil
+	end
+	if vars.ui.hoverModel then
+		pcall(function() vars.ui.hoverModel:Destroy() end)
+		vars.ui.hoverModel = nil
+	end
+	vars.ui.hoverViewport = nil
+	local popup = vars.HoverPreview
+	if popup then
+		popup.Visible = false
+	end
+end
+genv._TR_StopAvatarHoverPreview = vars.stopHoverPreview
+
+vars.createHoverPreviewUI = function()
+	local t = GetTheme()
+	local popup = Instance.new("Frame")
+	popup.Name = "TR_AvatarHoverPreview"
+	popup.Size = UDim2.new(0, vars.previewWidth, 0, 370)
+	popup.Position = UDim2.new(0.5, 290, 0.5, -185)
+	popup.BackgroundColor3 = t.MainBg
+	popup.BackgroundTransparency = 0.06
+	popup.BorderSizePixel = 0
+	popup.Visible = false
+	popup.ZIndex = 65
+	popup.Parent = vars.ScreenGui
+	vars.addCorner(popup, 12)
+	local pStroke = vars.addStroke(popup, t.Stroke, 1.6, 0.2)
+
+	local pGrad = Instance.new("UIGradient")
+	pGrad.Name = "PreviewGlassGrad"
+	pGrad.Rotation = -38
+	pGrad.Enabled = false
+	pGrad.Parent = popup
+
+	local sGrad = Instance.new("UIGradient")
+	sGrad.Name = "PreviewStrokeGrad"
+	sGrad.Rotation = 35
+	sGrad.Enabled = false
+	sGrad.Parent = pStroke
+
+	local topBar = Instance.new("Frame")
+	topBar.Name = "PreviewTopBar"
+	topBar.Size = UDim2.new(1, -20, 0, 28)
+	topBar.Position = UDim2.new(0, 10, 0, 8)
+	topBar.BackgroundTransparency = 1
+	topBar.ZIndex = 67
+	topBar.Parent = popup
+
+	local title = Instance.new("TextLabel")
+	title.Name = "OutfitName"
+	title.Size = UDim2.new(1, -32, 1, 0)
+	title.Position = UDim2.new(0, 2, 0, 0)
+	title.BackgroundTransparency = 1
+	title.Text = "3D AVATAR PREVIEW"
+	title.TextColor3 = t.Accent
+	title.TextSize = 12
+	title.Font = Enum.Font.GothamBold
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.ZIndex = 68
+	title.Parent = topBar
+
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Name = "ClosePreviewBtn"
+	closeBtn.Size = UDim2.fromOffset(24, 24)
+	closeBtn.Position = UDim2.new(1, -24, 0.5, -12)
+	closeBtn.BackgroundColor3 = t.PanelBg
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.TextSize = 11
+	closeBtn.TextColor3 = t.TextPrimary
+	closeBtn.Text = "X"
+	closeBtn.ZIndex = 69
+	closeBtn.Parent = topBar
+	vars.addCorner(closeBtn, 6)
+	vars.wire(closeBtn.Activated, function()
+		vars.stopHoverPreview()
+	end)
+
+	local viewportHolder = Instance.new("Frame")
+	viewportHolder.Name = "ViewportHolder"
+	viewportHolder.Size = UDim2.new(1, -24, 1, -96)
+	viewportHolder.Position = UDim2.new(0, 12, 0, 40)
+	viewportHolder.BackgroundColor3 = t.PanelBg
+	viewportHolder.BackgroundTransparency = 0.25
+	viewportHolder.BorderSizePixel = 0
+	viewportHolder.ClipsDescendants = true
+	viewportHolder.ZIndex = 66
+	viewportHolder.Parent = popup
+	vars.addCorner(viewportHolder, 8)
+	local vhStroke = vars.addStroke(viewportHolder, t.Stroke, 1, 0.45)
+	vhStroke.Name = "VHStroke"
+
+	local info = Instance.new("TextLabel")
+	info.Name = "Info"
+	info.Size = UDim2.new(1, -24, 0, 18)
+	info.Position = UDim2.new(0, 12, 1, -50)
+	info.BackgroundTransparency = 1
+	info.Text = "R15  |  0 accessories"
+	info.TextColor3 = t.TextSecondary
+	info.TextSize = 11
+	info.Font = Enum.Font.GothamSemibold
+	info.TextXAlignment = Enum.TextXAlignment.Left
+	info.ZIndex = 68
+	info.Parent = popup
+
+	local previewStatus = Instance.new("TextLabel")
+	previewStatus.Name = "PreviewStatus"
+	previewStatus.Size = UDim2.new(1, -24, 1, -24)
+	previewStatus.Position = UDim2.new(0, 12, 0, 12)
+	previewStatus.BackgroundTransparency = 1
+	previewStatus.Text = ""
+	previewStatus.TextColor3 = t.TextSecondary
+	previewStatus.TextSize = 12
+	previewStatus.Font = Enum.Font.GothamSemibold
+	previewStatus.TextWrapped = true
+	previewStatus.TextXAlignment = Enum.TextXAlignment.Center
+	previewStatus.TextYAlignment = Enum.TextYAlignment.Center
+	previewStatus.Visible = false
+	previewStatus.ZIndex = 69
+	previewStatus.Parent = viewportHolder
+
+	local bottomName = Instance.new("TextLabel")
+	bottomName.Name = "BottomOutfitName"
+	bottomName.Size = UDim2.new(1, -24, 0, 22)
+	bottomName.Position = UDim2.new(0, 12, 1, -28)
+	bottomName.BackgroundTransparency = 1
+	bottomName.Text = "Outfit"
+	bottomName.TextColor3 = t.TextPrimary
+	bottomName.TextSize = 13
+	bottomName.Font = Enum.Font.GothamBold
+	bottomName.TextXAlignment = Enum.TextXAlignment.Left
+	bottomName.TextTruncate = Enum.TextTruncate.AtEnd
+	bottomName.ZIndex = 68
+	bottomName.Parent = popup
+
+	return popup
+end
+vars.HoverPreview = vars.createHoverPreviewUI()
+
+vars.updateHoverPreviewPosition = function()
+	local popup = vars.HoverPreview
+	if not popup or not MainFrame then return end
+	if not isMenuVisible or ActiveTabName ~= "Avatar Changer" then
+		if popup.Visible then vars.stopHoverPreview() end
+		return
+	end
+	local cam = vars.Workspace.CurrentCamera
+	local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local mPos = MainFrame.AbsolutePosition
+	local mSize = MainFrame.AbsoluteSize
+	local pWidth = vars.previewWidth
+	local pHeight = math.clamp(mSize.Y, 320, 420)
+	popup.Size = UDim2.fromOffset(pWidth, pHeight)
+
+	local targetX = mPos.X + mSize.X + vars.previewGap
+	if targetX + pWidth > vp.X - 8 then
+		targetX = math.max(8, mPos.X - pWidth - vars.previewGap)
+	end
+	local targetY = math.clamp(mPos.Y, 8, math.max(8, vp.Y - pHeight - 8))
+	popup.Position = UDim2.fromOffset(targetX, targetY)
+end
+
+vars.showHoverPreview = function(data, isPinned)
+	if not vars.scriptAlive or not data then return end
+
+	vars.stopHoverPreview()
+	if isPinned then vars.ui.pinnedPreviewData = data end
+	local token = vars.hoverPreviewToken
+
+	local popup = vars.HoverPreview
+	vars.updateHoverPreviewPosition()
+	local topBar = popup:FindFirstChild("PreviewTopBar")
+	local title = topBar and topBar:FindFirstChild("OutfitName")
+	local bottomName = popup:FindFirstChild("BottomOutfitName")
+	local info = popup:FindFirstChild("Info")
+	local holder = popup:FindFirstChild("ViewportHolder")
+	local status = holder and holder:FindFirstChild("PreviewStatus")
+	if not title or not bottomName or not info or not holder or not status then return end
+
+	local outfitName = tostring(data.DisplayName or data.Name or "Unnamed Outfit")
+	title.Text = "3D AVATAR PREVIEW"
+	bottomName.Text = outfitName
+	info.Text = string.upper(tostring(data.RigType or "Unknown"))
+		.. "  |  " .. tostring(vars.getAccessoryCount(data)) .. " accessories"
+
+	popup.Visible = true
+	status.Text = "Loading 3D preview..."
+	status.Visible = true
+
+	local viewport, worldModel, camera = vars.createPreviewViewport(holder)
+	if not viewport then
+		status.Text = "Preview error:\nCould not create the viewport."
+		status.Visible = true
+		return
+	end
+
+	task.spawn(function()
+		local ok, err = xpcall(function()
+			if not vars.scriptAlive or token ~= vars.hoverPreviewToken or not popup.Visible then return end
+
+			local cacheKey = vars.getPreviewCacheKey(data)
+			local template = cacheKey and vars.previewModelCache[cacheKey]
+
+			if template and template.Parent ~= nil then
+				vars.previewModelCache[cacheKey] = nil
+				template = nil
+			elseif template then
+				vars.touchPreviewCache(cacheKey)
+			end
+
+			if not template then
+				template = vars.buildPreviewTemplate(data, cacheKey)
+			end
+
+			if not template then
+				error("buildPreviewTemplate returned no model")
+			end
+
+			if not vars.scriptAlive or token ~= vars.hoverPreviewToken or not popup.Visible then return end
+
+			local cloneOk, model = pcall(function()
+				return template:Clone()
+			end)
+			if not cloneOk or not model then
+				error("failed to clone the preview model: " .. tostring(model))
+			end
+
+			model.Parent = worldModel
+			model:PivotTo(CFrame.new(0, 0, 0))
+			vars.ui.hoverModel = model
+			vars.ui.hoverViewport = viewport
+
+			local cameraOk, cameraErr = pcall(function()
+				vars.positionPreviewCamera(camera, model)
+				camera.FieldOfView = 35
+			end)
+			if not cameraOk then
+				pcall(function() model:Destroy() end)
+				error("camera setup failed: " .. tostring(cameraErr))
+			end
+
+			if not vars.scriptAlive or token ~= vars.hoverPreviewToken or not popup.Visible then
+				pcall(function() model:Destroy() end)
+				return
+			end
+
+			status.Text = ""
+			status.Visible = false
+
+			local angle = 0
+			vars.ui.hoverConnection = vars.RunService.RenderStepped:Connect(function(dt)
+				if not vars.scriptAlive or token ~= vars.hoverPreviewToken or not popup.Visible or not model.Parent then
+					vars.stopHoverPreview()
+					return
+				end
+
+				vars.updateHoverPreviewPosition()
+				angle = angle + dt * math.rad(75)
+				pcall(function()
+					model:PivotTo(CFrame.Angles(0, angle, 0))
+				end)
+			end)
+		end, debug.traceback)
+
+		if not ok and vars.scriptAlive and token == vars.hoverPreviewToken and popup.Visible then
+			pcall(function()
+				if vars.ui.hoverModel then
+					vars.ui.hoverModel:Destroy()
+					vars.ui.hoverModel = nil
+				end
+			end)
+			vars.ui.hoverViewport = nil
+			status.Text = "Preview error:\n" .. tostring(err)
+			status.Visible = true
+		end
+	end)
+end
+
+vars.clearAvatarCards = function()
+	vars.previewQueueGeneration = vars.previewQueueGeneration + 1
+	table.clear(vars.previewQueue)
+	table.clear(vars.previewStates)
+	table.clear(vars.ui.avatarRows)
+	vars.clearPreviewModelCache()
+	vars.stopHoverPreview()
+
+	for _, child in ipairs(vars.List:GetChildren()) do
+		if child:IsA("Frame") and child.Name == "AvatarRow" then
+			child:Destroy()
+		end
+	end
+end
+
+vars.StyleAvatarRow = function(data, row)
+	if not row or not row.Parent then return end
+	local t = GetTheme()
+	local d = Config.GuiDesign or "Default"
+	local selected = (data == vars.ui.selectedAvatar)
+
+	row.BackgroundColor3 = t.CardBg
+	row.BackgroundTransparency = (d == "LiquidGlass" and 0.54) or (d == "CyberHud" and 0.10) or 0.08
+	local rc = row:FindFirstChildOfClass("UICorner")
+	if rc then
+		rc.CornerRadius = UDim.new(0, (d == "LiquidGlass" and 11) or (d == "CyberHud" and 4) or 8)
+	end
+	local rst = row:FindFirstChildOfClass("UIStroke")
+	if rst then
+		rst.Color = selected and t.Accent or t.Stroke
+		rst.Thickness = selected and 1.6 or ((d == "CyberHud" and 1.5) or 1.0)
+		rst.Transparency = selected and 0.05 or ((d == "LiquidGlass" and 0.24) or (d == "CyberHud" and 0.04) or 0.55)
+	end
+
+	local thumbHolder = row:FindFirstChild("ThumbHolder")
+	if thumbHolder then
+		thumbHolder.BackgroundColor3 = t.PanelBg
+		local tst = thumbHolder:FindFirstChildOfClass("UIStroke")
+		if tst then tst.Color = selected and t.Accent or t.Stroke end
+	end
+
+	local rigBadge = row:FindFirstChild("RigBadge")
+	if rigBadge then
+		rigBadge.BackgroundColor3 = selected and t.Accent or t.PanelBg
+		rigBadge.TextColor3 = selected and Color3.fromRGB(255, 255, 255) or t.TextSecondary
+	end
+
+	local button = row:FindFirstChild("AvatarName")
+	if button then
+		button.BackgroundColor3 = selected and t.AccentDark:Lerp(t.PanelBg, 0.55) or t.PanelBg
+		button.BackgroundTransparency = (d == "LiquidGlass" and 0.45) or 0.12
+		button.TextColor3 = t.TextPrimary
+		local disp = tostring(data.DisplayName or data.Name or "Unnamed Avatar")
+		local uname = tostring(data.Name or data.Username or "")
+		if uname ~= "" and string.lower(uname) ~= string.lower(disp) then
+			button.Text = disp .. " (@" .. uname .. ")"
+		else
+			button.Text = disp
+		end
+		local bst = button:FindFirstChildOfClass("UIStroke")
+		if bst then
+			bst.Color = selected and t.Accent or t.Stroke
+			bst.Transparency = selected and 0.15 or 0.55
+		end
+		local marker = button:FindFirstChild("SelectionMarker")
+		if marker then
+			marker.Visible = selected
+			marker.BackgroundColor3 = t.Accent
+		end
+	end
+
+	local renBtn = row:FindFirstChild("Rename")
+	if renBtn then
+		renBtn.BackgroundColor3 = t.PanelBg
+		local st = renBtn:FindFirstChildOfClass("UIStroke")
+		if st then st.Color = t.Stroke end
+		local ic = renBtn:FindFirstChild("Icon")
+		if ic then ic.TextColor3 = t.TextSecondary end
+	end
+
+	local hovBtn = row:FindFirstChild("Hover3D")
+	if hovBtn then
+		local isPinned = (vars.ui.pinnedPreviewData == data and vars.HoverPreview and vars.HoverPreview.Visible)
+		hovBtn.BackgroundColor3 = isPinned and t.Accent or t.PanelBg
+		local st = hovBtn:FindFirstChildOfClass("UIStroke")
+		if st then st.Color = isPinned and t.Accent or t.Stroke end
+		local ic = hovBtn:FindFirstChild("Icon")
+		if ic then ic.TextColor3 = isPinned and Color3.fromRGB(255, 255, 255) or t.TextSecondary end
+	end
+end
+
+vars.updateRowVisuals = function(selectedData)
+	vars.updateWearButtonState()
+	for data, row in pairs(vars.ui.avatarRows) do
+		vars.StyleAvatarRow(data, row)
+	end
+end
+
+vars.deleteAvatar = function(data)
+	if not data then return end
+	local sig = data.Signature or (data.Properties and vars.getAvatarSignature(data.Properties, data.RigType or "R6"))
+	if sig then
+		vars.ui.deletedSignatures[sig] = true
+	end
+
+	local path = data.FilePath or (data.FileName and (vars.AVATARS_FOLDER .. "/" .. tostring(data.FileName)))
+	if path and type(delfile) == "function" then
+		pcall(function() delfile(path) end)
+	end
+
+	for index = #vars.ui.savedAvatars, 1, -1 do
+		local entry = vars.ui.savedAvatars[index]
+		if entry == data or (sig and entry.Signature == sig) then
+			table.remove(vars.ui.savedAvatars, index)
+		end
+	end
+
+	if vars.ui.selectedAvatar == data then
+		vars.ui.selectedAvatar = nil
+	end
+	vars.syncAllSavedAvatarsToDisk()
+	vars.Status.Text = "[OK] Deleted: " .. tostring(data.DisplayName or data.Name or "avatar")
+	vars.StatusDot.BackgroundColor3 = vars.COLORS.Success
+	vars.clearDiagnostics()
+	vars.populateAvatarList()
+end
+
+vars.showRenameDialog = function(data)
+	if not data then return end
+	vars.RenameTarget = data
+	vars.RenameInput.Text = tostring(data.DisplayName or data.Name or "")
+	vars.RenameOverlay.Visible = true
+	task.defer(function()
+		if vars.RenameInput and vars.RenameInput.Parent then
+			vars.RenameInput:CaptureFocus()
+			vars.RenameInput.CursorPosition = #vars.RenameInput.Text + 1
+		end
+	end)
+end
+
+vars.createAvatarCard = function(data, index)
+	local t = GetTheme()
+	local Row = Instance.new("Frame")
+	Row.Name = "AvatarRow"
+	Row.Size = UDim2.new(1, 0, 0, 46)
+	Row.BackgroundColor3 = t.CardBg
+	Row.BorderSizePixel = 0
+	Row.LayoutOrder = index
+	Row.Parent = vars.List
+	vars.addCorner(Row, 8)
+	vars.addStroke(Row, t.Stroke, 1, 0.5)
+
+	-- Avatar Headshot Thumbnail
+	local thumbHolder = Instance.new("Frame")
+	thumbHolder.Name = "ThumbHolder"
+	thumbHolder.Size = UDim2.fromOffset(34, 34)
+	thumbHolder.Position = UDim2.new(0, 6, 0.5, -17)
+	thumbHolder.BackgroundColor3 = t.PanelBg
+	thumbHolder.BorderSizePixel = 0
+	thumbHolder.Parent = Row
+	vars.addCorner(thumbHolder, 8)
+	vars.addStroke(thumbHolder, t.Stroke, 1, 0.5)
+
+	local thumbImg = Instance.new("ImageLabel")
+	thumbImg.Name = "ThumbImg"
+	thumbImg.Size = UDim2.new(1, 0, 1, 0)
+	thumbImg.BackgroundTransparency = 1
+	local uid = tonumber(data.UserId) or 1
+	thumbImg.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(uid) .. "&w=48&h=48"
+	thumbImg.Parent = thumbHolder
+	vars.addCorner(thumbImg, 8)
+
+	-- Rig Badge (R6 / R15)
+	local rigBadge = Instance.new("TextLabel")
+	rigBadge.Name = "RigBadge"
+	rigBadge.Size = UDim2.fromOffset(32, 22)
+	rigBadge.Position = UDim2.new(0, 44, 0.5, -11)
+	rigBadge.BackgroundColor3 = t.PanelBg
+	rigBadge.BorderSizePixel = 0
+	rigBadge.Font = Enum.Font.GothamBold
+	rigBadge.TextSize = 10
+	rigBadge.TextColor3 = t.TextSecondary
+	rigBadge.Text = tostring(data.RigType or "R15")
+	rigBadge.Parent = Row
+	vars.addCorner(rigBadge, 5)
+
+	-- Main Click-to-Wear Avatar Name Button
+	local AvatarName = Instance.new("TextButton")
+	AvatarName.Name = "AvatarName"
+	AvatarName.Size = UDim2.new(1, -198, 1, -10)
+	AvatarName.Position = UDim2.new(0, 80, 0, 5)
+	AvatarName.BackgroundColor3 = t.PanelBg
+	AvatarName.BorderSizePixel = 0
+	AvatarName.Text = tostring(data.DisplayName or data.Name or "Unnamed Avatar")
+	AvatarName.TextColor3 = t.TextPrimary
+	AvatarName.TextSize = 12
+	AvatarName.Font = Enum.Font.GothamBold
+	AvatarName.TextXAlignment = Enum.TextXAlignment.Left
+	AvatarName.TextTruncate = Enum.TextTruncate.AtEnd
+	AvatarName.AutoButtonColor = false
+	AvatarName.Parent = Row
+	vars.addPadding(AvatarName, 10, 10, 0, 0)
+	vars.addCorner(AvatarName, 6)
+	vars.addStroke(AvatarName, t.Stroke, 1, 0.5)
+
+	local selectionMarker = Instance.new("Frame")
+	selectionMarker.Name = "SelectionMarker"
+	selectionMarker.Size = UDim2.new(0, 4, 1, -8)
+	selectionMarker.Position = UDim2.new(0, -6, 0, 4)
+	selectionMarker.BackgroundColor3 = t.Accent
+	selectionMarker.BorderSizePixel = 0
+	selectionMarker.Visible = (vars.ui.selectedAvatar == data)
+	selectionMarker.ZIndex = AvatarName.ZIndex + 1
+	selectionMarker.Active = false
+	selectionMarker.Parent = AvatarName
+	vars.addCorner(selectionMarker, 4)
+
+	-- Action Buttons: Rename | 3D Preview | Delete
+	local Rename = Instance.new("TextButton")
+	Rename.Name = "Rename"
+	Rename.Size = UDim2.fromOffset(32, 30)
+	Rename.Position = UDim2.new(1, -112, 0.5, -15)
+	Rename.BackgroundColor3 = t.PanelBg
+	Rename.BorderSizePixel = 0
+	Rename.Text = ""
+	Rename.AutoButtonColor = false
+	Rename.Parent = Row
+	vars.addCorner(Rename, 6)
+	vars.addStroke(Rename, t.Stroke, 1, 0.45)
+	local renameIcon = vars.createBuilderIcon(Rename, "Icon", vars.BUILDER_ICONS.Rename, 15, t.TextSecondary)
+	renameIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+	renameIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+	local Hover3D = Instance.new("TextButton")
+	Hover3D.Name = "Hover3D"
+	Hover3D.Size = UDim2.fromOffset(32, 30)
+	Hover3D.Position = UDim2.new(1, -75, 0.5, -15)
+	Hover3D.BackgroundColor3 = t.PanelBg
+	Hover3D.BorderSizePixel = 0
+	Hover3D.Text = ""
+	Hover3D.AutoButtonColor = false
+	Hover3D.Parent = Row
+	vars.addCorner(Hover3D, 6)
+	vars.addStroke(Hover3D, t.Stroke, 1, 0.45)
+	local previewIcon = vars.createBuilderIcon(Hover3D, "Icon", vars.BUILDER_ICONS.Preview3D, 15, t.TextSecondary)
+	previewIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+	previewIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+	local DeleteButton = Instance.new("TextButton")
+	DeleteButton.Name = "Delete"
+	DeleteButton.Size = UDim2.fromOffset(32, 30)
+	DeleteButton.Position = UDim2.new(1, -38, 0.5, -15)
+	DeleteButton.BackgroundColor3 = Color3.fromRGB(48, 22, 28)
+	DeleteButton.BorderSizePixel = 0
+	DeleteButton.Text = ""
+	DeleteButton.AutoButtonColor = false
+	DeleteButton.Parent = Row
+	vars.addCorner(DeleteButton, 6)
+	vars.addStroke(DeleteButton, Color3.fromRGB(165, 55, 70), 1, 0.25)
+	local deleteIcon = vars.createBuilderIcon(DeleteButton, "Icon", vars.BUILDER_ICONS.Delete, 15, Color3.fromRGB(240, 110, 125))
+	deleteIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+	deleteIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+	vars.wire(AvatarName.Activated, function()
+		if vars.ui.selectedAvatar == data and (vars.tryOnActive or vars.localTryOnModel or vars.localTryOnBuilding or vars.placeholderR6Active) then
+			vars.tryOnActive = false
+			vars.stopLocalTryOn(false)
+			vars.ui.selectedAvatar = nil
+			vars.updateRowVisuals(nil)
+			vars.Status.Text = "Local try-on cleared. Original avatar restored."
+			vars.clearDiagnostics()
+			if NotifyFeatureToggle then NotifyFeatureToggle("Avatar Try-On", false) end
+			return
+		end
+
+		if vars.ui.selectedAvatar ~= data and (vars.tryOnActive or vars.localTryOnModel or vars.localTryOnBuilding or vars.placeholderR6Active) then
+			vars.tryOnActive = false
+			vars.stopLocalTryOn(false)
+		end
+
+		vars.ui.selectedAvatar = data
+		vars.updateRowVisuals(data)
+		local dispName = tostring(data.DisplayName or data.Name or "avatar")
+		vars.Status.Text = "[...] Wearing: " .. dispName
+		vars.StatusDot.BackgroundColor3 = GetTheme().Accent
+		vars.clearDiagnostics()
+		if NotifyFeatureToggle then NotifyFeatureToggle("Wear: " .. dispName, true) end
+		task.defer(function()
+			if vars.scriptAlive and vars.ui.selectedAvatar == data then
+				vars.tryOnSelectedAvatarLocally()
+			end
+		end)
+	end)
+
+	vars.wire(Rename.Activated, function()
+		vars.showRenameDialog(data)
+	end)
+
+	vars.wire(Hover3D.MouseEnter, function()
+		if vars.ui.pinnedPreviewData then return end
+		vars.ui.hoverButton = Hover3D
+		vars.showHoverPreview(data, false)
+	end)
+	vars.wire(Hover3D.MouseLeave, function()
+		if vars.ui.pinnedPreviewData then return end
+		if vars.ui.hoverButton == Hover3D then vars.ui.hoverButton = nil end
+		vars.stopHoverPreview()
+	end)
+	vars.wire(Hover3D.Activated, function()
+		if vars.ui.pinnedPreviewData == data and vars.HoverPreview and vars.HoverPreview.Visible then
+			vars.stopHoverPreview()
+		else
+			vars.showHoverPreview(data, true)
+		end
+		vars.updateRowVisuals(vars.ui.selectedAvatar)
+	end)
+
+	vars.wire(DeleteButton.Activated, function()
+		vars.showConfirmation('Delete "' .. tostring(data.DisplayName or data.Name or "this avatar") .. '" from your saved avatars?', function()
+			vars.deleteAvatar(data)
+		end)
+	end)
+
+	vars.ui.avatarRows[data] = Row
+	vars.StyleAvatarRow(data, Row)
+end
+
+vars.filterAvatarCards = function(query)
+	query = string.lower(string.match(tostring(query or ""), "^%s*(.-)%s*$"))
+	local shown = 0
+
+	for _, data in ipairs(vars.ui.savedAvatars) do
+		local matches = (query == "")
+			or (string.lower(tostring(data.DisplayName or "")):find(query, 1, true) ~= nil)
+			or (string.lower(tostring(data.Name or "")):find(query, 1, true) ~= nil)
+			or (string.lower(tostring(data.FileName or "")):find(query, 1, true) ~= nil)
+			or (string.lower(tostring(data.UserId or "")):find(query, 1, true) ~= nil)
+			or (string.lower(tostring(data.RigType or "")):find(query, 1, true) ~= nil)
+
+		local row = vars.ui.avatarRows[data]
+		if row and row.Parent then
+			row.Visible = matches
+			if matches then shown = shown + 1 end
+		end
+	end
+
+	vars.Status.Text = "[File] " .. tostring(shown) .. "/" .. tostring(#vars.ui.savedAvatars) .. " avatar(s) shown"
+end
+
+vars.populateAvatarList = function()
+	vars.clearAvatarCards()
+	for index, data in ipairs(vars.ui.savedAvatars) do
+		vars.createAvatarCard(data, index)
+	end
+	vars.filterAvatarCards(vars.SearchBox.Text)
+	vars.updateWearButtonState()
+end
+
+vars.restoreLocalCharacter = function()	for part, oldTransparency in pairs(vars.hiddenCharacterParts) do
+		pcall(function()
+			if part and part.Parent then part.LocalTransparencyModifier = oldTransparency end
+		end)
+	end
+	table.clear(vars.hiddenCharacterParts)
+
+	for decal, oldTransparency in pairs(vars.hiddenCharacterDecals) do
+		pcall(function()
+			if decal and decal.Parent then decal.Transparency = oldTransparency end
+		end)
+	end
+	table.clear(vars.hiddenCharacterDecals)
+end
+
+vars.destroyOrphanedLocalTryOnModels = function(exceptModel)	for _, instance in ipairs(vars.Workspace:GetDescendants()) do
+		if instance:IsA("Model") and instance.Name == "LocalWearer_LocalTryOn" and instance ~= exceptModel then
+			pcall(function() instance:Destroy() end)
+		end
+	end
+end
+
+vars.capturePlaceholderR6Backup = function(character)
+	if not character or not character.Parent then return nil end
+	local backup = {Character = character, Items = {}, PartAppearance = {}, HeadVisuals = {}}
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Accessory") or child:IsA("Shirt") or child:IsA("Pants")
+			or child:IsA("ShirtGraphic") or child:IsA("BodyColors") or child:IsA("CharacterMesh") then
+			local ok, clone = pcall(function() return child:Clone() end)
+			if ok and clone then backup.Items[#backup.Items + 1] = clone end
+		end
+	end
+	for _, name in ipairs({"Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg"}) do
+		local part = character:FindFirstChild(name)
+		if part and part:IsA("BasePart") then
+			backup.PartAppearance[name] = {Color = part.Color, Material = part.Material}
+		end
+	end
+	local head = character:FindFirstChild("Head")
+	if head then
+		for _, child in ipairs(head:GetChildren()) do
+			if child:IsA("SpecialMesh") or child:IsA("Mesh") or child:IsA("Decal") then
+				local ok, clone = pcall(function() return child:Clone() end)
+				if ok and clone then backup.HeadVisuals[#backup.HeadVisuals + 1] = clone end
+			end
+		end
+	end
+	return backup
+end
+
+vars.clearPlaceholderR6Appearance = function(character)
+	if not character then return end
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Accessory") or child:IsA("Shirt") or child:IsA("Pants")
+			or child:IsA("ShirtGraphic") or child:IsA("BodyColors") or child:IsA("CharacterMesh") then
+			pcall(function() child:Destroy() end)
+		end
+	end
+	local head = character:FindFirstChild("Head")
+	if head then
+		for _, child in ipairs(head:GetChildren()) do
+			if child:IsA("SpecialMesh") or child:IsA("Mesh") or child:IsA("Decal") then
+				pcall(function() child:Destroy() end)
+			end
+		end
+	end
+end
+
+vars.restorePlaceholderR6 = function()
+	local backup = vars.placeholderR6Backup
+	vars.placeholderR6Backup = nil
+	vars.placeholderR6Active = false
+	vars.placeholderR6Building = false
+	if not backup then return end
+	local character = backup.Character
+	if not character or not character.Parent then
+		for _, item in ipairs(backup.Items or {}) do pcall(function() item:Destroy() end) end
+		for _, item in ipairs(backup.HeadVisuals or {}) do pcall(function() item:Destroy() end) end
+		return
+	end
+	vars.clearPlaceholderR6Appearance(character)
+	for name, appearance in pairs(backup.PartAppearance or {}) do
+		local part = character:FindFirstChild(name)
+		if part and part:IsA("BasePart") then
+			pcall(function() part.Color = appearance.Color end)
+			pcall(function() part.Material = appearance.Material end)
+		end
+	end
+	local head = character:FindFirstChild("Head")
+	if head then
+		for _, item in ipairs(backup.HeadVisuals or {}) do pcall(function() item.Parent = head end) end
+	end
+	for _, item in ipairs(backup.Items or {}) do pcall(function() item.Parent = character end) end
+end
+
+vars.applyPlaceholderR6 = function(selectedData)
+	if vars.placeholderR6Building then return false, "Already applying placeholder mode." end
+	
+	if vars.placeholderR6Active or vars.placeholderR6Backup then
+		vars.restorePlaceholderR6()
+	end
+	local character = vars.LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not character.Parent or not humanoid then return false, "Your character is not available." end
+	if humanoid.RigType ~= Enum.HumanoidRigType.R6 then
+		return false, "R15 uses the normal local try-on path."
+	end
+	if not selectedData or not selectedData.Properties then return false, "The selected avatar has no saved properties." end
+
+	vars.placeholderR6Building = true
+	vars.placeholderR6Backup = vars.capturePlaceholderR6Backup(character)
+	if not vars.placeholderR6Backup then
+		vars.placeholderR6Building = false
+		return false, "Could not back up your current R6 appearance."
+	end
+
+	local description = vars.reconstructHumanoidDescription(selectedData.Properties)
+	local okCreate, modelOrError = pcall(function()
+		return vars.Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R6)
+	end)
+	pcall(function() description:Destroy() end)
+	if not okCreate or not modelOrError or not modelOrError:IsA("Model") then
+		vars.restorePlaceholderR6()
+		return false, tostring(modelOrError)
+	end
+
+	local model = modelOrError
+	local ok, err = xpcall(function()
+		vars.clearPlaceholderR6Appearance(character)
+		local bp = {
+			Head = character:FindFirstChild("Head"), Torso = character:FindFirstChild("Torso"),
+			["Left Arm"] = character:FindFirstChild("Left Arm"), ["Right Arm"] = character:FindFirstChild("Right Arm"),
+			["Left Leg"] = character:FindFirstChild("Left Leg"), ["Right Leg"] = character:FindFirstChild("Right Leg"),
+		}
+		for _, child in ipairs(model:GetChildren()) do
+			if child:IsA("Accessory") then
+				local a = child:Clone()
+				local handle = a:FindFirstChild("Handle")
+				if handle then
+					handle.Anchored = false
+					handle.CanCollide = false
+					handle.CanTouch = false
+					handle.CanQuery = false
+					handle.Massless = true
+					local at = handle:FindFirstChildWhichIsA("Attachment")
+					local targetAttachment = at and character:FindFirstChild(at.Name, true)
+					local part = targetAttachment and targetAttachment.Parent:IsA("BasePart") and targetAttachment.Parent or bp.Head or bp.Torso
+					if targetAttachment and targetAttachment.Parent:IsA("BasePart") then
+						handle.CFrame = targetAttachment.WorldCFrame * at.CFrame:Inverse()
+					elseif at and part then
+						handle.CFrame = part.CFrame * CFrame.new(at.Position)
+					elseif part then
+						handle.CFrame = part.CFrame
+					end
+					if part then
+						local weld = Instance.new("WeldConstraint")
+						weld.Part0 = handle; weld.Part1 = part; weld.Parent = handle
+					end
+					for _, q in ipairs(a:GetDescendants()) do
+						if q:IsA("BasePart") and q ~= handle then
+							q.CanCollide = false; q.CanTouch = false; q.CanQuery = false; q.Massless = true
+							if part then
+								local weld = Instance.new("WeldConstraint")
+								weld.Part0 = q; weld.Part1 = handle; weld.Parent = q
+							end
+						end
+					end
+					a.Parent = character
+				else a:Destroy() end
+			elseif child:IsA("Shirt") or child:IsA("Pants") or child:IsA("ShirtGraphic") or child:IsA("BodyColors") or child:IsA("CharacterMesh") then
+				child:Clone().Parent = character
+			end
+		end
+		for _, name in ipairs({"Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg"}) do
+			local sourcePart, targetPart = model:FindFirstChild(name), character:FindFirstChild(name)
+			if sourcePart and targetPart and sourcePart:IsA("BasePart") and targetPart:IsA("BasePart") then
+				targetPart.Color = sourcePart.Color
+				targetPart.Material = sourcePart.Material
+			end
+		end
+		local sourceHead, targetHead = model:FindFirstChild("Head"), character:FindFirstChild("Head")
+		if sourceHead and targetHead then
+			for _, child in ipairs(sourceHead:GetChildren()) do
+				if child:IsA("SpecialMesh") or child:IsA("Mesh") or child:IsA("Decal") then
+					child:Clone().Parent = targetHead
+				end
+			end
+		end
+	end, debug.traceback)
+	pcall(function() model:Destroy() end)
+	if not ok then
+		vars.restorePlaceholderR6()
+		return false, tostring(err)
+	end
+	vars.placeholderR6Building = false
+	vars.placeholderR6Active = true
+	return true
+end
+
+vars.stopLocalTryOn = function(preserveActiveState)	vars.localTryOnBuildId = vars.localTryOnBuildId + 1
+	if vars.placeholderR6Active or vars.placeholderR6Backup then vars.restorePlaceholderR6() end
+	vars.localTryOnBuilding = false
+	vars.localTryOnMissingRecoveryPending = false
+	if not preserveActiveState then vars.tryOnActive = false end
+
+	vars.cleanupAnimationSync()
+	vars.disconnectLocalTryOnConnections()
+
+	if vars.localTryOnModel then
+		pcall(function() vars.localTryOnModel:Destroy() end)
+		vars.localTryOnModel = nil
+	end
+
+	vars.destroyOrphanedLocalTryOnModels(nil)
+
+	vars.resetLocalTryOnState()
+	vars.restoreLocalCharacter()
+	vars.updateWearButtonState()
+end
+
+vars.abortLocalTryOnForSeatedPlayer = function()	vars.stopLocalTryOn(false)
+	vars.WearButton.Active = true
+	vars.updateWearButtonState()
+	vars.showSeatedTryOnBlocked()
+end
+
+vars.CHARACTER_BODY_PART_NAMES = {
+	Head = true,
+	HumanoidRootPart = true,
+	Torso = true,
+	UpperTorso = true,
+	LowerTorso = true,
+	["Left Arm"] = true,
+	["Right Arm"] = true,
+	["Left Leg"] = true,
+	["Right Leg"] = true,
+	LeftUpperArm = true,
+	LeftLowerArm = true,
+	LeftHand = true,
+	RightUpperArm = true,
+	RightLowerArm = true,
+	RightHand = true,
+	LeftUpperLeg = true,
+	LeftLowerLeg = true,
+	LeftFoot = true,
+	RightUpperLeg = true,
+	RightLowerLeg = true,
+	RightFoot = true,
+}
+
+vars.getCharacterTopLevel = function(instance, character)	local current = instance
+	while current and current.Parent and current.Parent ~= character do
+		current = current.Parent
+	end
+	return current and current.Parent == character and current or nil
+end
+
+vars.isExternalCharacterAttachment = function(instance, character)	if instance:FindFirstAncestorOfClass("Tool") or instance:FindFirstAncestorOfClass("VehicleSeat") then
+		return true
+	end
+
+	local topLevel = vars.getCharacterTopLevel(instance, character)
+	if not topLevel then return true end
+
+	if topLevel:IsA("Accessory") then
+		return false
+	end
+
+	local modelAncestor = instance:FindFirstAncestorOfClass("Model")
+	if modelAncestor and modelAncestor ~= character then
+		return true
+	end
+
+	if topLevel:IsA("BasePart") and vars.CHARACTER_BODY_PART_NAMES[topLevel.Name] then
+		if instance:IsA("BasePart") and instance ~= topLevel and instance.Parent == topLevel and not vars.CHARACTER_BODY_PART_NAMES[instance.Name] then
+			return true
+		end
+		return false
+	end
+
+	return true
+end
+
+vars.hideCharacterInstance = function(instance)	if not instance then return end
+	local character = vars.LocalPlayer.Character
+	if not character or not instance:IsDescendantOf(character) then return end
+	if vars.isExternalCharacterAttachment(instance, character) then return end
+
+	if instance:IsA("BasePart") then
+		if vars.hiddenCharacterParts[instance] == nil then
+			vars.hiddenCharacterParts[instance] = instance.LocalTransparencyModifier
+		end
+		instance.LocalTransparencyModifier = 1
+	elseif instance:IsA("Decal") or instance:IsA("Texture") then
+		if vars.hiddenCharacterDecals[instance] == nil then
+			vars.hiddenCharacterDecals[instance] = instance.Transparency
+		end
+		instance.Transparency = 1
+	end
+end
+
+vars.hideCharacterLocally = function(character)	if not character then return end
+	for _, instance in ipairs(character:GetDescendants()) do
+		vars.hideCharacterInstance(instance)
+	end
+	vars.setLocalTryOnConnection("visibility", character.DescendantAdded, vars.hideCharacterInstance)
+end
+
+vars.enforceCharacterHidden = function()	for part in pairs(vars.hiddenCharacterParts) do
+		if part and part.Parent and part.LocalTransparencyModifier ~= 1 then
+			part.LocalTransparencyModifier = 1
+		end
+	end
+	for decal in pairs(vars.hiddenCharacterDecals) do
+		if decal and decal.Parent and decal.Transparency ~= 1 then
+			decal.Transparency = 1
+		end
+	end
+end
+
+vars.isFirstPersonCamera = function(character)	local camera = vars.Workspace.CurrentCamera
+	local head = character and character:FindFirstChild("Head", true)
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not camera or not head or not humanoid then return false end
+
+	local cameraDistance = (camera.CFrame.Position - head.Position).Magnitude
+	local cameraFollowsCharacter = camera.CameraSubject == humanoid or (camera.CameraSubject and camera.CameraSubject:IsDescendantOf(character))
+	return cameraFollowsCharacter and cameraDistance <= 1.65
+end
+
+vars.setLocalTryOnFirstPersonVisibility = function(hidden)	if not vars.localTryOnModel or vars.localTryOnHiddenInFirstPerson == hidden then return end
+	vars.localTryOnHiddenInFirstPerson = hidden
+
+	for _, instance in ipairs(vars.localTryOnModel:GetDescendants()) do
+		if instance:IsA("BasePart") then
+			instance.LocalTransparencyModifier = hidden and 1 or 0
+		elseif instance:IsA("Decal") or instance:IsA("Texture") then
+			pcall(function() instance.LocalTransparencyModifier = hidden and 1 or 0 end)
+		end
+	end
+end
+
+vars.disableLocalTryOnCollision = function(instance)	if not instance or not instance:IsA("BasePart") then return end
+	vars.localTryOnCollisionParts[instance] = true
+	pcall(function()
+		if instance.CanCollide then instance.CanCollide = false end
+		if instance.CanTouch then instance.CanTouch = false end
+		if instance.CanQuery then instance.CanQuery = false end
+		if not instance.Massless then instance.Massless = true end
+	end)
+end
+
+vars.enforceLocalTryOnNoCollision = function()	for instance in pairs(vars.localTryOnCollisionParts) do
+		if instance and instance.Parent then
+			pcall(function()
+				if instance.CanCollide then instance.CanCollide = false end
+				if instance.CanTouch then instance.CanTouch = false end
+				if instance.CanQuery then instance.CanQuery = false end
+				if not instance.Massless then instance.Massless = true end
+			end)
+		else
+			vars.localTryOnCollisionParts[instance] = nil
+		end
+	end
+end
+
+vars.isLocalTryOnModelValid = function(model)	if not model or not model:IsA("Model") then return false end
+	if not model:IsDescendantOf(vars.Workspace) then return false end
+	if not model:FindFirstChildOfClass("Humanoid") then return false end
+	local root = model:FindFirstChild("HumanoidRootPart", true) or model.PrimaryPart or model:FindFirstChild("Head", true)
+	return root ~= nil and root:IsA("BasePart")
+end
+
+vars.prepareLocalModel = function(model)	local modelHumanoid = model:FindFirstChildOfClass("Humanoid")
+	if modelHumanoid then
+		modelHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		modelHumanoid.RequiresNeck = false
+		modelHumanoid.AutomaticScalingEnabled = false
+		pcall(function() modelHumanoid.EvaluateStateMachine = false end)
+		pcall(function()
+			for _, state in ipairs(Enum.HumanoidStateType:GetEnumItems()) do
+				if state ~= Enum.HumanoidStateType.None then modelHumanoid:SetStateEnabled(state, false) end
+			end
+			modelHumanoid:ChangeState(Enum.HumanoidStateType.None)
+		end)
+	end
+
+	local rootPart = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+	for _, instance in ipairs(model:GetDescendants()) do
+		if instance:IsA("BasePart") then
+			instance.Anchored = (instance == rootPart)
+			instance.CanCollide = false
+			instance.CanTouch = false
+			instance.CanQuery = false
+			instance.Massless = true
+			instance.LocalTransparencyModifier = 0
+		elseif instance:IsA("Decal") or instance:IsA("Texture") then
+			pcall(function() instance.LocalTransparencyModifier = 0 end)
+		elseif instance:IsA("Script") or instance:IsA("LocalScript") then
+			pcall(function() instance.Disabled = true end)
+		end
+	end
+end
+
+vars.setLocalTryOnStagingVisibility = function(model, hidden)	if not model then return end
+	for _, instance in ipairs(model:GetDescendants()) do
+		if instance:IsA("BasePart") then
+			instance.LocalTransparencyModifier = hidden and 1 or 0
+		elseif instance:IsA("Decal") or instance:IsA("Texture") then
+			pcall(function() instance.LocalTransparencyModifier = hidden and 1 or 0 end)
+		end
+	end
+end
+
+vars.getPartBottomY = function(part)	local halfSize = part.Size / 2
+	local lowestY = math.huge
+	for _, x in ipairs({-halfSize.X, halfSize.X}) do
+		for _, y in ipairs({-halfSize.Y, halfSize.Y}) do
+			for _, z in ipairs({-halfSize.Z, halfSize.Z}) do
+				lowestY = math.min(lowestY, part.CFrame:PointToWorldSpace(Vector3.new(x, y, z)).Y)
+			end
+		end
+	end
+	return lowestY
+end
+
+vars.getFeetBottomY = function(model)	local footNames = {"LeftFoot", "RightFoot", "Left Leg", "Right Leg"}
+	local lowestY = math.huge
+	local foundFoot = false
+	local seen = {}
+
+	for _, footName in ipairs(footNames) do
+		local foot = model:FindFirstChild(footName, true)
+		if foot and foot:IsA("BasePart") and not seen[foot] then
+			seen[foot] = true
+			foundFoot = true
+			lowestY = math.min(lowestY, vars.getPartBottomY(foot))
+		end
+	end
+	return foundFoot and lowestY or nil
+end
+
+vars.calculateLocalTryOnSwimOffset = function(character, model, characterRoot, generatedRoot)	local charTorso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or characterRoot
+	local modelTorso = model:FindFirstChild("UpperTorso") or model:FindFirstChild("Torso") or generatedRoot
+	local charTorsoY = characterRoot.CFrame:ToObjectSpace(charTorso.CFrame).Y
+	local modelTorsoY = generatedRoot.CFrame:ToObjectSpace(modelTorso.CFrame).Y
+	return Vector3.new(0, charTorsoY - modelTorsoY, 0)
+end
+
+vars.calculateGroundOffsetFromCurrentPlacement = function(character, model, currentOffset)	if not character or not model then return nil end
+	local characterFeetY = vars.getFeetBottomY(character)
+	local modelFeetY = vars.getFeetBottomY(model)
+	if not characterFeetY or not modelFeetY then return nil end
+
+	local currentOffsetY = currentOffset and currentOffset.Y or 0
+	return Vector3.new(0, characterFeetY - modelFeetY + currentOffsetY, 0)
+end
+
+vars.calculateGroundOffsetFromNeutralCloneFeet = function(character, characterRoot)	if not character or not characterRoot or vars.localTryOnNeutralCloneFeetRootOffsetY == nil then return nil end
+	local characterFeetY = vars.getFeetBottomY(character)
+	if not characterFeetY then return nil end
+	return Vector3.new(0, characterFeetY - characterRoot.Position.Y - vars.localTryOnNeutralCloneFeetRootOffsetY, 0)
+end
+
+vars.getLocalTryOnHipReference = function(model)	if not model then return nil end
+
+	local lowerTorso = model:FindFirstChild("LowerTorso", true)
+	if lowerTorso and lowerTorso:IsA("BasePart") then
+		local leftHipRigAttachment = lowerTorso:FindFirstChild("LeftHipRigAttachment")
+		local rightHipRigAttachment = lowerTorso:FindFirstChild("RightHipRigAttachment")
+		if leftHipRigAttachment and leftHipRigAttachment:IsA("Attachment")
+			and rightHipRigAttachment and rightHipRigAttachment:IsA("Attachment") then
+			return (leftHipRigAttachment.WorldPosition + rightHipRigAttachment.WorldPosition) * 0.5
+		end
+
+		local leftUpperLeg = model:FindFirstChild("LeftUpperLeg", true)
+		local rightUpperLeg = model:FindFirstChild("RightUpperLeg", true)
+		local leftHipAttachment = leftUpperLeg and leftUpperLeg:FindFirstChild("LeftHipAttachment")
+		local rightHipAttachment = rightUpperLeg and rightUpperLeg:FindFirstChild("RightHipAttachment")
+		if leftHipAttachment and leftHipAttachment:IsA("Attachment")
+			and rightHipAttachment and rightHipAttachment:IsA("Attachment") then
+			return (leftHipAttachment.WorldPosition + rightHipAttachment.WorldPosition) * 0.5
+		end
+	end
+
+	local torso = model:FindFirstChild("Torso", true)
+	if torso and torso:IsA("BasePart") then
+		local leftHip = torso:FindFirstChild("Left Hip")
+		local rightHip = torso:FindFirstChild("Right Hip")
+		if leftHip and leftHip:IsA("Motor6D") and rightHip and rightHip:IsA("Motor6D") then
+			local leftPart0 = leftHip.Part0 or torso
+			local rightPart0 = rightHip.Part0 or torso
+			local leftJointWorld = leftPart0.CFrame * leftHip.C0 * leftHip.Transform
+			local rightJointWorld = rightPart0.CFrame * rightHip.C0 * rightHip.Transform
+			return (leftJointWorld.Position + rightJointWorld.Position) * 0.5
+		end
+	end
+
+	return nil
+end
+
+vars.calculateLocalTryOnSeatedHipOffset = function(character, model, currentOffset)	if not vars.scriptAlive or not model or model ~= vars.localTryOnModel or not model:IsDescendantOf(vars.Workspace) then return nil end
+	if not character or not character.Parent then return nil end
+
+	local characterHip = vars.getLocalTryOnHipReference(character)
+	local modelHip = vars.getLocalTryOnHipReference(model)
+	if not characterHip or not modelHip then return nil end
+
+	local baseOffset = currentOffset or Vector3.zero
+	return baseOffset + (characterHip - modelHip)
+end
+
+vars.getLocalTryOnSeatedHipOffsetLocal = function(characterRoot, worldOffset)	if not characterRoot or not worldOffset then return Vector3.zero end
+	return characterRoot.CFrame:VectorToObjectSpace(worldOffset)
+end
+
+vars.isCloneSitAnimationSettled = function(model)	if not model then return false end
+
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then return false end
+
+	local enumRig = humanoid.RigType
+	local isR6 = enumRig == Enum.HumanoidRigType.R6
+		or (model:FindFirstChild("Torso") ~= nil and model:FindFirstChild("UpperTorso") == nil)
+	local resolved = vars.resolveAnimationIds(model, nil, isR6)
+	local sitId = vars.parseAssetId(resolved and resolved.Sit)
+	if not sitId then return false end
+
+	local sitTrack = nil
+	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+		if track and track.Animation then
+			local trackId = vars.parseAssetId(track.Animation.AnimationId)
+			if trackId == sitId and track.IsPlaying then
+				sitTrack = track
+				break
+			end
+		end
+	end
+	if not sitTrack then return false end
+
+	if sitTrack.WeightTarget < 0.95 then return false end
+	if math.abs(sitTrack.WeightCurrent - sitTrack.WeightTarget) > 0.02 then return false end
+
+	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+		if track ~= sitTrack and track.IsPlaying and track.WeightCurrent > 0.05 then
+			return false
+		end
+	end
+
+	return true
+end
+
+vars.isPlayerSitAnimationCleared = function(character)	if not character then return true end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return true end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then return true end
+
+	local isR6 = humanoid.RigType == Enum.HumanoidRigType.R6
+		or (character:FindFirstChild("Torso") ~= nil and character:FindFirstChild("UpperTorso") == nil)
+	local resolved = vars.resolveAnimationIds(character, nil, isR6)
+	local sitId = vars.parseAssetId(resolved and resolved.Sit)
+	if not sitId then return true end
+
+	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+		if track and track.Animation then
+			local trackId = vars.parseAssetId(track.Animation.AnimationId)
+			if trackId == sitId and (track.IsPlaying or track.WeightCurrent > 0.05 or track.WeightTarget > 0.05) then
+				return false
+			end
+		end
+	end
+
+	return true
+end
+
+vars.waitForCloneSitAnimationToSettle = function(character, model, playerHumanoid, seatPart, timeoutSeconds)	local deadline = os.clock() + (timeoutSeconds or 0.6)
+
+	while vars.scriptAlive and os.clock() < deadline do
+		if not character or not character.Parent or not playerHumanoid then return false end
+		if not model or model ~= vars.localTryOnModel or not model:IsDescendantOf(vars.Workspace) then return false end
+
+		local state = playerHumanoid:GetState()
+		local stillSeated = playerHumanoid.Sit
+			or playerHumanoid.SeatPart ~= nil
+			or state == Enum.HumanoidStateType.Seated
+		if not stillSeated or playerHumanoid.SeatPart ~= seatPart then return false end
+
+		if vars.isCloneSitAnimationSettled(model) then
+			return true
+		end
+
+		vars.RunService.Heartbeat:Wait()
+	end
+
+	return false
+end
+
+vars.scheduleSeatHipCalibrationAfterHeartbeat = function(character, model, playerHumanoid, seatPart, baseGroundOffset)	vars.localTryOnSeatCalibrationToken = vars.localTryOnSeatCalibrationToken + 1
+	local calibrationToken = vars.localTryOnSeatCalibrationToken
+	vars.localTryOnSeatCalibrationPending = true
+
+	task.spawn(function()
+		local settled = vars.waitForCloneSitAnimationToSettle(character, model, playerHumanoid, seatPart, 0.6)
+
+		if not vars.scriptAlive or calibrationToken ~= vars.localTryOnSeatCalibrationToken then return end
+		if not settled then
+			vars.localTryOnSeatCalibrationPending = false
+			return
+		end
+		if not model or model ~= vars.localTryOnModel or not model:IsDescendantOf(vars.Workspace) then
+			vars.localTryOnSeatCalibrationPending = false
+			return
+		end
+		if not character or not character.Parent or not playerHumanoid then
+			vars.localTryOnSeatCalibrationPending = false
+			return
+		end
+
+		local state = playerHumanoid:GetState()
+		local stillSeated = playerHumanoid.Sit or playerHumanoid.SeatPart ~= nil or state == Enum.HumanoidStateType.Seated
+		if not stillSeated or playerHumanoid.SeatPart ~= seatPart then
+			vars.localTryOnSeatCalibrationPending = false
+			return
+		end
+
+		local characterRoot = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
+		if not characterRoot then
+			vars.localTryOnSeatCalibrationPending = false
+			return
+		end
+
+		local seatedOffset = vars.calculateLocalTryOnSeatedHipOffset(character, model, baseGroundOffset)
+		if seatedOffset then
+			vars.localTryOnSeatedHipOffsetLocal = vars.getLocalTryOnSeatedHipOffsetLocal(characterRoot, seatedOffset)
+			vars.localTryOnSeatedHipOffsetValid = true
+			vars.localTryOnPositionMode = "Seat"
+		end
+		vars.localTryOnSeatCalibrationPending = false
+	end)
+end
+
+vars.isGroundPlacementState = function(state)	return state == Enum.HumanoidStateType.Running
+		or state == Enum.HumanoidStateType.Landed
+		or state == Enum.HumanoidStateType.Standing
+		or state == Enum.HumanoidStateType.PlatformStanding
+end
+
+vars.tryOnSelectedAvatarLocally = function()	if vars.localTryOnBuilding then return end
+
+	local selectedData = vars.ui.selectedAvatar
+	if not selectedData or not selectedData.Properties then
+		vars.Status.Text = "[!] Select an avatar first."
+		vars.clearDiagnostics()
+		return
+	end
+
+	if vars.IS_CATALOG_AVATAR_CREATOR then
+		local ok, err = vars.wearAvatarThroughCatalog(selectedData)
+		if ok then
+			vars.tryOnActive = true
+			vars.Status.Text = "[FE] Avatar worn through Catalog Avatar Creator."
+			vars.clearDiagnostics()
+			return
+		end
+		vars.tryOnActive = false
+		vars.showDiagnostics("CAC avatar wear failed.", tostring(err))
+		return
+	end
+
+	local character = vars.LocalPlayer.Character
+	local initialHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if vars.placeholderMode and initialHumanoid and initialHumanoid.RigType == Enum.HumanoidRigType.R6 then
+		vars.tryOnActive = true
+		vars.Status.Text = "[...] Applying R6 placeholder..."
+		vars.clearDiagnostics()
+		local ok, err = vars.applyPlaceholderR6(selectedData)
+		if ok then
+			vars.Status.Text = "[OK] R6 placeholder active!"
+			return
+		end
+		vars.tryOnActive = false
+		vars.showDiagnostics("R6 placeholder failed.", tostring(err))
+		return
+	end
+	if not character or not character.Parent then
+		vars.showDiagnostics("Local try-on failed.", "Your character is not available yet. Waiting for spawn...")
+		return
+	end
+
+	if vars.isCharacterCurrentlySitting(character, initialHumanoid) then
+		vars.abortLocalTryOnForSeatedPlayer()
+		return
+	end
+
+	vars.tryOnActive = true
+	vars.stopLocalTryOn(true)
+	vars.localTryOnBuildId = vars.localTryOnBuildId + 1
+	local currentBuildId = vars.localTryOnBuildId
+	vars.localTryOnBuilding = true
+	vars.WearButton.Active = false
+	vars.updateWearButtonState()
+	vars.Status.Text = "[...] Building local avatar..."
+	vars.clearDiagnostics()
+
+	local rigType = vars.getEnumRigType(selectedData.RigType)
+	local playerHumanoidForEmotes = initialHumanoid
+	local lastTryOnError = "Unknown local avatar creation failure."
+	local seatDetectedDuringBuild = false
+
+	if initialHumanoid then
+		vars.setLocalTryOnConnection("buildSeat", initialHumanoid.Seated, function(active)
+			if active then
+				seatDetectedDuringBuild = true
+			end
+		end)
+	end
+
+	local function seatBlockedDuringBuild()
+		return seatDetectedDuringBuild or vars.isCharacterCurrentlySitting(character, initialHumanoid)
+	end
+
+	for attempt = 1, 3 do
+		if seatBlockedDuringBuild() then
+			vars.abortLocalTryOnForSeatedPlayer()
+			return
+		end
+		if not vars.scriptAlive or currentBuildId ~= vars.localTryOnBuildId then
+			vars.localTryOnBuilding = false
+			vars.WearButton.Active = true
+			vars.updateWearButtonState()
+			return
+		end
+
+		if attempt > 1 then
+			vars.Status.Text = string.format("[...] Retrying local avatar... (%d/3)", attempt)
+			task.wait(0.1 * (attempt - 1))
+			if seatBlockedDuringBuild() then
+				vars.abortLocalTryOnForSeatedPlayer()
+				return
+			end
+			if not vars.scriptAlive or currentBuildId ~= vars.localTryOnBuildId then
+				vars.localTryOnBuilding = false
+				vars.WearButton.Active = true
+				vars.updateWearButtonState()
+				return
+			end
+		end
+
+		local description = vars.reconstructHumanoidDescription(selectedData.Properties)
+		vars.mergePlayerEmotesIntoDescription(description, playerHumanoidForEmotes, rigType)
+
+		local okCreate, modelOrError = pcall(function()
+			return vars.Players:CreateHumanoidModelFromDescriptionAsync(description, rigType)
+		end)
+		pcall(function() description:Destroy() end)
+
+		if seatBlockedDuringBuild() then
+			if typeof(modelOrError) == "Instance" then
+				pcall(function() modelOrError:Destroy() end)
+			end
+			vars.abortLocalTryOnForSeatedPlayer()
+			return
+		end
+
+		if not okCreate or typeof(modelOrError) ~= "Instance" or not modelOrError:IsA("Model") then
+			lastTryOnError = tostring(modelOrError)
+			if modelOrError and typeof(modelOrError) == "Instance" then
+				pcall(function() modelOrError:Destroy() end)
+			end
+		else
+
+		local model = modelOrError
+		local updateCloneAnims = nil
+		local okSetup, setupError = pcall(function()
+			model.Name = "LocalWearer_LocalTryOn"
+			vars.applyBodyColors(model, selectedData.Properties)
+			vars.applyHeadShapeToModel(model, selectedData.Properties)
+			vars.applyRigidAccessoryRefinements(model, selectedData.Properties)
+
+			local generatedRoot = model:FindFirstChild("HumanoidRootPart", true) or model.PrimaryPart or model:FindFirstChild("Head", true)
+			local characterRoot = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
+
+			if not generatedRoot then error("Generated avatar missing root part.") end
+			if not characterRoot then error("Your character missing root part.") end
+
+			vars.prepareLocalModel(model)
+
+			for _, instance in ipairs(model:GetDescendants()) do
+				vars.disableLocalTryOnCollision(instance)
+			end
+
+			vars.setLocalTryOnConnection("collision", model.DescendantAdded, vars.disableLocalTryOnCollision)
+
+			vars.setLocalTryOnConnection("preSimulation", vars.RunService.PreSimulation, vars.enforceLocalTryOnNoCollision)
+			vars.enforceLocalTryOnNoCollision()
+
+			vars.setLocalTryOnStagingVisibility(model, true)
+			generatedRoot.CFrame = characterRoot.CFrame + Vector3.new(0, 100, 0)
+			model.Parent = vars.Workspace
+			if not vars.isLocalTryOnModelValid(model) then
+				error("Generated avatar was removed or invalid immediately after entering Workspace.")
+			end
+
+			vars.localTryOnModel = model
+
+			vars.RunService.Heartbeat:Wait()
+			if seatBlockedDuringBuild() then
+				error("Local try-on blocked: player became seated during avatar build.")
+			end
+			if not vars.isLocalTryOnModelValid(model) then
+				error("Generated avatar did not survive initial rig settling.")
+			end
+
+			generatedRoot = model:FindFirstChild("HumanoidRootPart", true) or model.PrimaryPart or model:FindFirstChild("Head", true)
+			if not generatedRoot then error("Generated avatar root disappeared after rig settling.") end
+
+			generatedRoot.CFrame = characterRoot.CFrame
+
+			local initialState = initialHumanoid and initialHumanoid:GetState()
+			local initiallySwimming = initialState == Enum.HumanoidStateType.Swimming
+
+			vars.currentVerticalOffset = Vector3.zero
+			vars.localTryOnRootPart = generatedRoot
+			vars.localTryOnSwimOffset = vars.calculateLocalTryOnSwimOffset(character, model, characterRoot, generatedRoot)
+			local cloneFeetY = vars.getFeetBottomY(model)
+			vars.localTryOnNeutralCloneFeetRootOffsetY = cloneFeetY and (cloneFeetY - characterRoot.Position.Y) or nil
+			vars.localTryOnGroundOffset = vars.calculateGroundOffsetFromCurrentPlacement(character, model, Vector3.zero)
+			if not vars.localTryOnGroundOffset then
+				error("Could not establish initial feet-to-feet ground alignment.")
+			end
+			vars.localTryOnGroundOffsetValid = true
+			vars.localTryOnSeatedHipOffsetValid = false
+			vars.localTryOnPositionMode = "Ground"
+			vars.localTryOnSeatCalibrationPending = false
+			vars.localTryOnSeatCalibrationToken = vars.localTryOnSeatCalibrationToken + 1
+			vars.localTryOnGroundCalibrationFrames = 0
+			vars.localTryOnSwimTransitionActive = false
+			vars.localTryOnSwimTransitionStart = Vector3.zero
+			vars.localTryOnSwimTransitionStartedAt = 0
+			vars.localTryOnLastSwimming = initiallySwimming
+			vars.localTryOnSeatPart = nil
+
+			vars.currentVerticalOffset = initiallySwimming and vars.localTryOnSwimOffset or vars.localTryOnGroundOffset
+			vars.localTryOnRootPart.CFrame = characterRoot.CFrame + vars.currentVerticalOffset
+
+			vars.enforceLocalTryOnNoCollision()
+			vars.setLocalTryOnStagingVisibility(model, false)
+			vars.localTryOnHiddenInFirstPerson = false
+			vars.setLocalTryOnFirstPersonVisibility(vars.isFirstPersonCamera(character))
+
+			updateCloneAnims = vars.bindAnimationSync(character, model, selectedData.Properties, selectedData.RigType)
+
+			if seatBlockedDuringBuild() then
+				error("Local try-on blocked: player became seated during avatar build.")
+			end
+
+			if not vars.isLocalTryOnModelValid(model) then
+				error("Generated avatar did not survive animation setup.")
+			end
+
+			vars.hideCharacterLocally(character)
+
+			task.spawn(function()
+				if vars.scriptAlive and model.Parent and model:IsDescendantOf(vars.Workspace) then
+					vars.preloadAvatarVisualContent(model)
+				end
+			end)
+		end)
+
+		if not okSetup then
+			if vars.localTryOnModel == model then vars.localTryOnModel = nil end
+			vars.setLocalTryOnConnection("collision", nil)
+			vars.setLocalTryOnConnection("preSimulation", nil)
+			pcall(function() model:Destroy() end)
+			lastTryOnError = tostring(setupError)
+			if seatBlockedDuringBuild() then
+				vars.abortLocalTryOnForSeatedPlayer()
+				return
+			end
+		end
+
+		if okSetup and vars.scriptAlive and currentBuildId == vars.localTryOnBuildId and vars.isLocalTryOnModelValid(model) then
+			if seatBlockedDuringBuild() then
+				vars.abortLocalTryOnForSeatedPlayer()
+				return
+			end
+
+			vars.destroyOrphanedLocalTryOnModels(model)
+			vars.enforceLocalTryOnNoCollision()
+			vars.setLocalTryOnConnection("buildSeat", nil)
+			vars.localTryOnBuilding = false
+			vars.WearButton.Active = true
+			vars.setLocalTryOnConnection("position", vars.RunService.RenderStepped, function()
+				if not vars.scriptAlive then return end
+
+				if not vars.localTryOnModel or not vars.localTryOnModel:IsDescendantOf(vars.Workspace) then
+					if vars.tryOnActive and not vars.localTryOnBuilding and not vars.localTryOnMissingRecoveryPending then
+						vars.localTryOnMissingRecoveryPending = true
+						local missingBuildId = vars.localTryOnBuildId
+						task.delay(0.15, function()
+							vars.localTryOnMissingRecoveryPending = false
+							if not vars.scriptAlive or missingBuildId ~= vars.localTryOnBuildId or vars.localTryOnBuilding or not vars.tryOnActive then return end
+							if not vars.localTryOnModel or not vars.localTryOnModel:IsDescendantOf(vars.Workspace) then
+								vars.stopLocalTryOn(false)
+								vars.Status.Text = "[!] Local try-on was removed by this experience. Original avatar restored."
+								vars.showDiagnostics(
+									"Local try-on unavailable in this experience.",
+									"The generated avatar was removed after creation. Your real avatar has been restored. Try again; some games replace or restrict local Humanoid models."
+								)
+							end
+						end)
+					end
+					return
+				end
+
+				vars.localTryOnMissingRecoveryPending = false
+				vars.enforceLocalTryOnNoCollision()
+
+				if not character or not character.Parent then
+					vars.stopLocalTryOn(vars.tryOnActive)
+					vars.updateWearButtonState()
+					if vars.tryOnActive then vars.Status.Text = "[...] Character respawning..." end
+					return
+				end
+
+				local characterRoot = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
+				local playerHumanoid = character:FindFirstChildOfClass("Humanoid")
+
+				if not characterRoot or not vars.localTryOnRootPart then
+					vars.stopLocalTryOn(vars.tryOnActive)
+					vars.updateWearButtonState()
+					if vars.tryOnActive then vars.Status.Text = "[...] Waiting for character..." end
+					return
+				end
+
+				local currentState = playerHumanoid and playerHumanoid:GetState()
+				local isSwimming = (currentState == Enum.HumanoidStateType.Swimming)
+				local isSeated = playerHumanoid and (playerHumanoid.Sit or playerHumanoid.SeatPart ~= nil or currentState == Enum.HumanoidStateType.Seated) or false
+				local seatPart = playerHumanoid and playerHumanoid.SeatPart or nil
+
+				if not isSeated and isSwimming ~= vars.localTryOnLastSwimming then
+					vars.localTryOnLastSwimming = isSwimming
+					vars.localTryOnSwimTransitionActive = isSwimming or vars.localTryOnGroundOffsetValid
+					vars.localTryOnSwimTransitionStart = vars.currentVerticalOffset
+					vars.localTryOnSwimTransitionStartedAt = os.clock()
+				elseif isSeated then
+					vars.localTryOnLastSwimming = isSwimming
+					vars.localTryOnSwimTransitionActive = false
+				end
+
+				if updateCloneAnims then updateCloneAnims() end
+
+				local targetOffset = vars.currentVerticalOffset
+
+				if isSeated then
+					if (vars.localTryOnPositionMode ~= "Seat" and not vars.localTryOnSeatCalibrationPending) or vars.localTryOnSeatPart ~= seatPart then
+						vars.localTryOnPositionMode = "SeatCalibration"
+						vars.localTryOnGroundCalibrationFrames = 0
+						vars.localTryOnSeatPart = seatPart
+						vars.localTryOnSeatedHipOffsetValid = false
+						vars.localTryOnSeatTransitionActive = false
+						if not vars.localTryOnSeatCalibrationPending then
+							vars.scheduleSeatHipCalibrationAfterHeartbeat(character, vars.localTryOnModel, playerHumanoid, seatPart, vars.localTryOnGroundOffset)
+						end
+					end
+
+					if vars.localTryOnSeatedHipOffsetValid then
+						if not vars.localTryOnSeatTransitionActive then
+							vars.localTryOnSeatTransitionActive = true
+							vars.localTryOnSeatTransitionStartLocal = characterRoot.CFrame:VectorToObjectSpace(vars.currentVerticalOffset)
+							vars.localTryOnSeatTransitionStartedAt = os.clock()
+						end
+
+						local alpha = math.clamp((os.clock() - vars.localTryOnSeatTransitionStartedAt) / 0.16, 0, 1)
+						local eased = alpha * alpha * (3 - 2 * alpha)
+						local blendedLocalOffset = vars.localTryOnSeatTransitionStartLocal:Lerp(vars.localTryOnSeatedHipOffsetLocal, eased)
+						targetOffset = characterRoot.CFrame:VectorToWorldSpace(blendedLocalOffset)
+					else
+						targetOffset = vars.currentVerticalOffset
+					end
+				else
+					if vars.localTryOnPositionMode == "Seat" or vars.localTryOnPositionMode == "SeatCalibration" then
+						vars.localTryOnSeatCalibrationToken = vars.localTryOnSeatCalibrationToken + 1
+						vars.localTryOnSeatCalibrationPending = false
+						vars.localTryOnSeatPart = nil
+						vars.localTryOnSeatedHipOffsetValid = false
+						vars.localTryOnSeatTransitionActive = false
+						vars.localTryOnSeatTransitionStartLocal = Vector3.zero
+						vars.localTryOnSeatTransitionStartedAt = 0
+						if vars.localTryOnGroundOffsetValid then
+							vars.localTryOnPositionMode = "Ground"
+							vars.localTryOnGroundCalibrationFrames = 0
+							targetOffset = isSwimming and vars.localTryOnSwimOffset or vars.localTryOnGroundOffset
+						else
+							vars.localTryOnPositionMode = "GroundCalibration"
+							vars.localTryOnGroundCalibrationFrames = 2
+						end
+					end
+
+					if vars.localTryOnPositionMode == "GroundCalibration" then
+						if not isSwimming and vars.isGroundPlacementState(currentState) then
+							if not vars.isPlayerSitAnimationCleared(character) then
+								vars.localTryOnGroundCalibrationFrames = 2
+							elseif vars.localTryOnGroundCalibrationFrames > 0 then
+								vars.localTryOnGroundCalibrationFrames = vars.localTryOnGroundCalibrationFrames - 1
+							end
+							if vars.localTryOnGroundCalibrationFrames == 0 and vars.isPlayerSitAnimationCleared(character) then
+								local groundOffset = vars.calculateGroundOffsetFromNeutralCloneFeet(character, characterRoot)
+								if groundOffset then
+									vars.localTryOnGroundOffset = groundOffset
+									vars.localTryOnGroundOffsetValid = true
+									vars.localTryOnPositionMode = "Ground"
+									targetOffset = groundOffset
+								else
+									vars.localTryOnGroundCalibrationFrames = 1
+								end
+							end
+						else
+							vars.localTryOnGroundCalibrationFrames = 2
+						end
+						targetOffset = (vars.localTryOnPositionMode == "Ground") and vars.localTryOnGroundOffset or targetOffset
+					elseif isSwimming then
+						local desiredSwimOffset = vars.localTryOnSwimOffset
+						if vars.localTryOnSwimTransitionActive then
+							local alpha = math.clamp((os.clock() - vars.localTryOnSwimTransitionStartedAt) / 0.16, 0, 1)
+							local eased = alpha * alpha * (3 - 2 * alpha)
+							targetOffset = vars.localTryOnSwimTransitionStart:Lerp(desiredSwimOffset, eased)
+							if alpha >= 1 then
+								vars.localTryOnSwimTransitionActive = false
+								targetOffset = desiredSwimOffset
+							end
+						else
+							targetOffset = desiredSwimOffset
+						end
+					else
+						local desiredGroundOffset = vars.localTryOnGroundOffset
+						if vars.localTryOnSwimTransitionActive then
+							local alpha = math.clamp((os.clock() - vars.localTryOnSwimTransitionStartedAt) / 0.16, 0, 1)
+							local eased = alpha * alpha * (3 - 2 * alpha)
+							targetOffset = vars.localTryOnSwimTransitionStart:Lerp(desiredGroundOffset, eased)
+							if alpha >= 1 then
+								vars.localTryOnSwimTransitionActive = false
+								targetOffset = desiredGroundOffset
+							end
+						else
+							targetOffset = desiredGroundOffset
+						end
+					end
+				end
+
+				vars.currentVerticalOffset = targetOffset
+				vars.localTryOnRootPart.CFrame = characterRoot.CFrame + vars.currentVerticalOffset
+
+				vars.enforceCharacterHidden()
+				vars.setLocalTryOnFirstPersonVisibility(vars.isFirstPersonCamera(character))
+			end)
+
+			vars.updateWearButtonState()
+			vars.Status.Text = "[OK] Local try-on active!"
+			return
+		end
+
+		lastTryOnError = tostring(setupError)
+		pcall(function() model:Destroy() end)
+		vars.localTryOnModel = nil
+		vars.localTryOnRootPart = nil
+		vars.localTryOnGroundOffset = Vector3.zero
+		vars.localTryOnSwimOffset = Vector3.zero
+		vars.currentVerticalOffset = Vector3.zero
+		vars.localTryOnSeatedHipOffsetValid = false
+		vars.localTryOnSeatPart = nil
+		vars.localTryOnPositionMode = "Ground"
+		vars.localTryOnSeatCalibrationPending = false
+		vars.localTryOnSeatCalibrationToken = vars.localTryOnSeatCalibrationToken + 1
+		vars.resetLocalTryOnState()
+		vars.disconnectLocalTryOnConnections()
+		end
+	end
+
+	vars.setLocalTryOnConnection("buildSeat", nil)
+	vars.localTryOnBuilding = false
+	vars.WearButton.Active = true
+	vars.updateWearButtonState()
+	vars.showDiagnostics("Local try-on failed.", lastTryOnError)
+end
+
+vars.toggleLocalTryOn = function()	if vars.localTryOnBuilding then return end
+	if vars.localTryOnModel or vars.tryOnActive then
+		vars.tryOnActive = false
+		vars.stopLocalTryOn(false)
+		vars.updateWearButtonState()
+		vars.Status.Text = "Local try-on cleared."
+		vars.clearDiagnostics()
+	else
+		vars.tryOnSelectedAvatarLocally()
+	end
+end
+
+vars.bindCharacterLifecycle = function(character)
+	vars.disconnectConnection(vars.deathConnection)
+	vars.deathConnection = nil
+	if not character then return end
+
+	task.spawn(function()
+		local humanoid = character:WaitForChild("Humanoid", 10)
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		if not humanoid or not root or not vars.scriptAlive then return end
+
+		vars.deathConnection = humanoid.Died:Connect(function()
+			if vars.tryOnActive or vars.localTryOnModel or vars.localTryOnBuilding or vars.placeholderR6Active or vars.placeholderR6Backup then
+				-- Tear down all visuals attached to the dying character immediately.
+				vars.stopLocalTryOn(true)
+				vars.destroyOrphanedLocalTryOnModels(nil)
+				vars.WearButton.Active = false
+				vars.updateWearButtonState()
+				vars.Status.Text = "[...] Character died. Reapplying avatar after respawn..."
+			end
+		end)
+
+		local function applyToThisCharacter()
+			if not vars.scriptAlive or vars.LocalPlayer.Character ~= character then return end
+			if not vars.tryOnActive or not vars.ui.selectedAvatar then return end
+			vars.tryOnSelectedAvatarLocally()
+		end
+
+		if vars.tryOnActive and vars.ui.selectedAvatar and vars.scriptAlive then
+			task.wait(0.15)
+			applyToThisCharacter()
+
+			if vars.placeholderMode and humanoid.RigType == Enum.HumanoidRigType.R6 then
+				for _, delaySeconds in ipairs({0.45, 1.0, 2.0}) do
+					task.delay(delaySeconds, function()
+						if not vars.scriptAlive or vars.LocalPlayer.Character ~= character then return end
+						if not vars.placeholderMode or not vars.tryOnActive or not vars.ui.selectedAvatar then return end
+						if vars.placeholderR6Building then return end
+					applyToThisCharacter()
+					end)
+				end
+			end
+		else
+			vars.WearButton.Active = true
+			vars.updateWearButtonState()
+		end
+	end)
+end
+
+vars.characterAddedConnection = vars.LocalPlayer.CharacterAdded:Connect(vars.bindCharacterLifecycle)
+
+
+--==============================================================================
+-- TAB 10 EVENT CONNECTIONS, THEME ENGINE HOOKS & QUICK-SEARCH REGISTRATION
+--==============================================================================
+vars.wire(vars.WearButton.Activated, function()
+	if vars.localTryOnBuilding then return end
+	if vars.localTryOnModel or vars.tryOnActive or vars.placeholderR6Active then
+		vars.tryOnActive = false
+		vars.stopLocalTryOn(false)
+		vars.ui.selectedAvatar = nil
+		vars.updateRowVisuals(nil)
+		vars.Status.Text = "Local try-on cleared. Original avatar restored."
+		vars.clearDiagnostics()
+		if NotifyFeatureToggle then NotifyFeatureToggle("Avatar Try-On", false) end
+	elseif vars.ui.selectedAvatar then
+		vars.tryOnSelectedAvatarLocally()
+		if NotifyFeatureToggle then NotifyFeatureToggle("Avatar Try-On", true) end
+	else
+		vars.Status.Text = "[!] Click an avatar in your list or enter a username above."
+	end
+end)
+
+vars.updatePlaceholderToggleVisual = function()
+	if not vars.PlaceholderToggle or not vars.PlaceholderToggle.Parent then return end
+	local t = GetTheme()
+	local on = vars.placeholderMode
+	vars.PlaceholderToggle.Text = on and "MODE: R6 PLACEHOLDER" or "MODE: CLONE TRY-ON"
+	vars.PlaceholderToggle.BackgroundColor3 = on and t.Accent or t.PanelBg
+	vars.PlaceholderToggle.TextColor3 = on and Color3.fromRGB(255, 255, 255) or t.TextPrimary
+end
+
+vars.wire(vars.PlaceholderToggle.Activated, function()
+	if vars.placeholderR6Building then return end
+	vars.placeholderMode = not vars.placeholderMode
+	vars.updatePlaceholderToggleVisual()
+	if NotifyFeatureToggle then NotifyFeatureToggle("R6 Placeholder Mode", vars.placeholderMode) end
+	if vars.ui.selectedAvatar and (vars.tryOnActive or vars.localTryOnModel or vars.localTryOnBuilding or vars.placeholderR6Active) then
+		vars.tryOnActive = false
+		vars.stopLocalTryOn(false)
+		task.defer(function()
+			if vars.scriptAlive and vars.ui.selectedAvatar then vars.tryOnSelectedAvatarLocally() end
+		end)
+	else
+		vars.Status.Text = vars.placeholderMode and "R6 Placeholder mode enabled." or "Clone Try-On mode enabled."
+		vars.clearDiagnostics()
+	end
+end)
+
+vars.usernameAvatarBusy = false
+vars.wire(vars.UsernameBox.FocusLost, function()
+	if vars.usernameAvatarBusy then return end
+	local username = tostring(vars.UsernameBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if username == "" then return end
+
+	vars.usernameAvatarBusy = true
+	vars.UsernameBox.Active = false
+	vars.SaveSelfButton.Active = false
+	vars.SaveClickedButton.Active = false
+	vars.PlaceholderToggle.Active = false
+	vars.Status.Text = "[...] Loading profile avatar: @" .. username
+	vars.clearDiagnostics()
+
+	task.spawn(function()
+		local ok, success, result = pcall(function()
+			return vars.saveAndWearUsernameAvatar(username)
+		end)
+		if not ok then
+			vars.showDiagnostics("Profile avatar failed.", tostring(success))
+		elseif not success then
+			vars.showDiagnostics("Profile avatar failed.", tostring(result))
+		else
+			if NotifyFeatureToggle then NotifyFeatureToggle("Saved & Wore @" .. username, true) end
+		end
+
+		if vars.UsernameBox and vars.UsernameBox.Parent then
+			vars.UsernameBox.Active = true
+			vars.SaveSelfButton.Active = true
+			vars.SaveClickedButton.Active = not vars.ui.selectingPlayer
+			vars.PlaceholderToggle.Active = true
+			vars.usernameAvatarBusy = false
+		end
+	end)
+end)
+
+vars.wire(vars.SearchBox:GetPropertyChangedSignal("Text"), function()
+	if not vars.scriptAlive then return end
+	if vars.searchDebounceThread then task.cancel(vars.searchDebounceThread) vars.searchDebounceThread = nil end
+	vars.searchDebounceThread = task.delay(0.12, function()
+		if vars.scriptAlive then vars.filterAvatarCards(vars.SearchBox.Text) end
+	end)
+end)
+
+vars.wire(vars.SaveSelfButton.Activated, function()
+	if vars.ui.selectingPlayer then vars.stopPlayerSelection() end
+	vars.SaveSelfButton.Active = false
+	vars.SaveSelfButton.Text = "SAVING..."
+	local ok, result = vars.savePlayerAvatar(vars.LocalPlayer)
+	if ok then
+		local catalogOk, catalogName, catalogErr
+		if vars.IS_CATALOG_AVATAR_CREATOR then
+			catalogOk, catalogName, catalogErr = vars.saveAvatarToCatalogOutfit(result)
+		end
+		vars.SaveSelfButton.Text = (not vars.IS_CATALOG_AVATAR_CREATOR or catalogOk) and "SAVED!" or "LOCAL SAVED"
+		vars.SaveSelfButton.BackgroundColor3 = (not vars.IS_CATALOG_AVATAR_CREATOR or catalogOk) and vars.COLORS.Success or vars.COLORS.Danger
+		vars.populateAvatarList()
+		if NotifyFeatureToggle then NotifyFeatureToggle("Saved My Avatar", true) end
+		if vars.IS_CATALOG_AVATAR_CREATOR and catalogOk then
+			vars.Status.Text = "[FE] Saved to Saved Outfits as " .. tostring(catalogName)
+		elseif vars.IS_CATALOG_AVATAR_CREATOR then
+			vars.Status.Text = "[LOCAL] Saved, but CAC outfit save failed."
+			vars.showDiagnostics("CAC outfit save failed.", tostring(catalogErr))
+		else
+			vars.Status.Text = "[OK] Saved your current avatar (" .. tostring(#vars.ui.savedAvatars) .. " total)"
+		end
+	else
+		vars.SaveSelfButton.Text = "EXISTS / ERR"
+		vars.SaveSelfButton.BackgroundColor3 = vars.COLORS.Danger
+		vars.showDiagnostics("Could not save avatar.", tostring(result))
+	end
+	task.delay(1.1, function()
+		if vars.SaveSelfButton and vars.SaveSelfButton.Parent then
+			local t = GetTheme()
+			vars.SaveSelfButton.Text = "SAVE SELF"
+			vars.SaveSelfButton.BackgroundColor3 = t.PanelBg
+			vars.SaveSelfButton.Active = true
+		end
+	end)
+end)
+
+vars.wire(vars.SaveClickedButton.Activated, function()
+	if vars.ui.selectingPlayer then
+		vars.stopPlayerSelection()
+		if NotifyFeatureToggle then NotifyFeatureToggle("Click Player to Save", false) end
+		return
+	end
+	local t = GetTheme()
+	vars.ui.selectingPlayer = true
+	vars.ui.selectionPlayer = nil
+	vars.SaveClickedButton.Text = "CLICK PLAYER"
+	vars.SaveClickedButton.BackgroundColor3 = t.Accent
+	vars.SaveClickedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	vars.Status.Text = "Click or tap any player in-game to save their avatar."
+	vars.clearDiagnostics()
+	if NotifyFeatureToggle then NotifyFeatureToggle("Click Player to Save", true) end
+end)
+
+vars.isRefreshing = false
+vars.wire(vars.RefreshButton.Activated, function()
+	if vars.isRefreshing then return end
+	vars.isRefreshing = true
+	vars.RefreshButton.Text = "..."
+	vars.Status.Text = "Syncing & refreshing saved avatars..."
+	vars.previewQueueGeneration = vars.previewQueueGeneration + 1
+	table.clear(vars.previewQueue)
+	table.clear(vars.previewStates)
+	task.wait(0.05)
+	vars.loadSavedAvatars()
+	vars.populateAvatarList()
+	vars.RefreshButton.Text = "REFRESH"
+	task.delay(0.35, function() vars.isRefreshing = false end)
+end)
+
+vars.wire(vars.UserInputService.InputChanged, function(input)
+	if not vars.ui.selectingPlayer then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		vars.setPlayerSelectionHighlight(vars.getPlayerFromMouseTarget())
+	end
+end)
+
+vars.wire(vars.UserInputService.InputBegan, function(input, gameProcessed)
+	if vars.ui.selectingPlayer and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+		if gameProcessed and input.UserInputType == Enum.UserInputType.MouseButton1 then return end
+		local targetPlayer
+		if input.UserInputType == Enum.UserInputType.Touch then
+			targetPlayer = vars.getPlayerFromScreenPosition(input.Position)
+		else
+			targetPlayer = vars.getPlayerFromMouseTarget()
+		end
+		if targetPlayer then
+			vars.SaveClickedButton.Text = "SAVING..."
+			vars.SaveClickedButton.BackgroundColor3 = GetTheme().PanelBg
+			vars.SaveClickedButton.Active = false
+			local ok, result = vars.savePlayerAvatar(targetPlayer)
+			vars.stopPlayerSelection()
+			if ok then
+				local catalogOk, catalogName, catalogErr
+				if vars.IS_CATALOG_AVATAR_CREATOR then
+					catalogOk, catalogName, catalogErr = vars.saveAvatarToCatalogOutfit(result)
+				end
+				vars.populateAvatarList()
+				vars.SaveClickedButton.Text = (not vars.IS_CATALOG_AVATAR_CREATOR or catalogOk) and "SAVED!" or "LOCAL SAVED"
+				vars.SaveClickedButton.BackgroundColor3 = (not vars.IS_CATALOG_AVATAR_CREATOR or catalogOk) and vars.COLORS.Success or vars.COLORS.Danger
+				if NotifyFeatureToggle then NotifyFeatureToggle("Saved @" .. tostring(targetPlayer.Name), true) end
+				if vars.IS_CATALOG_AVATAR_CREATOR and catalogOk then
+					vars.Status.Text = "[FE] Saved @" .. tostring(targetPlayer.Name) .. " to Saved Outfits as " .. tostring(catalogName)
+				elseif vars.IS_CATALOG_AVATAR_CREATOR then
+					vars.Status.Text = "[LOCAL] Saved @" .. tostring(targetPlayer.Name) .. ", but CAC outfit save failed."
+					vars.showDiagnostics("CAC outfit save failed.", tostring(catalogErr))
+				else
+					vars.Status.Text = "[OK] Saved @" .. tostring(targetPlayer.Name) .. " (" .. tostring(#vars.ui.savedAvatars) .. " total)"
+				end
+			else
+				vars.SaveClickedButton.Text = "EXISTS / ERR"
+				vars.SaveClickedButton.BackgroundColor3 = vars.COLORS.Danger
+				vars.showDiagnostics("Failed to save " .. tostring(targetPlayer.Name) .. ".", tostring(result))
+			end
+			task.delay(1.1, function()
+				if vars.SaveClickedButton and vars.SaveClickedButton.Parent then
+					local t = GetTheme()
+					vars.SaveClickedButton.Text = "SAVE OTHER"
+					vars.SaveClickedButton.BackgroundColor3 = t.PanelBg
+					vars.SaveClickedButton.TextColor3 = t.TextPrimary
+					vars.SaveClickedButton.Active = true
+				end
+			end)
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.Touch then
+			vars.Status.Text = "No player found there. Tap a player character to save them."
+			return
+		end
+		vars.stopPlayerSelection()
+		vars.Status.Text = "Player selection cancelled."
+		return
+	end
+end)
+
+-- Dynamic Theme & 3-Style GUI Design Synchronization for Avatar Changer Tab & 3D Preview
+vars.RefreshAvatarChangerTheme = function()
+	vars.SyncColorsFromHubTheme()
+	local t = GetTheme()
+	local d = Config.GuiDesign or "Default"
+
+	vars.updatePlaceholderToggleVisual()
+	vars.updateWearButtonState()
+	if not vars.ui.selectingPlayer and vars.SaveClickedButton and vars.SaveClickedButton.Parent then
+		vars.SaveClickedButton.BackgroundColor3 = t.PanelBg
+		vars.SaveClickedButton.TextColor3 = t.TextPrimary
+	elseif vars.ui.selectingPlayer and vars.SaveClickedButton and vars.SaveClickedButton.Parent then
+		vars.SaveClickedButton.BackgroundColor3 = t.Accent
+		vars.SaveClickedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	end
+	if vars.ui.selectionHighlight and vars.ui.selectionHighlight.Parent then
+		vars.ui.selectionHighlight.FillColor = t.Accent
+	end
+	if vars.StatusDot and vars.StatusDot.Parent then
+		vars.StatusDot.BackgroundColor3 = t.Accent
+	end
+
+	-- Style 3D Preview Popup to match active Theme & GUI Design (Classic / LiquidGlass / CyberHud)
+	local popup = vars.HoverPreview
+	if popup and popup.Parent then
+		popup.BackgroundColor3 = t.MainBg
+		local pCorner = popup:FindFirstChildOfClass("UICorner")
+		local pStroke = popup:FindFirstChildOfClass("UIStroke")
+		local pGrad = popup:FindFirstChild("PreviewGlassGrad")
+		local sGrad = pStroke and pStroke:FindFirstChild("PreviewStrokeGrad")
+		local topBar = popup:FindFirstChild("PreviewTopBar")
+		local title = topBar and topBar:FindFirstChild("OutfitName")
+		local closeBtn = topBar and topBar:FindFirstChild("ClosePreviewBtn")
+		local holder = popup:FindFirstChild("ViewportHolder")
+		local vhStroke = holder and holder:FindFirstChild("VHStroke")
+		local info = popup:FindFirstChild("Info")
+		local botName = popup:FindFirstChild("BottomOutfitName")
+		local status = holder and holder:FindFirstChild("PreviewStatus")
+
+		if title then title.TextColor3 = t.Accent end
+		if closeBtn then
+			closeBtn.BackgroundColor3 = t.PanelBg
+			closeBtn.TextColor3 = t.TextPrimary
+		end
+		if holder then
+			holder.BackgroundColor3 = t.PanelBg
+			holder.BackgroundTransparency = (d == "LiquidGlass" and 0.52) or (d == "CyberHud" and 0.14) or 0.20
+		end
+		if vhStroke then vhStroke.Color = t.Stroke end
+		if info then info.TextColor3 = t.TextSecondary end
+		if botName then botName.TextColor3 = t.TextPrimary end
+		if status then status.TextColor3 = t.TextSecondary end
+
+		if d == "LiquidGlass" then
+			popup.BackgroundTransparency = 0.48
+			if pCorner then pCorner.CornerRadius = UDim.new(0, 16) end
+			if pStroke then
+				pStroke.Thickness = 1.8
+				pStroke.Transparency = 0.08
+				pStroke.Color = Color3.fromRGB(255, 255, 255)
+			end
+			if pGrad then
+				pGrad.Rotation = -38
+				pGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, t.MainBg:Lerp(Color3.fromRGB(255, 255, 255), 0.32)),
+					ColorSequenceKeypoint.new(0.5, t.MainBg),
+					ColorSequenceKeypoint.new(1, t.MainBg:Lerp(Color3.fromRGB(210, 232, 255), 0.25))
+				})
+				pGrad.Enabled = true
+			end
+			if sGrad then
+				sGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+					ColorSequenceKeypoint.new(0.45, t.Stroke),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+				})
+				sGrad.Enabled = true
+			end
+		elseif d == "CyberHud" then
+			popup.BackgroundTransparency = 0.06
+			if pCorner then pCorner.CornerRadius = UDim.new(0, 6) end
+			if pStroke then
+				pStroke.Thickness = 2.2
+				pStroke.Transparency = 0.0
+				pStroke.Color = Color3.fromRGB(255, 255, 255)
+			end
+			if pGrad then
+				pGrad.Rotation = 25
+				pGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 14, 26):Lerp(t.Accent, 0.14)),
+					ColorSequenceKeypoint.new(0.5, Color3.fromRGB(5, 6, 12)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 10, 28):Lerp(t.Stroke, 0.14))
+				})
+				pGrad.Enabled = true
+			end
+			if sGrad then
+				sGrad.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, t.Accent),
+					ColorSequenceKeypoint.new(0.5, t.Stroke),
+					ColorSequenceKeypoint.new(1, t.Accent)
+				})
+				sGrad.Enabled = true
+			end
+		else
+			popup.BackgroundTransparency = 0.06
+			if pCorner then pCorner.CornerRadius = UDim.new(0, 12) end
+			if pStroke then
+				pStroke.Thickness = 1.5
+				pStroke.Transparency = 0.22
+				pStroke.Color = t.Stroke
+			end
+			if pGrad then pGrad.Enabled = false end
+			if sGrad then sGrad.Enabled = false end
+		end
+	end
+
+	for data, row in pairs(vars.ui.avatarRows) do
+		vars.StyleAvatarRow(data, row)
+	end
+end
+
+table.insert(ThemeObjects.CustomCallbacks, vars.RefreshAvatarChangerTheme)
+
+-- Register Avatar Changer Functions in Global Quick-Search Bar
+if FUI.RegisterSearchFunction then
+	FUI.RegisterSearchFunction({
+		Name = "Avatar Changer: Local Avatar Try-On (Wear / Restore)",
+		TabName = "Avatar Changer",
+		Keywords = "avatar changer try on wear outfit skin restore character",
+		Priority = 14,
+		GetState = function() return (vars.tryOnActive == true or vars.localTryOnModel ~= nil or vars.placeholderR6Active == true) end,
+		Toggle = function()
+			if vars.localTryOnModel or vars.tryOnActive or vars.placeholderR6Active then
+				vars.tryOnActive = false
+				vars.stopLocalTryOn(false)
+				vars.ui.selectedAvatar = nil
+				vars.updateRowVisuals(nil)
+				vars.Status.Text = "Local try-on cleared. Original avatar restored."
+				if NotifyFeatureToggle then NotifyFeatureToggle("Avatar Try-On", false) end
+			else
+				if not vars.ui.selectedAvatar and #vars.ui.savedAvatars > 0 then
+					vars.ui.selectedAvatar = vars.ui.savedAvatars[1]
+				end
+				if vars.ui.selectedAvatar then
+					vars.updateRowVisuals(vars.ui.selectedAvatar)
+					vars.tryOnSelectedAvatarLocally()
+					if NotifyFeatureToggle then NotifyFeatureToggle("Avatar Try-On", true) end
+				else
+					FUI.SwitchToTab("Avatar Changer")
+					vars.Status.Text = "[!] Save or select an avatar in Avatar Changer first."
+				end
+			end
+		end
+	})
+	FUI.RegisterSearchFunction({
+		Name = "Avatar Changer: R6 Placeholder Mode (Direct R6 Swap)",
+		TabName = "Avatar Changer",
+		Keywords = "avatar changer r6 placeholder mode swap method",
+		Priority = 15,
+		GetState = function() return vars.placeholderMode == true end,
+		Toggle = function()
+			if vars.placeholderR6Building then return end
+			vars.placeholderMode = not vars.placeholderMode
+			vars.updatePlaceholderToggleVisual()
+			if NotifyFeatureToggle then NotifyFeatureToggle("R6 Placeholder Mode", vars.placeholderMode) end
+		end
+	})
+	FUI.RegisterSearchFunction({
+		Name = "Avatar Changer: Click Player to Save Avatar",
+		TabName = "Avatar Changer",
+		Keywords = "avatar changer click player save other copy outfit steal",
+		Priority = 16,
+		GetState = function() return vars.ui.selectingPlayer == true end,
+		Toggle = function()
+			if vars.ui.selectingPlayer then
+				vars.stopPlayerSelection()
+				if NotifyFeatureToggle then NotifyFeatureToggle("Click Player to Save", false) end
+			else
+				local t = GetTheme()
+				vars.ui.selectingPlayer = true
+				vars.ui.selectionPlayer = nil
+				vars.SaveClickedButton.Text = "CLICK PLAYER"
+				vars.SaveClickedButton.BackgroundColor3 = t.Accent
+				vars.SaveClickedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+				vars.Status.Text = "Click or tap any player in-game to save their avatar."
+				if NotifyFeatureToggle then NotifyFeatureToggle("Click Player to Save", true) end
+			end
+		end
+	})
+end
+
+if vars.LocalPlayer.Character then
+	vars.bindCharacterLifecycle(vars.LocalPlayer.Character)
+end
+
+vars.loadSavedAvatars()
+vars.populateAvatarList()
+vars.RefreshAvatarChangerTheme()
+task.defer(function()
+	if vars.scriptAlive and not vars.previewQueueRunning then
+		task.spawn(vars.processPreviewQueue)
+	end
+end)
+
+end
+SetupTab10()
+
+--==============================================================================
 -- 15. CORE HEARTBEAT, STEPPED, PLAYER LIST & INPUT ENGINES
 --==============================================================================
 local FREEZE_TAG_NAMES = { Frozen = true, Freeze = true, Stunned = true, CountdownLock = true, SpawnBarrier = true, RootAnchor = true }
@@ -7367,6 +12625,7 @@ local function ShutdownInstance(immediate) if isClosingPermanently then return e
 	pcall(function() RunService:UnbindFromRenderStep("TR_Stick_Step") end)
 	genv.TR_AntiCheatActive = false pcall(StopFling) pcall(stopFlight) if stopFreecam then pcall(stopFreecam) end
 	if SetSpectateTarget then pcall(SetSpectateTarget, nil) end
+	if genv.__LocalWearerCleanup then pcall(genv.__LocalWearerCleanup) end
 	for _, thread in ipairs(RunningExecutorThreads) do pcall(function() task.cancel(thread) end) end
 	RunningExecutorThreads = {} pcall(function() SetMouseLockState(false) end)
 	SpectatingTarget, ActiveKeybindCaptureCallback = nil, nil
